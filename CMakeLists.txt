@@ -768,6 +768,12 @@ if(AURORA_SDL3_TARGET)
         COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/tests/pbr_texture_report.py
                 ${CMAKE_CURRENT_SOURCE_DIR})
     set_tests_properties(pbr_texture_report PROPERTIES TIMEOUT 30 LABELS port)
+    # The offline disc scan (tools/pbr/disc_texture_scan.py): XXH64, texture names, the material,
+    # CMDL and MREA layouts, a whole scan into the report.
+    add_test(NAME pbr_disc_scan
+        COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/tests/pbr_disc_scan.py
+                ${CMAKE_CURRENT_SOURCE_DIR})
+    set_tests_properties(pbr_disc_scan PROPERTIES TIMEOUT 60 LABELS port)
     # The generated entity field schema (tools/gen_entity_schema.py): it compiles the
     # accessors against every entity header, as mp_port_audio does.
     add_executable(port_entity_schema_tests tests/port_entity_schema.cpp platform/port_entity_schema.cpp)

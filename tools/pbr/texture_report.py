@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Join the port's texture manifest with an HD texture pack and say what each texture is for.
 
-Step 1 of docs/research/PBR_TEXTURES.md. The game, run with MP2_TEXTURE_MANIFEST=1, writes
-texture_manifest.jsonl: one record per material and texture slot, with the texture's pack file name
-and the material's flags, blend, TEV stages and texgens (platform/include/port_texture_manifest.h).
+Step 1 of docs/research/PBR_TEXTURES.md. tools/pbr/disc_texture_scan.py writes the manifest for
+every material on the disc (no play needed); the game, run with MP2_TEXTURE_MANIFEST=1, writes the
+same records for what it draws. One record per material and texture slot, with the texture's pack
+file name and the material's flags, blend, TEV stages and texgens
+(platform/include/port_texture_manifest.h).
 This reads that, finds each texture in the pack, classifies its role, and writes a CSV:
 
     python tools/pbr/texture_report.py texture_manifest.jsonl "<Dolphin>/Load/Textures/G2M"

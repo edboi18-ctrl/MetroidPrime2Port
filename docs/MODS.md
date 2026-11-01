@@ -56,7 +56,14 @@ Import texture pack .zip... (desktop). Android: Choose texture pack folder... co
 `<user>/user_textures.new`, which `PortTextures` swaps in (Remove texture pack deletes it). Console:
 `reloadmods`.
 
-**Texture manifest (for PBR, step 1 of `docs/research/PBR_TEXTURES.md`).** `MP2_TEXTURE_MANIFEST=1`
+**Texture roles from the disc (for PBR, step 1 of `docs/research/PBR_TEXTURES.md`).** No play needed:
+`python tools/pbr/disc_texture_scan.py "<Echoes>.iso"` reads every CMDL's material sets and every MREA's
+world-geometry material set straight from the disc image (through `tools/echoes_disc.py`), computes each
+texture's pack name as the port does (XXH64 of the base level, and of the palette range it uses), and
+writes `texture_manifest_disc.jsonl` in the format below; `pip install xxhash` makes it faster. Then run
+`texture_report.py` on that file. Tests: `tests/pbr_disc_scan.py`.
+
+**Texture manifest while playing (a cross-check of the disc scan).** `MP2_TEXTURE_MANIFEST=1`
 appends to `texture_manifest.jsonl` beside the log file (any other value but a false one is the file's
 path): once per material and texture slot, the texture's pack file name (as `MP2_DUMP_TEXTURES` names
 it) with the material's flags, blend, TEV stages and texgens (`CCubeMaterial::SetCurrent`,

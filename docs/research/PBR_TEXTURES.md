@@ -114,8 +114,10 @@ draws; presets and per-texture overrides go in a JSON sidecar that the batch re-
 
 ## Status
 
-- **Step 1, the manifest: done (2026-11-01).** `MP2_TEXTURE_MANIFEST=1` and
-  `tools/pbr/texture_report.py` (usage in `docs/MODS.md`). The port records raw facts and the
+- **Step 1, the manifest: done (2026-11-01).** `tools/pbr/disc_texture_scan.py` reads every
+  model and area material straight from the disc image, so nothing has to be played; the in-game
+  `MP2_TEXTURE_MANIFEST=1` writes the same records for what is drawn, as a cross-check.
+  `tools/pbr/texture_report.py` joins either with the pack (usage in `docs/MODS.md`). The port records raw facts and the
   report classifies, so the role rules can be tuned on real data without a rebuild; they are
   heuristics until checked against a play-through. The pack in use: Venomalia's "Another" Metroid
   Prime 1, 2, 3 or Trilogy HD Texture Pack (4x, HDCube ESRGAN, BC7 DDS, folders by area and by
