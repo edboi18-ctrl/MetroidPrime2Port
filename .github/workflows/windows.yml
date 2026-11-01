@@ -203,6 +203,11 @@ jobs:
           Copy-Item docs/SETTINGS.md dist/SETTINGS.md
           Copy-Item docs/MODS.md dist/MODS.md
           Copy-Item docs/CONSOLE.md dist/CONSOLE.md
+          # The PBR texture tools (Python, tools/pbr/README.md): the disc scan, the report and the disc
+          # reader they share, in the layout the scan imports the reader by (tools/ above tools/pbr/).
+          New-Item -ItemType Directory -Force -Path dist/tools/pbr | Out-Null
+          Copy-Item tools/echoes_disc.py dist/tools/
+          Copy-Item tools/pbr/disc_texture_scan.py, tools/pbr/texture_report.py, tools/pbr/README.md dist/tools/pbr/
           # libusb is LGPL and loaded at run time: the DLL and its licence.
           Copy-Item "$env:LIBUSB_ROOT/bin/libusb-1.0.dll" dist/
           Copy-Item "$env:LIBUSB_ROOT/share/libusb/copyright" dist/licenses/libusb.txt

@@ -2075,7 +2075,12 @@ void CCompoundTargetReticle::DrawCrosshairs(const CMatrix3f& rotation,
         cursorLocal = CVector3f(rayX, rayY, rayZ) * (kCursorPlane / rayY);
       }
     }
-    const CVector3f cursor = camXf * cursorLocal;
+    // Gun sway: the cursor leans with the gun and its shots, as the game's reticle position does
+    // (CalculateOrbitZoneReticlePosition). The lean is identity while the gun is straight, and
+    // pointer aim keeps it so.
+    const CVector3f cursor =
+        camXf.GetTranslation() +
+        mgr.GetPlayer(mPlayerIndex)->PortGunLean(camXf).Rotate(camXf.Rotate(cursorLocal));
     CColor rc = PortRemasteredCrosshairColor(mPreviousState, mPortXhairTargetT);
     rc = CColor(rc.GetRed(), rc.GetGreen(), rc.GetBlue(),
                 mCrosshairsDrawScale * static_cast< float >(PortOverlay::CrosshairOpacity()) / 100.f);

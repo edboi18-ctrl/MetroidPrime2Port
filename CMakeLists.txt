@@ -665,7 +665,7 @@ if(AURORA_SDL3_TARGET)
         platform/input/port_input_remap_ui.cpp
         platform/input/port_input_devices.cpp
         platform/input/port_input_user_presets.cpp platform/input/port_input_user_presets_store.cpp
-        platform/port_embedded.cpp platform/port_textures.cpp platform/port_zip.cpp platform/port_prompts.cpp
+        platform/port_embedded.cpp platform/port_textures.cpp platform/port_texture_manifest.cpp platform/port_zip.cpp platform/port_prompts.cpp
         platform/port_discord.cpp
         platform/port_disc_verify.cpp
         platform/port_disc_verify_core.cpp)
@@ -763,6 +763,17 @@ if(AURORA_SDL3_TARGET)
         COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/tests/port_console_docs.py
                 ${CMAKE_CURRENT_SOURCE_DIR})
     set_tests_properties(port_console_docs PROPERTIES TIMEOUT 15 LABELS port)
+    # The PBR texture report (tools/pbr/texture_report.py): names, role rules, a whole run.
+    add_test(NAME pbr_texture_report
+        COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/tests/pbr_texture_report.py
+                ${CMAKE_CURRENT_SOURCE_DIR})
+    set_tests_properties(pbr_texture_report PROPERTIES TIMEOUT 30 LABELS port)
+    # The offline disc scan (tools/pbr/disc_texture_scan.py): XXH64, texture names, the material,
+    # CMDL and MREA layouts, a whole scan into the report.
+    add_test(NAME pbr_disc_scan
+        COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/tests/pbr_disc_scan.py
+                ${CMAKE_CURRENT_SOURCE_DIR})
+    set_tests_properties(pbr_disc_scan PROPERTIES TIMEOUT 60 LABELS port)
     # The generated entity field schema (tools/gen_entity_schema.py): it compiles the
     # accessors against every entity header, as mp_port_audio does.
     add_executable(port_entity_schema_tests tests/port_entity_schema.cpp platform/port_entity_schema.cpp)
@@ -890,6 +901,11 @@ if(AURORA_SDL3_TARGET)
     target_include_directories(port_shot_speed_tests PRIVATE platform/include)
     add_test(NAME port_shot_speed_tests COMMAND port_shot_speed_tests)
     set_tests_properties(port_shot_speed_tests PROPERTIES TIMEOUT 30 LABELS port)
+    # Header-only (port_texture_manifest.h): the manifest's line format, which the PBR report reads.
+    add_executable(port_texture_manifest_tests tests/port_texture_manifest.cpp)
+    target_include_directories(port_texture_manifest_tests PRIVATE platform/include)
+    add_test(NAME port_texture_manifest_tests COMMAND port_texture_manifest_tests)
+    set_tests_properties(port_texture_manifest_tests PROPERTIES TIMEOUT 30 LABELS port)
 
     # Header-only (port_input_pad.h): the MP2_INPUT `pN.` prefix parser.
     add_executable(port_input_pad_tests tests/port_input_pad.cpp)

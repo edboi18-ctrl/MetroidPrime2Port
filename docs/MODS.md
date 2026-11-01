@@ -56,6 +56,26 @@ Import texture pack .zip... (desktop). Android: Choose texture pack folder... co
 `<user>/user_textures.new`, which `PortTextures` swaps in (Remove texture pack deletes it). Console:
 `reloadmods`.
 
+**Texture roles from the disc (for PBR, step 1 of `docs/research/PBR_TEXTURES.md`).** No play needed:
+`python tools/pbr/disc_texture_scan.py "<Echoes>.iso"` (an `.iso`, `.gcm` or `.ciso`; RVZ/WIA/GCZ need
+converting to ISO in Dolphin first) reads every CMDL's material sets and every MREA's
+world-geometry material set straight from the disc image (through `tools/echoes_disc.py`), computes each
+texture's pack name as the port does (XXH64 of the base level, and of the palette range it uses), and
+writes `texture_manifest_disc.jsonl` in the format below; `pip install xxhash` makes it faster. Then run
+`texture_report.py` on that file. Tests: `tests/pbr_disc_scan.py`.
+
+**Texture manifest while playing (a cross-check of the disc scan).** `MP2_TEXTURE_MANIFEST=1`
+appends to `texture_manifest.jsonl` beside the log file (any other value but a false one is the file's
+path): once per material and texture slot, the texture's pack file name (as `MP2_DUMP_TEXTURES` names
+it) with the material's flags, blend, TEV stages and texgens (`CCubeMaterial::SetCurrent`,
+`platform/port_texture_manifest.cpp`). Play through the rooms to cover, then on the PC:
+`python tools/pbr/texture_report.py texture_manifest.jsonl "<Dolphin>/Load/Textures/G2M"`
+(Windows: `py -3 tools\pbr\texture_report.py ...`) writes `texture_report.csv`: each texture's role
+(lightmap, diffuse, glow, reflection, alpha, indirect, unused), its pack file and folder, where it is
+used, and whether it is a PBR candidate, plus a summary of what the pack covers that the manifest has
+not seen yet. Standard-library Python 3.8+; tests: `tests/pbr_texture_report.py`,
+`tests/port_texture_manifest.cpp`.
+
 Reload is a savestate-style world restart: `PortSaveState::RequestModReload` writes the current state
 to the undo slot and loads it back; `CMainFlow` (`kCFS_Game`) calls `ReloadModsNow` after the old world
 is gone, which closes every PAK, runs `PortMods::Reload` (rescan, overlay rebuilt through

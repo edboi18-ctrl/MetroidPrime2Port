@@ -24,6 +24,7 @@
 
 #ifdef TARGET_PC
 #include "Kyoto/Basics/CBasics.hpp"
+#include "port_texture_manifest.h"
 // Material data is big-endian on disc; every read must be swapped on a little-endian host.
 #ifdef TARGET_PC
 #define SBig(x) CBasics::SwapBytes(x)
@@ -841,6 +842,77 @@ static void HandleThermalTevs(const uint*& materialData, uint firstTev, uint& te
   tcgCount = 1;
 }
 
+#ifdef TARGET_PC
+// The TEV stage count the material group's first material set: its own stages, before the
+// transparency, alpha mask, reflection and shadow additions. A later material of the group keeps
+// that TEV (SetCurrent returns early), so the texture manifest reads it with this count.
+static uint sPortGroupTevCount = 0;
+
+static uint64_t PortManifestKey(const uchar* materialData, const CTexture* texture, uint slot) {
+  uint64_t key = reinterpret_cast< uintptr_t >(materialData);
+  key = key * 0x100000001B3ull ^ reinterpret_cast< uintptr_t >(texture);
+  return key * 0x100000001B3ull ^ slot;
+}
+
+// MP2_TEXTURE_MANIFEST (PortTextureManifest): each texture this material bound, with the
+// material's flags, blend, TEV stages and texgens, once per material and texture. Ordinary draws
+// only: the thermal visor, the model shadow and the black pass set TEVs of their own.
+static void PortRecordTextureManifest(const CCubeModel& model, const CCubeSurface& surface,
+                                      const uchar* materialData, uint matFlags, uint blendFactors,
+                                      const CTexture* const* textures, uint texCount, uint tevCount,
+                                      bool fromGroup) {
+  if (!PortTextureManifest::Enabled() || sTevHandler != HandleNormalTevs || sbRenderModelShadow ||
+      sbRenderModelBlack) {
+    return;
+  }
+  const uint slots = texCount < 8 ? texCount : 8;
+  bool wanted = false;
+  for (uint slot = 0; slot < slots && !wanted; ++slot) {
+    wanted = textures[slot] != nullptr &&
+             PortTextureManifest::Wanted(PortManifestKey(materialData, textures[slot], slot));
+  }
+  if (!wanted) {
+    return;
+  }
+  PortTextureManifest::Stage stages[16];
+  const uint numStages = tevCount < 16 ? tevCount : 16;
+  for (uint i = 0; i < numStages; ++i) {
+    const CGX::STevState& s = CGX::GetTevState(static_cast< GXTevStageID >(i));
+    stages[i].orderFlags = s.mTevOrderFlags;
+    stages[i].colorIn = s.mColorInArgs;
+    stages[i].alphaIn = s.mAlphaInArgs;
+    stages[i].colorOp = s.mColorOps;
+    stages[i].alphaOp = s.mAlphaOps;
+    stages[i].kColorSel = s.mKColorSel;
+    stages[i].kAlphaSel = s.mKAlphaSel;
+  }
+  uint32_t texGens[8];
+  const uint numTexGens = CGX::GetNumTexGens() < 8 ? CGX::GetNumTexGens() : 8;
+  for (uint i = 0; i < numTexGens; ++i) {
+    texGens[i] = CGX::PortGetTexState(static_cast< GXTexCoordID >(i)).mCoordGen;
+  }
+  char source[64];
+  model.PortDescribe(source, sizeof(source));
+  PortTextureManifest::Material material;
+  material.flags = matFlags;
+  material.blend = blendFactors;
+  material.materialIndex = surface.GetMaterialIndex();
+  material.source = source;
+  material.tevFromGroup = fromGroup;
+  material.stages = stages;
+  material.numStages = static_cast< int >(numStages);
+  material.texGens = texGens;
+  material.numTexGens = static_cast< int >(numTexGens);
+  for (uint slot = 0; slot < slots; ++slot) {
+    if (const CTexture* texture = textures[slot]) {
+      PortTextureManifest::Record(PortManifestKey(materialData, texture, slot), texture->PortTexObj(),
+                                  static_cast< int >(texture->GetTexelFormat()),
+                                  static_cast< int >(slot), material);
+    }
+  }
+}
+
+#endif
 void CCubeMaterial::SetCurrent(const CModelFlags& flags, const CCubeSurface& surface,
                                const CCubeModel& model) const {
   if (mData == sLastMaterialCached) {
@@ -883,6 +955,11 @@ void CCubeMaterial::SetCurrent(const CModelFlags& flags, const CCubeSurface& sur
     sMaterialCachedState = 0;
   }
 
+#ifdef TARGET_PC
+  const CTexture* portTextures[8] = {};
+  const uint portTexCount = texCount;
+  bool portTexturesBound = false;
+#endif
   if ((flags.GetOtherFlags() & CModelFlags::kF_NoTextureLock) == 0) {
     const rstl::vector< TCachedToken< CTexture > >& textures = model.GetTextures();
     materialDataCur += 2;
@@ -899,6 +976,9 @@ void CCubeMaterial::SetCurrent(const CModelFlags& flags, const CCubeSurface& sur
       if (texture != nullptr) {
         texture->Load(static_cast< GXTexMapID >(i), CTexture::kCM_Repeat);
       }
+      if (i < 8) {
+        portTextures[i] = texture;
+      }
 #else
 #ifdef TARGET_PC
       textures[SBig(*materialDataCur)].GetObject()->Load(static_cast< GXTexMapID >(i),
@@ -909,6 +989,9 @@ void CCubeMaterial::SetCurrent(const CModelFlags& flags, const CCubeSurface& sur
 #endif
       ++materialDataCur;
     }
+#ifdef TARGET_PC
+    portTexturesBound = true;
+#endif
   } else {
     materialDataCur += texCount + 2;
   }
@@ -946,6 +1029,12 @@ void CCubeMaterial::SetCurrent(const CModelFlags& flags, const CCubeSurface& sur
     if (sKColorModulated) {
       ModulateKColor(flags);
     }
+#ifdef TARGET_PC
+    if (portTexturesBound) {
+      PortRecordTextureManifest(model, surface, GetData(), matFlags, SBig(*materialDataCur),
+                                portTextures, portTexCount, sPortGroupTevCount, true);
+    }
+#endif
     return;
   }
   sLastMaterialUnique = groupIdx;
@@ -999,6 +1088,10 @@ void CCubeMaterial::SetCurrent(const CModelFlags& flags, const CCubeSurface& sur
 #endif
   uint tcgCount = 0;
   sTevHandler(materialDataCur, firstTev, finalTevCount, tcgCount);
+#ifdef TARGET_PC
+  const uint portMaterialTevCount = finalTevCount;
+  sPortGroupTevCount = finalTevCount;
+#endif
 
   if (flags.GetTrans() != CModelFlags::kT_Opaque) {
     HandleTransparency(finalTevCount, finalKColorCount, flags, blendFactors);
@@ -1042,6 +1135,12 @@ void CCubeMaterial::SetCurrent(const CModelFlags& flags, const CCubeSurface& sur
   CGX::SetNumTevStages(finalTevCount);
   CGX::SetNumTexGens(tcgCount);
   CGX::SetNumChans(finalNumColorChans);
+#ifdef TARGET_PC
+  if (portTexturesBound) {
+    PortRecordTextureManifest(model, surface, GetData(), matFlags, blendFactors, portTextures,
+                              portTexCount, portMaterialTevCount, false);
+  }
+#endif
 }
 
 void CCubeMaterial::EnsureViewDepStateCached(const CCubeSurface* surface) {
