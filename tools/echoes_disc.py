@@ -267,7 +267,7 @@ def parse_mlvl(b):
     if ver >= 23:
         r.u32()
     r.u32()  # savw
-    r.u32()  # skybox
+    skybox = r.u32()  # the world's default sky CMDL (CWorld::Update reads it here)
     n = r.u32()
     areas = []
     for i in range(n):
@@ -288,7 +288,7 @@ def parse_mlvl(b):
         a["offs"] = [r.u32() for _ in range(r.u32())]
         a["iname"] = r.cstr()
         areas.append(a)
-    return {"version": ver, "strg": strg, "dark": dark, "areas": areas}
+    return {"version": ver, "strg": strg, "dark": dark, "skybox": skybox, "areas": areas}
 
 
 # ---------------------------------------------------------------------------- MREA

@@ -154,6 +154,15 @@ draws; presets and per-texture overrides go in a JSON sidecar that the batch re-
   (`max_tilt`, 30 degrees) and rock is weaker (1.5); lava in a Genn rock's cracks is brighter than
   the stone, so it came out raised: brightness as height can't tell, and `chroma` (per texture)
   takes colourful areas down; and wide textures got 32 px previews, now stacked and labelled.
+- **First maps from the pack (2026-11-01, the same 20, texconv BC5/BC7).** The data survived
+  compression (normals within 0.006-0.016 of the uncompressed vectors on average, ORM within about
+  one level: no colour-space conversion). Found: texconv wrote BC5 with the legacy FourCC `BC5U`,
+  which `dds_io.cpp` doesn't take (it takes `ATI2` or DX10 83), so the tool now runs it with `-dx10`
+  and checks every file it writes; all ten wide Temple Grounds candidates were sky panoramas, so the
+  disc scan now marks sky models (MLVL default sky, `REAA` `overrideSky`) and the report keeps their
+  textures out; an enemy atlas's pieces rose from their black ground with a bevel on the model's
+  seams, so empty atlas space is filled (push-pull) before the height is taken; and a settings
+  file is now read from the current folder, as the lava override had not been passed.
 
 ## Risks
 

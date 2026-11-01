@@ -12,6 +12,7 @@ This reads that, finds each texture in the pack, classifies its role, and writes
     (Windows: py -3 tools\\pbr\\texture_report.py texture_manifest.jsonl "C:\\...\\G2M")
 
 Roles, from how the material's TEV stages use the texture's texmap (GX: out = d + lerp(a, b, c)):
+  sky         the material belongs to a sky model (the disc scan marks them)
   lightmap    the first textured stage of a material with the lightmap flag
   reflection  its texture coordinates come from the normal or the position (an environment or
               projected map), not from the model's UVs
@@ -84,6 +85,8 @@ class Stage:
 
 def classify(record):
     """The role of record["slot"] in its material (see the module docstring)."""
+    if record.get("sky"):
+        return "sky"
     slot = record["slot"]
     flags = record["flags"]
     stages = [Stage(s) for s in record["stages"]]

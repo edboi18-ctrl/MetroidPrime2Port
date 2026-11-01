@@ -26,6 +26,11 @@ How each fact matches the port (the engine code is the reference):
   sections    CMDL: DolphinCModel.cpp (section count 0x24, material sets 0x28, sizes 0x2C); MREA
               v0x19: CGameArea::GetSectionIndex (geometry = header word 17, its first section is the
               area's material set).
+  sky         a world's default sky is the CMDL its MLVL names after the SAVW (CWorld::Update); an
+              area overrides it with an AreaAttributes object (REAA, ScriptLoader.cpp) whose
+              overrideSky property (0xd208c9fa, a 4-byte CMDL id; SLdrAreaAttributes.inc) is set.
+              Records of those models carry "sky": true, and the report keeps their textures out
+              of the PBR candidates.
 """
 
 import argparse
@@ -317,6 +322,26 @@ def mrea_material_set(mrea):
     return mrea_section(mrea, struct.unpack_from(">I", mrea, 17 * 4)[0])
 
 
+OVERRIDE_SKY = b"\xd2\x08\xc9\xfa\x00\x04"  # property id 0xd208c9fa, 4 bytes of data
+NO_ASSET = 0xFFFFFFFF
+
+
+def area_sky_models(mrea):
+    """The CMDL ids an area's AreaAttributes (REAA) objects set as its sky (overrideSky)."""
+    out = set()
+    for layer in ed.mrea_layers(mrea):
+        for fourcc, _eid, props in ed.scly_objects(layer):
+            if fourcc != "REAA":
+                continue
+            at = props.find(OVERRIDE_SKY)
+            while at >= 0 and at + 10 <= len(props):
+                (model,) = struct.unpack_from(">I", props, at + 6)
+                if model != NO_ASSET:
+                    out.add(model)
+                at = props.find(OVERRIDE_SKY, at + 1)
+    return out
+
+
 # ------------------------------------------------------------------------------------- scan
 class Scanner:
     """Walks PAK-like objects (echoes_disc.Pak: .path, .res {id: (type, flags, size, offset)},
@@ -331,18 +356,23 @@ class Scanner:
                 self.where.setdefault(rid, (pak, rtype))
         self.names = {}  # TXTR id -> (name or None, texel)
         self.area_names = {}
+        self.sky = set()  # CMDL ids drawn as a sky
         self.stats = {"cmdl": 0, "mrea": 0, "materials": 0, "bad_materials": 0, "missing_txtr": 0,
                       "unhashable_txtr": 0, "records": 0}
 
-    def load_area_names(self):
+    def load_worlds(self):
+        """Area names and each world's default sky, from the MLVLs."""
         for rid, (pak, rtype) in self.where.items():
             if rtype != "MLVL":
                 continue
             try:
-                for area in ed.parse_mlvl(pak.get(rid))["areas"]:
-                    self.area_names[area["mrea"]] = area["iname"]
+                world = ed.parse_mlvl(pak.get(rid))
             except (struct.error, ValueError, IndexError, AssertionError):
-                pass
+                continue
+            if world["skybox"] != NO_ASSET:
+                self.sky.add(world["skybox"])
+            for area in world["areas"]:
+                self.area_names[area["mrea"]] = area["iname"]
 
     def texture(self, txtr_id):
         if txtr_id not in self.names:
@@ -368,7 +398,7 @@ class Scanner:
         (out_len,) = struct.unpack_from(">I", raw, 0)
         return inflate_prefix(raw, out_len, 4, cmdl_prefix_needed)
 
-    def records_for_set(self, section, source):
+    def records_for_set(self, section, source, sky=False):
         ids, materials = parse_material_set(section)
         for index, data in enumerate(materials):
             self.stats["materials"] += 1
@@ -384,13 +414,18 @@ class Scanner:
                 if name is None:
                     continue
                 self.stats["records"] += 1
-                yield {"name": name, "texel": texel, "slot": slot, "flags": mat["flags"],
-                       "blend": mat["blend"], "mat": index, "src": source, "group": False,
-                       "stages": mat["stages"], "texgens": mat["texgens"]}
+                record = {"name": name, "texel": texel, "slot": slot, "flags": mat["flags"],
+                          "blend": mat["blend"], "mat": index, "src": source, "group": False,
+                          "stages": mat["stages"], "texgens": mat["texgens"]}
+                if sky:
+                    record["sky"] = True
+                yield record
 
     def scan(self):
-        self.load_area_names()
-        ids = sorted(self.where.items(), key=lambda kv: (kv[1][1], kv[0]))
+        """Areas first, so their sky overrides are known before the models are read."""
+        self.load_worlds()
+        order = {"MREA": 0, "CMDL": 1}
+        ids = sorted(self.where.items(), key=lambda kv: (order.get(kv[1][1], 2), kv[0]))
         total = sum(1 for _rid, (_p, t) in ids if t in ("CMDL", "MREA"))
         done = 0
         for rid, (pak, rtype) in ids:
@@ -403,11 +438,17 @@ class Scanner:
                 if rtype == "CMDL":
                     sets = cmdl_material_sets(self.cmdl_bytes(pak, rid))
                     self.stats["cmdl"] += 1
+                    sky = rid in self.sky
                     for n, section in enumerate(sets):
                         src = "CMDL 0x%08X" % rid + (" set %d" % n if len(sets) > 1 else "")
-                        yield from self.records_for_set(section, src)
+                        yield from self.records_for_set(section, src + (" (sky)" if sky else ""), sky)
                 else:
-                    section = mrea_material_set(pak.get(rid))
+                    mrea = pak.get(rid)
+                    try:
+                        self.sky |= area_sky_models(mrea)
+                    except (struct.error, ValueError, IndexError, AssertionError) as e:
+                        self.log("  no script layers read for MREA 0x%08X: %s" % (rid, e))
+                    section = mrea_material_set(mrea)
                     self.stats["mrea"] += 1
                     name = self.area_names.get(rid)
                     src = "area %s (MREA 0x%08X)" % (name, rid) if name else "area MREA 0x%08X" % rid
@@ -468,6 +509,7 @@ def main(argv=None):
           "%d missing, %d unhashable" % (s["cmdl"], s["mrea"], s["materials"], s["bad_materials"],
                                          s["records"], sum(1 for n, _t in scanner.names.values() if n),
                                          s["missing_txtr"], s["unhashable_txtr"]))
+    print("%d sky models (world defaults and area overrides)" % len(scanner.sky))
     print("Wrote %s" % args.out)
     return 0
 
