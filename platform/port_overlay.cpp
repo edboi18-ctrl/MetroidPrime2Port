@@ -72,6 +72,7 @@ bool sMapSwapFingers = false;
 bool sMapInvertX = false;
 bool sMapInvertY = false;
 int sWalkSpeed = PortOverlay::kWalkSpeedDefault;
+int sPowerBeamSpeed = PortOverlay::kPowerBeamSpeedDefault;
 int sScanSpeed = PortOverlay::kScanSpeedDefault;
 int sMusicBoost = PortOverlay::kVolumeBoostDefault;
 int sSfxBoost = PortOverlay::kVolumeBoostDefault;
@@ -1132,6 +1133,20 @@ bool ConsumeShowHintRequest() {
 void SetWalkSpeed(int percent) {
   ReadEnv();
   sWalkSpeed = std::clamp(percent, kWalkSpeedMin, kWalkSpeedMax);
+  Persist();
+}
+
+int PowerBeamSpeed() {
+  ReadEnv();
+  if (OriginalExperience()) {
+    return kPowerBeamSpeedDefault;
+  }
+  return EnvIntIn("MP2_POWER_BEAM_SPEED", sPowerBeamSpeed, kPowerBeamSpeedMin, kPowerBeamSpeedMax);
+}
+
+void SetPowerBeamSpeed(int percent) {
+  ReadEnv();
+  sPowerBeamSpeed = std::clamp(percent, kPowerBeamSpeedMin, kPowerBeamSpeedMax);
   Persist();
 }
 

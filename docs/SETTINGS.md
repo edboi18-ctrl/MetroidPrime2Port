@@ -83,6 +83,14 @@ Game page:
 - `skip_cinematics`: Enhancements > Pace > Skippable cutscenes.
 - Boot logos and the world name card on load: no setting; they end on A or Start (shown as retail
   under Original experience). Env `MP2_BOOT_LOGOS`, `MP2_WORLD_NAME` (`show`, `skip`, `off`).
+- `power_beam_speed`: Enhancements > Weapons > Power Beam speed, 100-300 percent (default 100 =
+  retail; 100 under Original Experience; env `MP2_POWER_BEAM_SPEED`; MP1 dead-space-prime
+  `63928f0fe`, whose default is 150). `CGunWeapon::Fire` multiplies a Power Beam shot's velocity
+  (plain, charged, and Stack beams' Power Beam shot) and divides its lifetime in 60 Hz frames by
+  the same factor, rounded (`CProjectileWeapon::PortScaleSpeed`, `port_shot_speed.h`,
+  `tests/port_shot_speed.cpp`), so it reaches as far as before; hits are swept from the last
+  position, so a faster shot can't skip through anything. Lock-on leads for the new speed
+  (`CPlayerGun::GetBeamVelocity`). Not the Phazon ball, other beams, missiles or combos.
 - `walk_speed`: Enhancements > Pace > Walk speed (50 to 200 percent, default 100 = retail); env
   `MP2_WALK_SPEED`, console `walkspeed`. Scales how fast Samus moves on foot: the top speed,
   acceleration and friction of walking and strafing (on the ground, in the air and in water) and the

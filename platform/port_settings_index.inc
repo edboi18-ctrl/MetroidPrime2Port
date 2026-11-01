@@ -182,6 +182,7 @@
 {"Enhancements", "", "Dark Visor", "Dark Visor static", "dark visor noise static grain"},
 {"Enhancements", "", "Ammo", "Infinite Light and Dark Ammo", "beam ammo unlimited light dark cheat"},
 {"Enhancements", "", "Pace", "Skippable cutscenes", "skip cinematics movies"},
+{"Enhancements", "", "Weapons", "Power Beam speed", "power beam shot projectile velocity fast speed weapon"},
 {"Enhancements", "", "Pace", "Walk speed", "movement run fast slow strafe velocity samus"},
 {"Enhancements", "", "Pace", "Scan speed", "scanning visor faster slower scan time"},
 {"Enhancements", "", "Pace", "Elevator ride cutscene", "world transition skip fast loading speed"},

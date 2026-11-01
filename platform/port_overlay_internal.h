@@ -21,6 +21,7 @@ extern bool sMapSwapFingers;
 extern bool sMapInvertX;
 extern bool sMapInvertY;
 extern int sWalkSpeed;
+extern int sPowerBeamSpeed;
 extern int sScanSpeed;
 extern int sMusicBoost;
 extern int sSfxBoost;

@@ -199,6 +199,8 @@ const SettingKey kSettingKeys[] = {
     BoolKey< &sMapSwapFingers >("map_swap_fingers"),
     BoolKey< &sMapInvertX >("map_invert_x"),
     BoolKey< &sMapInvertY >("map_invert_y"),
+    IntKey< &sPowerBeamSpeed, PortOverlay::kPowerBeamSpeedMin, PortOverlay::kPowerBeamSpeedMax >(
+        "power_beam_speed", "100", "150"),
     IntKey< &sWalkSpeed, PortOverlay::kWalkSpeedMin, PortOverlay::kWalkSpeedMax >("walk_speed", "50",
                                                                                   "200"),
     IntKey< &sScanSpeed, PortOverlay::kScanSpeedMin, PortOverlay::kScanSpeedMax >("scan_speed", "50",

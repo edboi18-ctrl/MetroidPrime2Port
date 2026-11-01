@@ -1901,6 +1901,13 @@ void CPlayerGun::Update(float dt, CStateManager& mgr) {
 }
 
 float CPlayerGun::GetBeamVelocity() const {
+#ifdef TARGET_PC
+  // The lock-on's aim leads its target for the faster Power Beam (CGunWeapon::Fire) too.
+  if (mCurrentBeam->IsLoaded() && mCurrentBeam->GetType() == kWT_Power) {
+    return mCurrentBeam->GetVelocityInfo().GetVelocity(mChargeState).GetY() *
+           (static_cast< float >(PortOverlay::PowerBeamSpeed()) / 100.f);
+  }
+#endif
   return mCurrentBeam->IsLoaded() ? mCurrentBeam->GetVelocityInfo().GetVelocity(mChargeState).GetY()
                                   : 10.f;
 }

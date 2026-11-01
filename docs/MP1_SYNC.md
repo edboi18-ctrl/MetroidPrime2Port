@@ -165,8 +165,10 @@ Each needs MP2 game-side hooks found fresh; a row with no possible MP2 backend i
     when the lock differs, MP1 has no such check); gun and dash state is file-scope (no CPlayer
     fields, no schema change); manual aim and the dash are single player; gun sway defaults to 0
     (the branch's 3 degrees is one setting away) and is off under pointer aim. Not taken: Stasis,
-    the Dead Space HUD and sounds, the branch's 115% walk default, Power Beam speed, the passthrough
-    bridge. Compiled (headers-only build, the F1/input files syntax-checked against SDL 3.4.10 and
+    the Dead Space HUD and sounds, the branch's 115% walk default, the passthrough bridge.
+    Power Beam speed (`63928f0fe`) followed (user 2026-11-01) as `power_beam_speed`, 100-300%, default
+    100 (the branch's 150 is one setting away); the Phazon ball fired at full absorbed Phazon keeps
+    its speed. Compiled (headers-only build, the F1/input files syntax-checked against SDL 3.4.10 and
     Dear ImGui 1.92.3 headers), TARGET_PC strip-diff clean, unit tests pass; not run in game (no
     disc or Aurora download here).
 

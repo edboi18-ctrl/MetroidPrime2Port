@@ -74,6 +74,7 @@ hp, hp_max, visor, beam, freecam) for scripts.
 - `aimlockon [0|1]` — lock-on picks the target nearest the crosshair (`aim_lock_on`)
 - `manualaim [0|1]` — manual aim: no lock-on outside the Scan Visor (grapple points still lock), no aim assist, and every homing shot seeks the target nearest the crosshair (`manual_aim`)
 - `dashtap [0|1] [75..150]` — double-tap dash on a movement key, and its speed in percent (`double_tap_dash`, `dash_speed`)
+- `beamspeed [100..300]` — Power Beam shot speed in percent of retail, with the same reach; with no argument prints the current value (`power_beam_speed`)
 - `gunsway [0..10]` — gun sway in degrees (0 off); with no argument prints the current value (`gun_sway`)
 - `sticky <0|1>` — sticky charge: a long A hold keeps charging after the release
 - `pointeraim [on|off|<x> <y>] pointer aim (the F1 row), or place its pointer (-1..1)`

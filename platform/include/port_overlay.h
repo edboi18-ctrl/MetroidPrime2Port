@@ -152,6 +152,15 @@ int BeamAmmoPerExpansion();
 void SetBeamAmmoPerExpansion(int ammo);
 int WalkSpeed();
 void SetWalkSpeed(int percent);
+// Power Beam speed (`MP2_POWER_BEAM_SPEED`, percent of retail; MP1 dead-space-prime 63928f0fe):
+// Power Beam shots, plain and charged, fly this much faster with the same reach (their lifetime
+// is shortened to match, port_shot_speed.h), and lock-on leads for it. 100 = retail (the default
+// here; MP1's branch defaults to 150) and under Original Experience.
+const int kPowerBeamSpeedMin = 100;
+const int kPowerBeamSpeedMax = 300;
+const int kPowerBeamSpeedDefault = 100;
+int PowerBeamSpeed();
+void SetPowerBeamSpeed(int percent);
 // Scan speed in percent (`MP2_SCAN_SPEED`, 100 = retail): ScanSpeed() scales the time a scan takes
 // (CPlayer::UpdateScanningState).
 const int kScanSpeedMin = 50;
