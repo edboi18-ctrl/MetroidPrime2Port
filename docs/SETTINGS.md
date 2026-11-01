@@ -212,7 +212,9 @@ Controls > Options:
   Hunters, the arm cannon leans toward the view's turn, all the way at 180 degrees a second,
   following with a 0.08 s time constant at any tick rate; a jump over 0.5 rad in one tick (a cut)
   doesn't lean it, and morph ball, cinematics and other cameras straighten it. The gun's aim leans
-  with it (shots follow) and so does the crosshair (`CCompoundTargetReticle`). Off while pointer aim
+  with it (shots follow) and so does the crosshair in every style: the game's reticle position
+  (`CalculateOrbitZoneReticlePosition`, Classic and GameCube) and the Remastered cursor, which is drawn
+  on its own plane (`DrawCrosshairs`). Off while pointer aim
   is active, which turns the gun itself. `platform/include/port_gun_sway.h`, `tests/port_gun_sway.cpp`.
 - `double_tap_dash`, `dash_speed`: Movement > Double-tap dash, Dash speed (default off, 130%; off
   under Original Experience; env `MP2_DOUBLE_TAP_DASH`, `MP2_DASH_SPEED` 75-150; MP1
