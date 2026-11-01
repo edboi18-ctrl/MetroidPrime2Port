@@ -19,9 +19,64 @@ def find_iso():
 
 
 # ---------------------------------------------------------------------------- ISO
+class CisoFile:
+    """A CISO image read as the plain disc it holds, through seek() and read() (Dolphin's
+    DiscIO/CISOBlob: a 0x8000-byte header of "CISO", a little-endian block size and one byte per
+    block, 1 = stored; the stored blocks follow in order, so block b is at 0x8000 + its index among
+    the stored ones times the block size, and a block that isn't stored reads as zeros)."""
+
+    HEADER_SIZE = 0x8000
+
+    def __init__(self, f):
+        head = f.read(self.HEADER_SIZE)
+        if len(head) < self.HEADER_SIZE or head[:4] != b"CISO":
+            raise ValueError("not a CISO image")
+        (self.block_size,) = struct.unpack_from("<I", head, 4)
+        if self.block_size == 0:
+            raise ValueError("CISO block size 0")
+        self.blocks = []
+        stored = 0
+        for used in head[8:]:
+            self.blocks.append(stored if used == 1 else None)
+            stored += used == 1
+        self.f, self.pos = f, 0
+
+    def seek(self, pos, whence=0):
+        self.pos = pos if whence == 0 else self.pos + pos
+        return self.pos
+
+    def read(self, n=-1):
+        out = bytearray()
+        while n != 0:
+            block, off = divmod(self.pos, self.block_size)
+            if block >= len(self.blocks):
+                break
+            take = self.block_size - off if n < 0 else min(n, self.block_size - off)
+            index = self.blocks[block]
+            if index is None:
+                out += bytes(take)
+            else:
+                self.f.seek(self.HEADER_SIZE + index * self.block_size + off)
+                data = self.f.read(take)
+                out += data + bytes(take - len(data))
+            self.pos += take
+            n = n - take if n > 0 else n
+        return bytes(out)
+
+
+def open_disc(path):
+    """The disc at `path` as a file object: a plain ISO/GCM, or a CISO read through CisoFile."""
+    f = open(path, "rb")
+    if f.read(4) == b"CISO":
+        f.seek(0)
+        return CisoFile(f)
+    f.seek(0)
+    return f
+
+
 class Iso:
     def __init__(self, path):
-        self.f = open(path, "rb")
+        self.f = open_disc(path)
         self.f.seek(0x424)
         fst_off, fst_size = struct.unpack(">II", self.f.read(8))
         self.f.seek(fst_off)

@@ -207,5 +207,82 @@ class WholeScan(unittest.TestCase):
         self.assertEqual(scanner.stats["cmdl"], 1)
 
 
+def gc_disc(files):
+    """A minimal GameCube disc image: the header's magic, the FST at 0x424 and `files` after it."""
+    names = b"".join(name.encode() + b"\0" for name in files)
+    count = len(files) + 1
+    fst_off = 0x2440
+    data_off = (fst_off + count * 12 + len(names) + 0x7FFF) & ~0x7FFF
+    entries = struct.pack(">III", 1 << 24, 0, count)
+    name_off, pos, body = 0, data_off, b""
+    for name, data in files.items():
+        entries += struct.pack(">III", name_off, pos, len(data))
+        name_off += len(name) + 1
+        body += data + b"\0" * (-len(data) % 0x8000)
+        pos += len(data) + (-len(data) % 0x8000)
+    fst = entries + names
+    head = bytearray(fst_off)
+    head[0:6] = b"G2ME01"
+    struct.pack_into(">I", head, 0x1C, ds.GC_MAGIC)
+    struct.pack_into(">II", head, 0x424, fst_off, len(fst))
+    image = bytes(head) + fst
+    return image + b"\0" * (data_off - len(image)) + body
+
+
+def ciso(plain, block_size=0x400):
+    """`plain` as a CISO (Dolphin's layout): all-zero blocks are left out."""
+    blocks = [plain[i:i + block_size] for i in range(0, len(plain), block_size)]
+    blocks[-1] += b"\0" * (block_size - len(blocks[-1]))
+    used = [any(b) for b in blocks]
+    header = bytearray(0x8000)
+    header[0:4] = b"CISO"
+    struct.pack_into("<I", header, 4, block_size)
+    for i, u in enumerate(used):
+        header[8 + i] = 1 if u else 0
+    return bytes(header) + b"".join(b for b, u in zip(blocks, used) if u)
+
+
+class DiscImages(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = pathlib.Path(self.tmp.name)
+        self.files = {"Metroid1.pak": pattern(5000), "Strings.pak": b"\x07" * 300 + bytes(4096) + b"x"}
+        self.plain = gc_disc(self.files)
+        (self.dir / "g.iso").write_bytes(self.plain)
+        (self.dir / "g.ciso").write_bytes(ciso(self.plain))
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_ciso_reads_as_the_plain_disc(self):
+        import echoes_disc as ed
+        disc = ed.open_disc(str(self.dir / "g.ciso"))
+        self.assertIsInstance(disc, ed.CisoFile)
+        self.assertEqual(disc.block_size, 0x400)
+        for pos, n in ((0, 0x40), (0x3F0, 0x30), (0x424, 8), (0x7FFF, 3), (0x8000, 5000),
+                       (len(self.plain) - 10, 10), (0x2000, 0x900)):
+            disc.seek(pos)
+            self.assertEqual(disc.read(n), self.plain[pos:pos + n], (pos, n))
+        # Both images list the same files with the same bytes.
+        plain_iso, ciso_iso = ed.Iso(str(self.dir / "g.iso")), ed.Iso(str(self.dir / "g.ciso"))
+        self.assertEqual(plain_iso.files, ciso_iso.files)
+        for name, data in self.files.items():
+            self.assertEqual(ciso_iso.read(name), data)
+            self.assertEqual(plain_iso.read(name), data)
+
+    def test_disc_problem(self):
+        self.assertIsNone(ds.disc_problem(str(self.dir / "g.iso")))
+        self.assertIsNone(ds.disc_problem(str(self.dir / "g.ciso")))
+        (self.dir / "a.rvz").write_bytes(b"RVZ\x01" + bytes(64))
+        self.assertIn("RVZ", ds.disc_problem(str(self.dir / "a.rvz")))
+        wii = bytearray(self.plain[:0x40])
+        struct.pack_into(">II", wii, 0x18, ds.WII_MAGIC, 0)
+        (self.dir / "w.ciso").write_bytes(ciso(bytes(wii) + bytes(0x400)))
+        self.assertIn("Wii", ds.disc_problem(str(self.dir / "w.ciso")))
+        (self.dir / "bad.ciso").write_bytes(b"CISO" + bytes(16))
+        self.assertIn("not a CISO", ds.disc_problem(str(self.dir / "bad.ciso")))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

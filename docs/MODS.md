@@ -57,7 +57,8 @@ Import texture pack .zip... (desktop). Android: Choose texture pack folder... co
 `reloadmods`.
 
 **Texture roles from the disc (for PBR, step 1 of `docs/research/PBR_TEXTURES.md`).** No play needed:
-`python tools/pbr/disc_texture_scan.py "<Echoes>.iso"` reads every CMDL's material sets and every MREA's
+`python tools/pbr/disc_texture_scan.py "<Echoes>.iso"` (an `.iso`, `.gcm` or `.ciso`; RVZ/WIA/GCZ need
+converting to ISO in Dolphin first) reads every CMDL's material sets and every MREA's
 world-geometry material set straight from the disc image (through `tools/echoes_disc.py`), computes each
 texture's pack name as the port does (XXH64 of the base level, and of the palette range it uses), and
 writes `texture_manifest_disc.jsonl` in the format below; `pip install xxhash` makes it faster. Then run

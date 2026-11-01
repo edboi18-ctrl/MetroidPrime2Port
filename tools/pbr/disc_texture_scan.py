@@ -11,7 +11,7 @@ tools/pbr/texture_report.py with your pack:
     python tools/pbr/texture_report.py texture_manifest_disc.jsonl "<Dolphin>/Load/Textures/G2M"
     (Windows: py -3 tools\\pbr\\disc_texture_scan.py "C:\\...\\Echoes.iso" ...)
 
-Needs a plain GameCube ISO/GCM of G2ME01 (or a PAL or Trilogy dump the reader accepts), Python 3.8+ and
+Needs a GameCube ISO/GCM or CISO of G2ME01 (a PAL dump works the same way), Python 3.8+ and
 the standard library. `pip install xxhash` makes it several times faster (the built-in XXH64 is pure
 Python); the output is the same either way.
 
@@ -417,19 +417,23 @@ class Scanner:
 
 
 GC_MAGIC, WII_MAGIC = 0xC2339F3D, 0x5D1C9EA3  # disc header words at 0x1C and 0x18
-CONTAINERS = {b"RVZ\x01": "RVZ", b"WIA\x01": "WIA", b"CISO": "CISO", b"\x01\xC0\x0B\xB1": "GCZ"}
+CONTAINERS = {b"RVZ\x01": "RVZ", b"WIA\x01": "WIA", b"\x01\xC0\x0B\xB1": "GCZ"}
 
 
 def disc_problem(path):
-    """Why `path` isn't a plain GameCube image this reader can open, or None."""
+    """Why `path` isn't a GameCube image this reader can open (a plain ISO/GCM, or a CISO), or None."""
     with open(path, "rb") as f:
-        head = f.read(0x20)
+        kind = CONTAINERS.get(f.read(4))
+    if kind:
+        return ("it is a compressed %s image; this reader takes a plain ISO or a CISO. In Dolphin: "
+                "right-click the game > Convert File... > Format: ISO" % kind)
+    try:
+        disc = ed.open_disc(path)
+        head = disc.read(0x20)
+    except ValueError as e:
+        return str(e)
     if len(head) < 0x20:
         return "the file is too short to be a disc image"
-    kind = CONTAINERS.get(head[:4])
-    if kind:
-        return ("it is a compressed %s image; this reader needs a plain ISO. In Dolphin: right-click "
-                "the game > Convert File... > Format: ISO" % kind)
     if struct.unpack_from(">I", head, 0x18)[0] == WII_MAGIC:
         return ("it is a Wii disc (Metroid Prime Trilogy), whose data is encrypted; this reader reads "
                 "the GameCube Echoes. Use MP2_TEXTURE_MANIFEST=1 in the game instead")
@@ -440,7 +444,7 @@ def disc_problem(path):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("disc", help="the Echoes disc image (.iso/.gcm)")
+    parser.add_argument("disc", help="the Echoes disc image (.iso/.gcm/.ciso)")
     parser.add_argument("-o", "--out", default="texture_manifest_disc.jsonl",
                         help="the manifest to write (default: texture_manifest_disc.jsonl)")
     args = parser.parse_args(argv)
