@@ -81,10 +81,12 @@ each PBR candidate in the report, `<pack file stem>_nrm.dds` (tangent-space norm
 +X right +Y up, byte 128 flat; BC5) and `<pack file stem>_orm.dds` (glTF occlusion/roughness/metal in
 R/G/B; BC7), in a folder laid out like the pack (default `"<pack> PBR"` beside it; the pack is never
 written to). Height is the luminance band-passed in original texels (sub-texel upscaler detail and
-broad painted shading removed); presets by pack folder (`--write-settings`/`--settings` to tune them,
-or single textures by name); maps at half the pack's size by default (`--scale`). `--preview` writes
-a PNG per texture (pack, normal, ORM, lit flat, lit with the maps); `--limit` and `--only` try a few
-first; a rerun remakes only what changed (`pbr_maps.json`). Needs numpy and Pillow; texconv
+broad painted shading removed; `chroma` sinks bright colour, such as lava in cracks); the steepest 5% of
+the normals capped at `max_tilt` (30 degrees); presets by pack folder (`--write-settings`/`--settings`
+to tune them, or single textures by name); maps at half the pack's size by default (`--scale`).
+`--preview` writes a labelled PNG per texture (pack, normal, ORM, lit without and with the maps, the
+light roughly as Aurora's PBR shader gives it without a reflection probe); `--limit` and `--only` try
+a few first; a rerun remakes only what changed (`pbr_maps.json`). Needs numpy and Pillow; texconv
 (DirectXTex) compresses, else RGBA8 DDS. The port's loader skips `_nrm`/`_orm` names, so the folder can
 sit in `user_textures`; nothing draws them until step 3. Tests: `tests/pbr_make_maps.py`.
 

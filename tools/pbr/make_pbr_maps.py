@@ -21,8 +21,11 @@ Each map is made at --scale times the pack file's size (default 0.5, never below
   height     the luminance (BT.709 weights), band-passed: blurred by `blur` original texels so the
              upscaler's sub-texel detail doesn't become bumps, minus a blur of `relief` texels so
              light and shade painted across a wall doesn't become a slope. Darker is lower (`invert`
-             turns that round). The filters wrap at the edges, as a tiling texture does.
-  normal     the height's slope per original texel, times `normal`.
+             turns that round), and `chroma` x the colourfulness (max - min of R, G, B) is taken
+             off, for art whose bright colour sits low (lava or glow in cracks). The filters wrap at
+             the edges, as a tiling texture does.
+  normal     the height's slope per original texel, times `normal`, lowered where needed so that
+             the steepest 5% tilt no more than `max_tilt` degrees (a noisy texture stays calm).
   occlusion  1 - `occlusion` x how far the height sits below its surroundings (`ao_radius` texels).
              Kept light: the pack's art and the game's lightmaps already carry shading.
   roughness  `roughness`, rougher in hollows and smoother on ridges by up to `roughness_var`.
@@ -65,18 +68,23 @@ except ImportError:  # main() reports it, so --help and --write-settings work wi
     np = None
     Image = None
 
-TOOL_VERSION = 1
+TOOL_VERSION = 2
 INDEX_NAME = "pbr_maps.json"
 
+# The metal preset is half metal: the game lights its rooms through lightmaps, a diffuse light a full
+# metal drops, and without a reflection probe a metal reflects only the ambient and a part of its
+# lights. To be settled when the renderer (step 3) shows it.
 # Every preset sets every key. normal: slope per unit of height; roughness, roughness_var and metal:
-# 0-1; occlusion: darkening per unit of hollow; blur, relief and ao_radius: original texels.
-_COMMON = {"blur": 0.5, "relief": 8.0, "ao_radius": 2.0, "invert": False}
+# 0-1; occlusion: darkening per unit of hollow; blur, relief and ao_radius: original texels;
+# max_tilt: degrees (0 is no cap); chroma: height taken off per unit of colourfulness.
+_COMMON = {"blur": 0.5, "relief": 8.0, "ao_radius": 2.0, "invert": False, "max_tilt": 30.0,
+           "chroma": 0.0}
 PRESETS = {
     "default":   {"normal": 1.0, "roughness": 0.75, "roughness_var": 0.15, "metal": 0.0, "occlusion": 2.0},
     "stone":     {"normal": 1.4, "roughness": 0.85, "roughness_var": 0.10, "metal": 0.0, "occlusion": 2.0},
-    "rock":      {"normal": 1.8, "roughness": 0.90, "roughness_var": 0.08, "metal": 0.0, "occlusion": 2.5},
+    "rock":      {"normal": 1.5, "roughness": 0.90, "roughness_var": 0.08, "metal": 0.0, "occlusion": 2.5},
     "wet_stone": {"normal": 1.2, "roughness": 0.55, "roughness_var": 0.20, "metal": 0.0, "occlusion": 2.0},
-    "metal":     {"normal": 0.7, "roughness": 0.45, "roughness_var": 0.20, "metal": 1.0, "occlusion": 1.5},
+    "metal":     {"normal": 0.7, "roughness": 0.45, "roughness_var": 0.20, "metal": 0.5, "occlusion": 1.5},
     "creature":  {"normal": 1.0, "roughness": 0.55, "roughness_var": 0.15, "metal": 0.0, "occlusion": 1.5},
     "suit":      {"normal": 0.5, "roughness": 0.35, "roughness_var": 0.10, "metal": 0.0, "occlusion": 1.0},
 }
@@ -187,6 +195,8 @@ def make_maps(rgb, texel_px, params):
     `texel_px` pixels across: unit tangent-space normals (+X right, +Y up) and occlusion, roughness
     and metal, both H x W x 3 float32."""
     lum = rgb[..., 0] * LUMA[0] + rgb[..., 1] * LUMA[1] + rgb[..., 2] * LUMA[2]
+    if params["chroma"]:
+        lum = lum - params["chroma"] * (rgb.max(axis=-1) - rgb.min(axis=-1))
     lum = lum.astype(np.float32)
     height = blur_wrap(lum, params["blur"] * texel_px) - blur_wrap(lum, params["relief"] * texel_px)
     if params["invert"]:
@@ -197,6 +207,11 @@ def make_maps(rgb, texel_px, params):
     # A surface faces away from its uphill side. Rows run down the image and +Y is up, so a height
     # rising down the rows tilts the normal towards +Y.
     strength = params["normal"]
+    if params["max_tilt"] > 0.0:
+        steep = float(np.percentile(np.hypot(gx, gy), 95)) * strength
+        limit = math.tan(math.radians(min(params["max_tilt"], 89.0)))
+        if steep > limit:
+            strength *= limit / steep
     normal = np.stack([-strength * gx, strength * gy, np.ones_like(gx)], axis=-1)
     normal /= np.linalg.norm(normal, axis=-1, keepdims=True)
     hollow = np.maximum(blur_wrap(height, params["ao_radius"] * texel_px) - height, 0.0)
@@ -321,10 +336,26 @@ def write_map(levels, dest, dxgi_format, texconv, quick):
 
 
 # -------------------------------------------------------------------------------------- preview
+PREVIEW_LIGHT = 0.8    # the key light's colour (white), from the top left
+PREVIEW_AMBIENT = 0.2  # the ambient's
+PREVIEW_LABELS = ("pack", "normal", "ORM", "lit, no maps", "lit, with maps")
+
+
+def env_brdf(roughness, n_v):
+    """(A, B) of the split-sum environment BRDF, by Karis's analytic fit ("Physically Based Shading
+    on Mobile", Epic Games, 2014: EnvBRDFApprox)."""
+    c0, c1 = (-1.0, -0.0275, -0.572, 0.022), (1.0, 0.0425, 1.04, -0.04)
+    r = [roughness * c0[i] + c1[i] for i in range(4)]
+    a004 = np.minimum(r[0] * r[0], np.exp2(-9.28 * n_v)) * r[0] + r[1]
+    return -1.04 * a004 + r[2], 1.04 * a004 + r[3]
+
+
 def shade(rgb, normal, orm):
-    """A flat tile lit from the top left and seen head on, with the lobe Aurora's PBR shader uses
-    (GGX, alpha = roughness^2 floored at roughness 0.02, k = alpha/2, Schlick Fresnel), plus a dim
-    ambient. Approximate: no lightmap, no environment."""
+    """A flat tile seen head on, lit roughly as Aurora's PBR shader lights a surface without a
+    reflection probe: a key light with its GGX lobe (alpha = roughness^2 floored at roughness 0.02,
+    k = alpha/2, Schlick Fresnel), occlusion on the direct diffuse as well as the ambient, and an
+    environment of the ambient plus 0.35 x the light (pbr_envspec without a probe) through the
+    split-sum BRDF. No lightmap: for judging the maps, not the final look."""
     base = np.power(rgb, 2.2)
     occlusion, roughness, metal = orm[..., 0:1], orm[..., 1:2], orm[..., 2:3]
     light = np.array([-0.5, 0.5, 0.7], np.float32)
@@ -341,14 +372,19 @@ def shade(rgb, normal, orm):
     visibility = 1.0 / (4.0 * (n_l * (1.0 - k) + k) * (n_v * (1.0 - k) + k))
     f0 = 0.04 * (1.0 - metal) + base * metal
     fresnel = f0 + (1.0 - f0) * (1.0 - v_h) ** 5
-    diffuse = base * (1.0 - metal) / math.pi * occlusion
-    direct = (diffuse + distribution * visibility * fresnel) * n_l * 2.5
-    ambient = (base * (1.0 - metal) + f0) * 0.15 * occlusion
+    diffuse = base * (1.0 - metal)
+    direct = (diffuse * occlusion + math.pi * distribution * visibility * fresnel) * n_l * PREVIEW_LIGHT
+    a, b = env_brdf(roughness, n_v)
+    environment = (PREVIEW_AMBIENT + 0.35 * PREVIEW_LIGHT) * (f0 * a + b)
+    ambient = (diffuse * PREVIEW_AMBIENT + environment) * occlusion
     return np.power(np.clip(direct + ambient, 0.0, 1.0), 1.0 / 2.2)
 
 
-def preview_image(rgb, normal, orm, height=256):
-    """Pack texture, normal map, ORM map, lit flat (no maps), lit with the maps, side by side."""
+def preview_image(rgb, normal, orm):
+    """Pack texture, normal map, ORM map, lit flat (no maps), lit with the maps, each labelled: side
+    by side at up to 256 px high, or stacked at up to 1024 px wide for a texture twice as wide as
+    it is high."""
+    from PIL import ImageDraw, ImageFont
     flat = np.zeros_like(normal)
     flat[..., 2] = 1.0
     plain = np.zeros_like(orm)
@@ -356,14 +392,25 @@ def preview_image(rgb, normal, orm, height=256):
     plain[..., 1] = PRESETS["default"]["roughness"]
     panels = [rgb, normal * 0.5 + 0.5, orm, shade(rgb, flat, plain), shade(rgb, normal, orm)]
     h, w = rgb.shape[:2]
-    ph = min(height, h) if h >= w else max(1, int(round(min(height, w) * h / w)))
-    pw = max(1, int(round(ph * w / h)))
+    stacked = w >= 2 * h
+    if stacked:
+        pw = min(w, 1024)
+        ph = max(1, int(round(pw * h / w)))
+    else:
+        ph = min(h, 256 if h <= w else 512)
+        pw = max(1, int(round(ph * w / h)))
+    label, gap, count = 14, 4, len(panels)
+    size = (pw, count * (ph + label) + (count - 1) * gap) if stacked else \
+        (count * pw + (count - 1) * gap, ph + label)
+    sheet = Image.new("RGB", size, (24, 24, 24))
+    draw = ImageDraw.Draw(sheet)
+    font = ImageFont.load_default()
     resample = getattr(Image, "Resampling", Image).LANCZOS
-    gap = 4
-    sheet = Image.new("RGB", (len(panels) * pw + (len(panels) - 1) * gap, ph), (24, 24, 24))
-    for i, panel in enumerate(panels):
+    for i, (panel, name) in enumerate(zip(panels, PREVIEW_LABELS)):
+        x, y = (0, i * (ph + label + gap)) if stacked else (i * (pw + gap), 0)
+        draw.text((x + 3, y + 1), name, fill=(225, 225, 225), font=font)
         tile = Image.fromarray(np.clip(np.rint(panel * 255.0), 0, 255).astype(np.uint8))
-        sheet.paste(tile.resize((pw, ph), resample), (i * (pw + gap), 0))
+        sheet.paste(tile.resize((pw, ph), resample), (x, y + label))
     return sheet
 
 

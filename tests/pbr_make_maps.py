@@ -83,6 +83,26 @@ class Normals(unittest.TestCase):
         self.assertLess(abs(weak[:, 0, 0].mean()), abs(base[:, 0, 0].mean()))
         self.assertTrue(np.allclose(np.linalg.norm(base, axis=-1), 1.0, atol=1e-5))
 
+    def test_max_tilt_caps_the_steepest(self):
+        rng = np.random.default_rng(9)
+        noise = np.repeat(rng.random((32, 32, 1), dtype=np.float32), 3, axis=-1)
+        for cap in (20.0, 40.0):
+            normal, _ = mm.make_maps(noise, 2.0, dict(FLAT, normal=50.0, max_tilt=cap))
+            tilt = np.degrees(np.arccos(np.clip(normal[..., 2], -1.0, 1.0)))
+            self.assertAlmostEqual(float(np.percentile(tilt, 95)), cap, delta=1.0)
+        gentle, _ = mm.make_maps(stripes(32, 32, 16, axis=1), 2.0, FLAT)  # under the cap: untouched
+        free, _ = mm.make_maps(stripes(32, 32, 16, axis=1), 2.0, dict(FLAT, max_tilt=0.0))
+        self.assertTrue(np.allclose(gentle, free, atol=1e-6))
+
+    def test_chroma_sinks_bright_colour(self):
+        # Grey stones with orange cracks: brighter cracks read as high, unless chroma takes them down.
+        image = np.full((32, 32, 3), 0.35, np.float32)
+        image[:, 15:17] = (0.9, 0.45, 0.1)
+        for chroma, sign in ((0.0, 1.0), (1.0, -1.0)):
+            normal, _ = mm.make_maps(image, 2.0, dict(FLAT, chroma=chroma))
+            # Left of the crack the surface faces left (-X) if the crack is high, right if it is low.
+            self.assertGreater(-sign * normal[:, 14, 0].mean(), 0.02)
+
     def test_broad_shading_is_not_a_slope(self):
         # A gradient over the whole texture (painted light) is removed by the relief high-pass.
         broad, _ = mm.make_maps(stripes(64, 64, 64, axis=1), 1.0, dict(FLAT, relief=4.0))
@@ -106,7 +126,7 @@ class Orm(unittest.TestCase):
         encoded = mm.encode_unorm(orm)
         self.assertTrue((encoded[..., 0] == 255).all())  # R occlusion: none
         self.assertTrue((encoded[..., 1] == round(metal["roughness"] * 255)).all())  # G roughness
-        self.assertTrue((encoded[..., 2] == 255).all())  # B metal
+        self.assertTrue((encoded[..., 2] == round(metal["metal"] * 255)).all())  # B metal
         self.assertTrue((encoded[..., 3] == 255).all())
 
     def test_a_hollow_is_darker_and_rougher(self):
@@ -117,6 +137,32 @@ class Orm(unittest.TestCase):
         self.assertGreater(orm[16, 16, 1], mm.PRESETS["metal"]["roughness"])
         self.assertLess(orm[16, 16, 2], 1.0)
         self.assertTrue(((orm >= 0.0) & (orm <= 1.0)).all())
+
+
+class Preview(unittest.TestCase):
+    def test_layouts(self):
+        rgb = grey(16, 16)
+        normal, orm = mm.make_maps(rgb, 2.0, FLAT)
+        self.assertEqual(mm.preview_image(rgb, normal, orm).size, (5 * 16 + 4 * 4, 16 + 14))  # side by side
+        rgb = grey(32, 256)
+        normal, orm = mm.make_maps(rgb, 2.0, FLAT)
+        self.assertEqual(mm.preview_image(rgb, normal, orm).size, (256, 5 * (32 + 14) + 4 * 4))  # stacked
+        rgb = grey(512, 4096)
+        normal, orm = mm.make_maps(rgb, 1.0, FLAT)
+        self.assertEqual(mm.preview_image(rgb, normal, orm).size[0], 1024)
+
+    def test_metal_keeps_its_environment(self):
+        # With the shader's probe-less environment a metal isn't black where the light misses it.
+        rgb = grey(8, 8, 0.6)
+        flat = np.zeros((8, 8, 3), np.float32)
+        flat[..., 2] = 1.0
+        metal = np.stack([np.ones((8, 8)), np.full((8, 8), 0.45), np.ones((8, 8))], -1).astype(np.float32)
+        self.assertGreater(mm.shade(rgb, flat, metal).mean(), 0.3)
+
+    def test_env_brdf_bounds(self):
+        rough, n_v = np.meshgrid(np.linspace(0, 1, 11), np.linspace(0.01, 1, 11))
+        a, b = mm.env_brdf(rough, n_v)
+        self.assertTrue(((a + b) <= 1.05).all() and ((a + b) >= 0.0).all())
 
 
 class Mips(unittest.TestCase):
@@ -314,7 +360,7 @@ class WholeRun(unittest.TestCase):
         self.assertEqual(stone_nrm.shape, (32, 32, 4))  # half the 64x64 pack file
         self.assertGreater(np.abs(stone_nrm[..., 0].astype(int) - 128).max(), 4)  # it has relief
         metal_orm = self.read("Sanctuary Fortress/%s_orm.dds" % METAL)
-        self.assertGreater(metal_orm[..., 2].mean(), 200)  # the folder's metal preset
+        self.assertGreater(metal_orm[..., 2].mean(), 0.8 * mm.PRESETS["metal"]["metal"] * 255)  # its preset
         stone_orm = self.read("Temple Grounds/%s_orm.dds" % STONE)
         self.assertEqual(stone_orm[..., 2].max(), 0)
         self.assertFalse((self.out / "FX").exists())  # not a candidate

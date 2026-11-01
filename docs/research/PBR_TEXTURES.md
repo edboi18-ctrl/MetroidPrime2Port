@@ -145,6 +145,15 @@ draws; presets and per-texture overrides go in a JSON sidecar that the batch re-
   replacements), so the maps can sit in `user_textures`; step 3 finds them by stripping `_nrm`/`_orm`
   and parsing the rest. Emissive is not generated: the material's own glow layer is the emissive.
   The presets are guesses until the renderer shows them.
+- **First previews (2026-11-01, 20 of the pack's textures).** The maps follow the art's shapes. What
+  they showed, and the changes: the preview lit a metal with one light and nothing to reflect,
+  where the shader also reflects the ambient and 0.35 x the lights (`pbr_envspec` without a probe),
+  so it now does too (split sum through Karis's EnvBRDFApprox); world geometry is lit by lightmaps,
+  a diffuse light a full metal drops, so the metal preset is half metal (0.5) until step 3 shows
+  it; a speckled Agon texture gave a busy normal map, so the steepest 5% of normals are capped
+  (`max_tilt`, 30 degrees) and rock is weaker (1.5); lava in a Genn rock's cracks is brighter than
+  the stone, so it came out raised: brightness as height can't tell, and `chroma` (per texture)
+  takes colourful areas down; and wide textures got 32 px previews, now stacked and labelled.
 
 ## Risks
 

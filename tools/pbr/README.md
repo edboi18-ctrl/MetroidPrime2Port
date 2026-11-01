@@ -34,7 +34,10 @@ real surfaces. Python 3.8 or later. Run the commands from the folder that holds 
    for all of them. It prints its progress; texconv's BC7 step is the slow part (`--quick` speeds
    it up), and a rerun only remakes what changed. To tune: `--write-settings
    pbr_settings.json`, edit the presets (or add single textures under `"textures"`), and run again
-   with `--settings pbr_settings.json`. `-h` lists the rest.
+   with `--settings pbr_settings.json`. For example, a rock whose bright lava cracks come out raised
+   (the maps take brightness as height) is fixed with, under `"textures"`:
+   `"tex1_128x128_m_042ffe03bbd4ae68_14": {"chroma": 1.0}` (the name is the preview's file name).
+   `-h` lists the rest.
 
    The game doesn't draw these maps yet: that is step 3, the renderer.
 
