@@ -123,8 +123,37 @@ draws; presets and per-texture overrides go in a JSON sidecar that the batch re-
   Prime 1, 2, 3 or Trilogy HD Texture Pack (4x, HDCube ESRGAN, BC7 DDS, folders by area and by
   enemies/FX/HUD/Samus; marked CC0 on the Dolphin forum:
   https://forums.dolphin-emu.org/Thread-another-metroid-prime-1-2-3-or-trilogy-hd-texture-pack-ai).
-  The loader reads its sub-folders (recursive scan), and the report treats HUD/FX/font/UI/menu
+  The loader reads its sub-folders (recursive scan), and the report treats HUD/FX/font/text/UI/menu
   folders as non-surfaces.
+- **First disc scan (2026-11-01, `G2ME01` from a CISO, that pack).** 4,781 textures in model and
+  area materials; 1,566 have a pack file (exact XXH64 names, so the scan's naming is right for CMPR,
+  RGB5A3 and the I4/I8/IA8 it met). Roles: diffuse 2,672, lightmap 1,161, glow 655, diffuse+glow 161,
+  reflection 108 (49 of the 51 in the pack sit in its FX folder). 1,231 PBR candidates: Temple
+  Grounds 397, Agon Wastes 290, Enemies 135, Sanctuary Fortress 133, Torvus Bog 118, Genn 109, Samus
+  49. The pack replaces no lightmap (only 15 pack files in surface folders went unmatched), so the
+  renderer keeps the game's own lightmaps as baked light. The rest it leaves out: tiny textures (9 of
+  227 at 16 px or less) and 1,351 other diffuse textures, which keep drawing with TEV. Pack files
+  no material uses: Text 380, FX 198, HUD 62, Trilogy 37 (fonts, particles, HUD frames and another
+  disc's hashes).
+- **Step 2, the maps (fast path): done (2026-11-01).** `tools/pbr/make_pbr_maps.py` writes
+  `<pack file stem>_nrm.dds` and `_orm.dds` per candidate into `"<pack> PBR"`, laid out like the pack.
+  Conventions, from Aurora's PBR shader (`extern/aurora/lib/gx/shader.cpp`, `pbr_func`): map 1 is
+  glTF occlusion/roughness/metal in R/G/B; map 2 is the tangent-space normal's X/Y in R/G, decoded
+  `x * 255/128 - 1` (byte 128 flat), +X right and +Y up with V down the image, the frame built from
+  screen-space derivatives. Formats Aurora's DDS reader takes (`lib/gfx/dds_io.cpp`): BC5 and BC7
+  through texconv, RGBA8 without it. The current loader skips both names (they don't parse as
+  replacements), so the maps can sit in `user_textures`; step 3 finds them by stripping `_nrm`/`_orm`
+  and parsing the rest. Emissive is not generated: the material's own glow layer is the emissive.
+  The presets are guesses until the renderer shows them.
+- **First previews (2026-11-01, 20 of the pack's textures).** The maps follow the art's shapes. What
+  they showed, and the changes: the preview lit a metal with one light and nothing to reflect,
+  where the shader also reflects the ambient and 0.35 x the lights (`pbr_envspec` without a probe),
+  so it now does too (split sum through Karis's EnvBRDFApprox); world geometry is lit by lightmaps,
+  a diffuse light a full metal drops, so the metal preset is half metal (0.5) until step 3 shows
+  it; a speckled Agon texture gave a busy normal map, so the steepest 5% of normals are capped
+  (`max_tilt`, 30 degrees) and rock is weaker (1.5); lava in a Genn rock's cracks is brighter than
+  the stone, so it came out raised: brightness as height can't tell, and `chroma` (per texture)
+  takes colourful areas down; and wide textures got 32 px previews, now stacked and labelled.
 
 ## Risks
 

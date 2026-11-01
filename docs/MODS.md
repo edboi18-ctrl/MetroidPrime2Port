@@ -76,6 +76,20 @@ used, and whether it is a PBR candidate, plus a summary of what the pack covers 
 not seen yet. Standard-library Python 3.8+; tests: `tests/pbr_texture_report.py`,
 `tests/port_texture_manifest.cpp`.
 
+**PBR maps (step 2).** `python tools/pbr/make_pbr_maps.py texture_report.csv "<pack folder>"` makes, for
+each PBR candidate in the report, `<pack file stem>_nrm.dds` (tangent-space normal, X/Y in R/G, glTF's
++X right +Y up, byte 128 flat; BC5) and `<pack file stem>_orm.dds` (glTF occlusion/roughness/metal in
+R/G/B; BC7), in a folder laid out like the pack (default `"<pack> PBR"` beside it; the pack is never
+written to). Height is the luminance band-passed in original texels (sub-texel upscaler detail and
+broad painted shading removed; `chroma` sinks bright colour, such as lava in cracks); the steepest 5% of
+the normals capped at `max_tilt` (30 degrees); presets by pack folder (`--write-settings`/`--settings`
+to tune them, or single textures by name); maps at half the pack's size by default (`--scale`).
+`--preview` writes a labelled PNG per texture (pack, normal, ORM, lit without and with the maps, the
+light roughly as Aurora's PBR shader gives it without a reflection probe); `--limit` and `--only` try
+a few first; a rerun remakes only what changed (`pbr_maps.json`). Needs numpy and Pillow; texconv
+(DirectXTex) compresses, else RGBA8 DDS. The port's loader skips `_nrm`/`_orm` names, so the folder can
+sit in `user_textures`; nothing draws them until step 3. Tests: `tests/pbr_make_maps.py`.
+
 Reload is a savestate-style world restart: `PortSaveState::RequestModReload` writes the current state
 to the undo slot and loads it back; `CMainFlow` (`kCFS_Game`) calls `ReloadModsNow` after the old world
 is gone, which closes every PAK, runs `PortMods::Reload` (rescan, overlay rebuilt through
