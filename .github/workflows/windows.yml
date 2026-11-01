@@ -163,7 +163,8 @@ jobs:
         shell: pwsh
         continue-on-error: true
         timeout-minutes: 5
-        run: python -m pip install --disable-pip-version-check --only-binary=:all: numpy pillow
+        run: |
+          python -m pip install --disable-pip-version-check --only-binary=:all: numpy pillow
 
       # Build, the port's tests and the GX FIFO regressions. -k 0 lists every
       # error in one run while the Windows port is new.
