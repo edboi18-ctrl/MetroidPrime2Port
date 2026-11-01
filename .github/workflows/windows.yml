@@ -157,6 +157,14 @@ jobs:
           $config = Get-ChildItem -Recurse build-win/_deps/sdl-build -Filter SDL_build_config.h | Select-Object -First 1
           if (-not $config -or -not (Select-String -Path $config.FullName -Pattern '#define SDL_LIBUSB_DYNAMIC "libusb-1\.0\.dll"')) { throw 'SDL was configured without libusb: GameCube adapters in Wii U mode would not work' }
 
+      # numpy and Pillow for the PBR map generator's test (tests/pbr_make_maps.py), which is skipped
+      # without them: wheels only, and a failed install doesn't fail the build.
+      - name: Python packages for the PBR tool test
+        shell: pwsh
+        continue-on-error: true
+        timeout-minutes: 5
+        run: python -m pip install --disable-pip-version-check --only-binary=:all: numpy pillow
+
       # Build, the port's tests and the GX FIFO regressions. -k 0 lists every
       # error in one run while the Windows port is new.
       - uses: ./.github/actions/build-and-test
@@ -203,11 +211,12 @@ jobs:
           Copy-Item docs/SETTINGS.md dist/SETTINGS.md
           Copy-Item docs/MODS.md dist/MODS.md
           Copy-Item docs/CONSOLE.md dist/CONSOLE.md
-          # The PBR texture tools (Python, tools/pbr/README.md): the disc scan, the report and the disc
-          # reader they share, in the layout the scan imports the reader by (tools/ above tools/pbr/).
+          # The PBR texture tools (Python, tools/pbr/README.md): the disc scan, the report, the map
+          # generator and the disc reader the scan uses, in the layout the scan imports the reader by
+          # (tools/ above tools/pbr/).
           New-Item -ItemType Directory -Force -Path dist/tools/pbr | Out-Null
           Copy-Item tools/echoes_disc.py dist/tools/
-          Copy-Item tools/pbr/disc_texture_scan.py, tools/pbr/texture_report.py, tools/pbr/README.md dist/tools/pbr/
+          Copy-Item tools/pbr/disc_texture_scan.py, tools/pbr/texture_report.py, tools/pbr/make_pbr_maps.py, tools/pbr/README.md dist/tools/pbr/
           # libusb is LGPL and loaded at run time: the DLL and its licence.
           Copy-Item "$env:LIBUSB_ROOT/bin/libusb-1.0.dll" dist/
           Copy-Item "$env:LIBUSB_ROOT/share/libusb/copyright" dist/licenses/libusb.txt

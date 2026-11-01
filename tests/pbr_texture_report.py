@@ -120,7 +120,7 @@ class WholeRun(unittest.TestCase):
             summary = tr.summary(rows_in_memory, index, 0, skipped)
             self.assertEqual(skipped, 0)  # the _mip1 file is a mip level, not a stray file
             # The wildcard-palette file was matched, so only the Sanctuary file is unseen.
-            unseen = summary.split("hasn't seen yet (play more of the game to cover them): ")[1]
+            unseen = summary.split("no material in the manifest uses: ")[1]
             self.assertEqual(unseen.splitlines()[0], "Sanctuary 1")
             self.assertEqual(tr.main([str(manifest), str(pack), "-o", str(out)]), 0)
             with open(out, newline="", encoding="utf-8") as f:
@@ -130,6 +130,7 @@ class WholeRun(unittest.TestCase):
         self.assertEqual(rows[wall]["uses"], "2")
         self.assertIn("area 3 world model 1", rows[wall]["sources"])
         self.assertEqual(rows[hud]["pbr_candidate"], "no")  # a HUD folder is no surface
+        self.assertFalse(tr.is_surface_folder(pathlib.PurePosixPath("Text/tex1_8x8_0000000000000001_5.dds")))
         self.assertEqual(rows[glow]["roles"], "glow")
         self.assertEqual(rows[glow]["additive"], "yes")
         self.assertTrue(rows[pal]["pack_file"].endswith("_$_9.dds"))  # wildcard TLUT entry

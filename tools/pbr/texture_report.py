@@ -48,7 +48,8 @@ FLAG_LIGHTMAP = 1 << 11
 
 # Pack folders whose textures are never surfaces (matched case-insensitively against any folder
 # between the pack root and the file).
-NON_SURFACE_FOLDERS = ("hud", "fx", "font", "fonts", "ui", "menu", "menus", "effects", "particles")
+NON_SURFACE_FOLDERS = ("hud", "fx", "font", "fonts", "text", "ui", "menu", "menus", "effects",
+                       "particles")
 
 NAME_RE = re.compile(
     r"^tex1_(\d+)x(\d+)(_m)?_([0-9a-f]{16}|\$)(?:_([0-9a-f]{16}|\$))?_(\d+)(?:_(mip\d+|arb))?\.(dds|png)$",
@@ -234,8 +235,10 @@ def summary(rows, index, bad_lines, skipped_files):
     unseen = collections.Counter(folder_category(paths[0]) or "(root)"
                                  for key, paths in index.items() if key not in seen_keys)
     if unseen:
-        out.append("Pack files the manifest hasn't seen yet (play more of the game to cover them): " +
+        out.append("Pack files no material in the manifest uses: " +
                    ", ".join(f"{c} {n}" for c, n in sorted(unseen.items())))
+        out.append("  (Particles, HUD frames and fonts draw most FX, HUD and text textures, and neither "
+                   "manifest records them; one recorded in game also lacks the rooms not visited.)")
     if bad_lines:
         out.append(f"{bad_lines} manifest line(s) didn't parse and were skipped.")
     if skipped_files:
