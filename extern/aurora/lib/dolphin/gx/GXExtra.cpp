@@ -9,14 +9,12 @@
 #include "../../gfx/volfog.hpp"
 #include "../../gfx/thermal.hpp"
 #include "../../gfx/xray.hpp"
-#include "../../gfx/texture_replacement.hpp"
 #include "../../webgpu/gpu.hpp"
 #include "../../webgpu/gpu_prof.hpp"
 
 #include <atomic>
 #include <bit>
 #include <cstring>
-#include <string>
 #include <vector>
 
 namespace {
@@ -459,23 +457,6 @@ void GXSetDrawTag(u32 asset, u32 model, u32 material) {
   GX_WRITE_U32(asset);
   GX_WRITE_U32(model);
   GX_WRITE_U32(material);
-}
-
-u32 GXPortTextureReplacementName(const GXTexObj* obj, char* out, u32 size) {
-  if (out == nullptr || size == 0) {
-    return 0;
-  }
-  out[0] = '\0';
-  if (obj == nullptr) {
-    return 0;
-  }
-  const std::string name = aurora::gfx::texture_replacement::build_texture_replacement_name(
-      *reinterpret_cast<const GXTexObj_*>(obj));
-  if (name.size() + 1 > size) {
-    return 0;
-  }
-  std::memcpy(out, name.c_str(), name.size() + 1);
-  return static_cast<u32>(name.size());
 }
 
 void GXPortSetDrawSerial(u32 serial) {

@@ -182,8 +182,9 @@ Things that took real effort to find out. AGENTS.md keeps a one-line index; the 
   (`recording.cpp`, from upstream aurora 9c0bf66f1e), the dstAlpha alpha-only pass
   (`command_processor.cpp` `push_gx_draw`, `67f337a57`) and `AURORA_PRESENT_EVERY` (`aurora.cpp`
   end_frame) and the empty-string fallback when `SDL_GetPrefPath` returns null for `userPath`/
-  `cachePath` (`aurora.cpp` initialize), and `GXPortTextureReplacementName` (`GXExtra.h`/`GXExtra.cpp`:
-  the pack file name of a `GXTexObj`, for `MP2_TEXTURE_MANIFEST`). Windows: the user folder is `Metroid Prime 2 Echoes` (no `:`, which
+  `cachePath` (`aurora.cpp` initialize), and `GXPortTextureReplacementName` (declared in `GXExtra.h`,
+  defined at the end of `gfx/texture_replacement.cpp`, not `GXExtra.cpp`, which `gx_fifo_tests` builds
+  without the replacement loader: the pack file name of a `GXTexObj`, for `MP2_TEXTURE_MANIFEST`). Windows: the user folder is `Metroid Prime 2 Echoes` (no `:`, which
   Windows rejects); with the old name Aurora's cachePath was null and the first run crashed in the
   Dawn cache's `fs_path_from_string` (win-startup-crash, CI 40572636384).
 - **Dawn is MP1's fork, not encounter/dawn.** `extern/aurora/cmake/AuroraDependencyVersions.cmake`

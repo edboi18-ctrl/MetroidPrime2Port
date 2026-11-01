@@ -2106,3 +2106,23 @@ bool wait_for_completions(uint64_t id, uint32_t count, uint32_t timeoutMs) noexc
 }
 } // namespace testing
 } // namespace aurora::gfx::texture_replacement
+
+// Port extension (dolphin/gx/GXExtra.h): the pack name of a texture object, for MP2_TEXTURE_MANIFEST.
+// Defined here rather than in GXExtra.cpp so targets that build GXExtra.cpp without the replacement
+// loader (gx_fifo_tests) still link.
+extern "C" u32 GXPortTextureReplacementName(const GXTexObj* obj, char* out, u32 size) {
+  if (out == nullptr || size == 0) {
+    return 0;
+  }
+  out[0] = '\0';
+  if (obj == nullptr) {
+    return 0;
+  }
+  const std::string name = aurora::gfx::texture_replacement::build_texture_replacement_name(
+      *reinterpret_cast<const GXTexObj_*>(obj));
+  if (name.size() + 1 > size) {
+    return 0;
+  }
+  std::memcpy(out, name.c_str(), name.size() + 1);
+  return static_cast<u32>(name.size());
+}
