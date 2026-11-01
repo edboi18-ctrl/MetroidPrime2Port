@@ -158,18 +158,22 @@ jobs:
           if (-not $config -or -not (Select-String -Path $config.FullName -Pattern '#define SDL_LIBUSB_DYNAMIC "libusb-1\.0\.dll"')) { throw 'SDL was configured without libusb: GameCube adapters in Wii U mode would not work' }
 
       # numpy and Pillow for the PBR map generator's test (tests/pbr_make_maps.py), which is skipped
-      # without them. They go into the interpreter CTest runs it with, read from the test's line in
-      # CTestTestfile.cmake: on Windows FindPython looks in the registry before PATH, so that need
-      # not be the `python` on PATH (run 11 installed there and the test skipped). Wheels only, and
-      # a failed install doesn't fail the build.
+      # without them. They go into the interpreter CTest runs it with, as `ctest --show-only=json-v1`
+      # lists its command: on Windows FindPython looks in the registry before PATH, so that need not
+      # be the `python` on PATH (run 11 installed there and the test skipped). Wheels only, and a
+      # failed install doesn't fail the build.
       - name: Python packages for the PBR tool test
         shell: pwsh
         continue-on-error: true
         timeout-minutes: 5
         run: |
-          $test = Select-String -Path build-win/CTestTestfile.cmake -Pattern 'add_test\(\[=\[pbr_make_maps\]=\] "([^"]+)"' | Select-Object -First 1
-          if (-not $test) { throw 'pbr_make_maps is not in build-win/CTestTestfile.cmake' }
-          $py = $test.Matches[0].Groups[1].Value
+          $info = ctest --test-dir build-win -R '^pbr_make_maps$' --show-only=json-v1 | Out-String | ConvertFrom-Json
+          $command = @($info.tests | Where-Object { $_.name -eq 'pbr_make_maps' } | Select-Object -First 1 -ExpandProperty command)
+          if ($command.Count -eq 0) {
+            Select-String -Path build-win/CTestTestfile.cmake -Pattern 'pbr_make_maps' | ForEach-Object { $_.Line }
+            throw 'ctest lists no command for pbr_make_maps'
+          }
+          $py = $command[0]
           Write-Output "CTest's Python: $py"
           & $py -m pip install --disable-pip-version-check --only-binary=:all: numpy pillow
           if ($LASTEXITCODE) { throw "pip failed ($LASTEXITCODE)" }
