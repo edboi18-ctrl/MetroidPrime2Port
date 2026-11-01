@@ -112,6 +112,18 @@ tiled with overlap or at 768 px with the maps upsampled under the full-size albe
 lights a sphere and a flat tile with the shader's own lobe, so what the tool shows is what the port
 draws; presets and per-texture overrides go in a JSON sidecar that the batch re-reads.
 
+## Status
+
+- **Step 1, the manifest: done (2026-11-01).** `MP2_TEXTURE_MANIFEST=1` and
+  `tools/pbr/texture_report.py` (usage in `docs/MODS.md`). The port records raw facts and the
+  report classifies, so the role rules can be tuned on real data without a rebuild; they are
+  heuristics until checked against a play-through. The pack in use: Venomalia's "Another" Metroid
+  Prime 1, 2, 3 or Trilogy HD Texture Pack (4x, HDCube ESRGAN, BC7 DDS, folders by area and by
+  enemies/FX/HUD/Samus; marked CC0 on the Dolphin forum:
+  https://forums.dolphin-emu.org/Thread-another-metroid-prime-1-2-3-or-trilogy-hd-texture-pack-ai).
+  The loader reads its sub-folders (recursive scan), and the report treats HUD/FX/font/UI/menu
+  folders as non-surfaces.
+
 ## Risks
 
 - **Painted lighting.** GameCube diffuse textures carry baked shading and AO, and an upscale keeps

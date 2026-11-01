@@ -106,6 +106,8 @@ public:
   static void PortClearBuildContext() { PortSetBuildContext(kPortNoAsset, -1, -1); }
   static uint PortBuildAssetId();
   uint PortAssetId() const { return mPortAssetId; }
+  // "area 5 world model 3" or "CMDL 0x...": what the model is, for logs and the texture manifest.
+  void PortDescribe(char* out, int len) const;
   // A material that draws nothing: big-endian zeros except a flag bit DrawSurface always skips.
   static const uchar* PortNeutralMaterial();
 #endif
@@ -193,7 +195,6 @@ private:
   // Bounds for the material reads: a surface's material index comes straight from disc data.
   const uchar* PortRefuseMaterial(int index) const;
   void PortCheckSurfaces();
-  void PortDescribe(char* out, int len) const;
   uint mPortMaterialCount;
   uint mPortAssetId;
   int mPortAreaId;

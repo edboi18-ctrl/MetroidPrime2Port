@@ -199,6 +199,10 @@ public:
   static inline void SetTevSwapMode(GXTevStageID stage, GXTevSwapSel rasSel, GXTevSwapSel texSel) {
     GXSetTevSwapMode(stage, rasSel, texSel);
   }
+#ifdef TARGET_PC
+  // Port: the texgen a texcoord is set to (STexState::mCoordGen), for the texture manifest.
+  static const STexState& PortGetTexState(GXTexCoordID coord) { return gpGXState->mTexStates[coord]; }
+#endif
 
 private:
   static void FlushChanCtrl(GXChannelID chan, ushort flags);

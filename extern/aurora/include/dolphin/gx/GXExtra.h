@@ -45,6 +45,12 @@ void GXSetDrawTag(u32 asset, u32 model, u32 material);
 // the "drawid" mode, which draws every draw as its serial in a flat colour (R, G, B = its bytes, low first),
 // with no blend, fog, bloom or grade, so the bytes reach the frame as they are.
 void GXPortSetDrawSerial(u32 serial);
+// Port extension: the texture-pack file name a replacement for `obj` would have, as the replacement
+// loader matches it: "tex1_{w}x{h}_{texhash}[_{tluthash}]_{fmt}.dds" (Dolphin's convention). A paletted
+// texture hashes the TLUT it references, so ask after that TLUT is loaded. Writes the name and its
+// terminator into `out` and returns the name's length, or 0 (and an empty string) when `size` is too
+// small or an argument is null.
+u32 GXPortTextureReplacementName(const GXTexObj* obj, char* out, u32 size);
 void GXPortSetDrawIdMode(GXBool on);
 // Port extension, shader debugging. Dump writes every WGSL module built so far, and from now on, as
 // <dir>/<hash16>.wgsl (with a header listing its config) and a line in <dir>/index.tsv; returns how many it
