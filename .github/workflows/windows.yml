@@ -158,13 +158,23 @@ jobs:
           if (-not $config -or -not (Select-String -Path $config.FullName -Pattern '#define SDL_LIBUSB_DYNAMIC "libusb-1\.0\.dll"')) { throw 'SDL was configured without libusb: GameCube adapters in Wii U mode would not work' }
 
       # numpy and Pillow for the PBR map generator's test (tests/pbr_make_maps.py), which is skipped
-      # without them: wheels only, and a failed install doesn't fail the build.
+      # without them. They go into the interpreter CTest runs it with, read from the test's line in
+      # CTestTestfile.cmake: on Windows FindPython looks in the registry before PATH, so that need
+      # not be the `python` on PATH (run 11 installed there and the test skipped). Wheels only, and
+      # a failed install doesn't fail the build.
       - name: Python packages for the PBR tool test
         shell: pwsh
         continue-on-error: true
         timeout-minutes: 5
         run: |
-          python -m pip install --disable-pip-version-check --only-binary=:all: numpy pillow
+          $test = Select-String -Path build-win/CTestTestfile.cmake -Pattern 'add_test\(\[=\[pbr_make_maps\]=\] "([^"]+)"' | Select-Object -First 1
+          if (-not $test) { throw 'pbr_make_maps is not in build-win/CTestTestfile.cmake' }
+          $py = $test.Matches[0].Groups[1].Value
+          Write-Output "CTest's Python: $py"
+          & $py -m pip install --disable-pip-version-check --only-binary=:all: numpy pillow
+          if ($LASTEXITCODE) { throw "pip failed ($LASTEXITCODE)" }
+          & $py -I -c "import numpy, PIL; print('numpy', numpy.__version__, 'Pillow', PIL.__version__)"
+          if ($LASTEXITCODE) { throw 'numpy or Pillow does not import with -I, as the test runs' }
 
       # Build, the port's tests and the GX FIFO regressions. -k 0 lists every
       # error in one run while the Windows port is new.
