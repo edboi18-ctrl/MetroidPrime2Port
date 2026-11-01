@@ -306,6 +306,36 @@ void SetStickyCharge(bool enabled);
 // locked or orbited target, as MP1's auto-aim switch does (CPlayer::UpdateAimTarget).
 bool AutoAim();
 void SetAutoAim(bool enabled);
+// Manual aim (`MP2_MANUAL_AIM=1`, default off; MP1 dead-space-prime a10ee2274 16776192a): aim by
+// hand instead of locking on, for mouse aim. Lock-on reaches only what the Scan Visor scans and
+// grapple points (CPlayer::ValidateOrbitTargetId), an empty lock-on press holds no point outside
+// the Scan Visor, and shots get no aim assist (CPlayer::UpdateAimTarget). A shot that homes in on a
+// lock-on (a missile, a charge combo, a beam shot whose weapon data homes) seeks the target nearest
+// the crosshair instead (CPlayerGun::PortSeekTargetId). Single player only (in split screen the
+// pads' players have no other aim); off under Original Experience.
+bool ManualAim();
+void SetManualAim(bool enabled);
+// Double-tap dash (`MP2_DOUBLE_TAP_DASH=1`, default off; MP1 dead-space-prime a10ee2274
+// 83390a3d5): a keyboard movement key pressed twice within 0.25 s (port_double_tap.h) dashes
+// straight that way, forward, back, left or right, with no lock-on (CPlayer::ComputeMovement).
+// `MP2_DASH_SPEED` (percent, kDashSpeed*) scales both its speeds and so its distance: at 100 it
+// starts at 30 m/s and eases to 14 m/s over 0.3 s. Single player; off under Original Experience.
+const int kDashSpeedMin = 75;
+const int kDashSpeedMax = 150;
+const int kDashSpeedDefault = 130;
+bool DoubleTapDash();
+void SetDoubleTapDash(bool enabled);
+int DashSpeed();
+void SetDashSpeed(int percent);
+// Gun sway (`MP2_GUN_SWAY`, degrees, kGunSway*; MP1 dead-space-prime 93aff5324): as in Metroid
+// Prime Hunters, the arm cannon, its aim and the crosshair lean toward the view's turn, this far
+// at most (port_gun_sway.h). 0 is off (the default here; MP1's branch defaults to 3), as are
+// Original Experience and pointer aim, which moves the gun itself.
+const float kGunSwayMin = 0.f;
+const float kGunSwayMax = 10.f;
+const float kGunSwayDefault = 0.f;
+float GunSway();
+void SetGunSway(float degrees);
 // Pointer aim, Trilogy style (`MP2_POINTER_AIM=1`, default off; MP1's pointer aim): the mouse,
 // twin stick or touch aim moves a pointer instead of the view. Inside the dead box
 // (`MP2_POINTER_AIM_BOX`, percent of the half-screen) the view holds still; past it the view

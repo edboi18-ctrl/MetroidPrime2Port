@@ -152,6 +152,24 @@ Each needs MP2 game-side hooks found fresh; a row with no possible MP2 backend i
       (Remastered particles), `005ae8a6e` (we have infinite ammo), artifact cheats `904552326
       0dadb6af9`, `881e1e899` (Frigate), `09ea6ad2d` (Trilogy corner layout; check ours if seen).
 
+28. **MP1 `dead-space-prime` branch: aim and movement** (user 2026-11-01). Not on MP1's `port`
+    branch; taken from `origin/dead-space-prime` (`a9eb1db19`). Manual aim (`a10ee2274`, homing
+    seek `16776192a`), the double-tap dash (`a10ee2274`, `83390a3d5`, the 130% default from
+    `93aff5324`) and gun sway (`93aff5324`), with their settings-index rows (`fbcdf67b4`).
+    DONE (2026-11-01): as `manual_aim`, `double_tap_dash`/`dash_speed`, `gun_sway`
+    (docs/SETTINGS.md). Adapted: seeking covers every MP2 homing path through
+    `CPlayerGun::PortHomingTargetId` (MP2's beams home per their weapon data, plus missiles, the
+    four charge combos, the Phazon ball and Stack beams' shots) and the candidates are the ones
+    retail could lock onto (kMT_Orbit, the visor's targetable flags, no static or orbit-disable);
+    `CGameProjectile::Chase` keeps a seeking missile's homing while nothing is locked (MP2 drops it
+    when the lock differs, MP1 has no such check); gun and dash state is file-scope (no CPlayer
+    fields, no schema change); manual aim and the dash are single player; gun sway defaults to 0
+    (the branch's 3 degrees is one setting away) and is off under pointer aim. Not taken: Stasis,
+    the Dead Space HUD and sounds, the branch's 115% walk default, Power Beam speed, the passthrough
+    bridge. Compiled (headers-only build, the F1/input files syntax-checked against SDL 3.4.10 and
+    Dear ImGui 1.92.3 headers), TARGET_PC strip-diff clean, unit tests pass; not run in game (no
+    disc or Aurora download here).
+
 Skipped from this range: Phazon Beam cheat and stacked beam rate (MP1 items), mods page/import
 fixes (wait for package 8), decomp matches.
 

@@ -36,6 +36,7 @@
 #ifdef TARGET_PC
 #include <cstdio>
 #include <cstdlib>
+#include "port_overlay.h"
 #endif
 
 static CTransform4f clear_transform(const CTransform4f& xf) {
@@ -538,6 +539,13 @@ void CGameProjectile::Chase(float dt, CStateManager& mgr) {
   const CPlayer* owner = TCastToConstPtr< CPlayer >(mgr.GetObjectById(GetOwnerId()));
   const CWeaponMode& mode = mCurDamageInfo.GetWeaponMode();
   if (owner && owner->GetOrbitTargetId() != mHomingTargetId &&
+#ifdef TARGET_PC
+      // Manual aim: a missile or Power Beam combo sent after the target nearest the crosshair
+      // (CPlayerGun::PortSeekTargetId) had no lock to begin with, so it keeps homing while nothing
+      // is locked; a lock on something else still drops it, as retail does.
+      !(PortOverlay::ManualAim() && !mgr.IsMultiplayer() &&
+        owner->GetOrbitTargetId() == kInvalidUniqueId) &&
+#endif
       ((mode.GetType() == kWT_Missile && (GetAttribField() & 0x400000) != 0x400000) ||
        (mode.GetType() == kWT_Power && mode.IsComboed()))) {
     mHomingTargetId = kInvalidUniqueId;

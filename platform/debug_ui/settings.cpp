@@ -263,6 +263,11 @@ const SettingKey kSettingKeys[] = {
     BoolKey< &sStickyCharge >("sticky_charge"),
     BoolKey< &sRapidCharge >("rapid_charge"),
     BoolKey< &sAutoAim >("auto_aim"),
+    BoolKey< &sManualAim >("manual_aim"),
+    BoolKey< &sDoubleTapDash >("double_tap_dash"),
+    IntKey< &sDashSpeed, PortOverlay::kDashSpeedMin, PortOverlay::kDashSpeedMax >("dash_speed",
+                                                                                  "75", "150"),
+    FloatKey< &sGunSway, 0, 10 >("gun_sway", "0", "3"),
     BoolKey< &sPointerAim >("pointer_aim"),
     IntKey< &sPointerAimBox, PortOverlay::kPointerAimBoxMin, PortOverlay::kPointerAimBoxMax >(
         "pointer_aim_box", "50", "70"),

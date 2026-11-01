@@ -98,6 +98,21 @@ void DrawControlsOptions() {
   Changed(ImGui::Checkbox("Auto-aim", &sAutoAim));
   ItemHelp("On, as the original: without Lock-On, shots home in on the enemy nearest the screen "
            "centre. Off: shots go where you aim.");
+  Changed(ImGui::Checkbox("Manual aim", &sManualAim));
+  ItemHelp("Aim by hand, for mouse aim: Lock-On only reaches what the Scan Visor scans and grapple "
+           "points, and shots go where the crosshair is, with no aim assist. Missiles, charge "
+           "combos and any beam shot that homes in on a lock still home in, on the target nearest "
+           "the crosshair (within 15 degrees and 60 m, in sight). Single player only.");
+  float gunSway = sGunSway;
+  if (ImGui::SliderFloat("Gun sway", &gunSway, PortOverlay::kGunSwayMin, PortOverlay::kGunSwayMax,
+                         "%.1f degrees", ImGuiSliderFlags_AlwaysClamp)) {
+    sGunSway = std::clamp(gunSway, PortOverlay::kGunSwayMin, PortOverlay::kGunSwayMax);
+    Changed(true);
+  }
+  ItemHelp("As in Metroid Prime Hunters, the arm cannon leans the way you turn, left, right, up or "
+           "down, and settles back when you stop: this far at most, reached when turning 180 "
+           "degrees a second. The crosshair leans with it and shots go to the crosshair. 0 turns it "
+           "off; pointer aim keeps it off.");
   ImGui::EndDisabled();
   Changed(ImGui::Checkbox("Pointer aim (Trilogy style)", &sPointerAim));
   ItemHelp("Mouse, right stick, gyro or a touch drag moves a crosshair and shots follow it; the view "
@@ -129,6 +144,25 @@ void DrawControlsOptions() {
   Changed(ImGui::Checkbox("Reset aim resets pointer and camera", &sResetAimBoth));
   ItemHelp("Reset aim (unbound by default) recentres the crosshair with pointer aim on, or levels "
            "the camera with it off. On: it does both.");
+
+  ImGui::SeparatorText("Movement");
+  ImGui::BeginDisabled(locked);
+  Changed(ImGui::Checkbox("Double-tap dash", &sDoubleTapDash));
+  ItemHelp("Tap a movement key twice quickly (keyboard, within 0.25 s) and Samus dashes that way: "
+           "forward, back, left or right, without a lock-on. A wall ends it; one dash a jump in "
+           "the air. Locked on, the jump-and-strafe dash works as before. Single player only.");
+  ImGui::BeginDisabled(!sDoubleTapDash);
+  int dashSpeed = sDashSpeed;
+  if (ImGui::SliderInt("Dash speed", &dashSpeed, PortOverlay::kDashSpeedMin,
+                       PortOverlay::kDashSpeedMax, "%d%%", ImGuiSliderFlags_AlwaysClamp)) {
+    sDashSpeed = std::clamp(dashSpeed, PortOverlay::kDashSpeedMin, PortOverlay::kDashSpeedMax);
+    Changed(true);
+  }
+  ItemHelp("How fast the double-tap dash goes, and so how far: it always lasts 0.3 s. At 130%, the "
+           "default, it starts at 39 m/s and covers about 8.7 m; at 100%, about 6.7 m. It never "
+           "goes slower than you walk.");
+  ImGui::EndDisabled();
+  ImGui::EndDisabled();
 
   ImGui::SeparatorText("Menus");
   Changed(ImGui::Checkbox("Point and click menus", &sPointerMenus));

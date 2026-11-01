@@ -2520,6 +2520,12 @@ CVector3f CCompoundTargetReticle::CalculateOrbitZoneReticlePosition(const CState
   if (lag) {
     forward = mLaggingOrientation.Transform(forward);
   }
+#ifdef TARGET_PC
+  else if (player != nullptr) {
+    // Gun sway: the crosshair leans with the gun and its shots (CPlayer::PortGunLean).
+    forward = player->PortGunLean(cameraXf).Rotate(forward);
+  }
+#endif
 
   return cameraXf.GetTranslation() + distance * forward;
 }

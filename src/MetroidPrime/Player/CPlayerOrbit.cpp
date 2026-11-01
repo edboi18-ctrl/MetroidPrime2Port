@@ -68,6 +68,16 @@ CAABox BuildNearListBox(bool cropBottom, const CTransform4f& xf, float x, float 
 }
 } // namespace
 
+#ifdef TARGET_PC
+// Manual aim (PortOverlay::ManualAim, MP1 dead-space-prime a10ee2274), single player only:
+// outside the Scan Visor lock-on reaches only grapple points, an empty lock-on press holds no
+// point, and the crosshair is aimed by hand.
+static bool PortManualAimOutsideScan(const CPlayer& player, const CStateManager& mgr) {
+  return PortOverlay::ManualAim() && !mgr.IsMultiplayer() &&
+         player.GetPlayerState()->GetCurrentVisor() != CPlayerState::kPV_Scan;
+}
+
+#endif
 // Definitions follow reverse target order for deferred inlining.
 
 bool CPlayer::ValidateOrbitTargetIdAndPointer(TUniqueId target, const CStateManager& mgr) const {
@@ -151,6 +161,13 @@ int CPlayer::ValidateOrbitTargetId(TUniqueId target, CStateManager& mgr) const {
       !act->GetActive()) {
     return kOVR_InvalidTarget;
   }
+#ifdef TARGET_PC
+  // Manual aim: lock-on reaches only what the Scan Visor scans, and grapple points; everything
+  // else is aimed at by hand.
+  if (PortManualAimOutsideScan(*this, mgr) && !TCastToConstPtr< CScriptGrapplePoint >(act)) {
+    return kOVR_NonTargetableTarget;
+  }
+#endif
   if (GetStaticTimer() != 0.f) {
     return kOVR_PlayerNotReadyToTarget;
   }
@@ -404,7 +421,13 @@ void CPlayer::UpdateOrbitInput(const CFinalInput& input, float dt, CStateManager
           SetOrbitState(kOS_OrbitObject, mgr);
           UpdateOrbitPosition(GetTweakPlayer()->GetOrbitNormalDistance(mOrbitType), mgr);
         }
+#ifdef TARGET_PC
+        // Manual aim: an empty lock-on press holds no point outside the Scan Visor, where the
+        // view stays the mouse's.
+      } else if (!PortManualAimOutsideScan(*this, mgr)) {
+#else
       } else {
+#endif
         if (mControlMapper.GetPressInput(CControlMapper::kC_OrbitFar, input)) {
           OrbitPoint(kOT_Far, mgr);
         }
@@ -453,6 +476,19 @@ void CPlayer::UpdateOrbitInput(const CFinalInput& input, float dt, CStateManager
           case kOVR_TargetingThroughDoor:
             SetOrbitRequest(kOR_TargetingThroughDoor, mgr);
             break;
+#ifdef TARGET_PC
+          case kOVR_NonTargetableTarget:
+            if (PortManualAimOutsideScan(*this, mgr)) {
+              // Manual aim: a scan lock on an enemy lets go on leaving the Scan Visor, rather than
+              // the orbit source's carcass or point orbit.
+              SetOrbitRequest(kOR_InvalidateTarget, mgr);
+              mOrbitOcclusionTimer = 0.f;
+              break;
+            }
+            ActivateOrbitSource(mgr);
+            mOrbitOcclusionTimer = 0.f;
+            break;
+#endif
           default:
             ActivateOrbitSource(mgr);
             mOrbitOcclusionTimer = 0.f;
@@ -1310,6 +1346,11 @@ void CPlayer::UpdateAimTarget(CStateManager& mgr) {
     SetAimTarget(kInvalidUniqueId);
     mAimTargetTimer = 0.f;
 #ifdef TARGET_PC
+    // Manual aim leaves the shots where the crosshair puts them: no aim target, so no assist
+    // (UpdateAssistedAiming) turns them toward an enemy.
+  } else if (PortOverlay::ManualAim() && !mgr.IsMultiplayer()) {
+    SetAimTarget(kInvalidUniqueId);
+    mAimTargetTimer = 0.f;
     // Port: with auto-aim off (F1), aim only at a locked or orbited target, as MP1 does.
   } else if (!PortOverlay::AutoAim()) {
     SetAimTarget(kInvalidUniqueId);

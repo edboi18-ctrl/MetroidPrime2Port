@@ -188,6 +188,34 @@ Controls > Options:
   Original Experience; the jump-tap dash is unchanged.
 - `sticky_charge`, `rapid_charge`: Buttons > Sticky Charge, Remastered charge (rapid fire).
 - `auto_aim`: Aiming > Auto-aim.
+- `manual_aim`: Aiming > Manual aim (default off, off under Original Experience and in split screen;
+  env `MP2_MANUAL_AIM`; MP1 dead-space-prime `a10ee2274`, `16776192a`). For mouse aim: lock-on
+  reaches only what the Scan Visor scans and grapple points (`CPlayer::ValidateOrbitTargetId`), an
+  empty lock-on press holds no point outside the Scan Visor, a scan lock on an enemy lets go on
+  leaving the Scan Visor, and shots get no aim assist (`CPlayer::UpdateAimTarget`). Every shot that
+  homes in on a lock-on (missiles, the charge combos, a beam shot whose weapon data homes, the Phazon
+  ball, Stack beams' extra shots) seeks instead the targetable thing nearest the crosshair by angle:
+  within 15 degrees and 60 m, in sight, alive, lockable in the current visor, not a grapple point
+  (`CPlayerGun::PortSeekTargetId`; `kSeekAngle`/`kSeekRange`). Missiles and Power Beam combos keep
+  that homing in flight while nothing is locked (`CGameProjectile::UpdateHoming`'s retail check drops
+  it when the lock differs). Seekers keep retail's no-lock pick, a box along the cannon.
+- `gun_sway`: Aiming > Gun sway, degrees 0-10 (default 0, off; 0 under Original Experience; env
+  `MP2_GUN_SWAY`; MP1 dead-space-prime `93aff5324`, whose default is 3). As in Metroid Prime
+  Hunters, the arm cannon leans toward the view's turn, all the way at 180 degrees a second,
+  following with a 0.08 s time constant at any tick rate; a jump over 0.5 rad in one tick (a cut)
+  doesn't lean it, and morph ball, cinematics and other cameras straighten it. The gun's aim leans
+  with it (shots follow) and so does the crosshair (`CCompoundTargetReticle`). Off while pointer aim
+  is active, which turns the gun itself. `platform/include/port_gun_sway.h`, `tests/port_gun_sway.cpp`.
+- `double_tap_dash`, `dash_speed`: Movement > Double-tap dash, Dash speed (default off, 130%; off
+  under Original Experience; env `MP2_DOUBLE_TAP_DASH`, `MP2_DASH_SPEED` 75-150; MP1
+  dead-space-prime `a10ee2274`, `83390a3d5`, `93aff5324`). A keyboard movement key (the keys bound
+  to the control stick directions) pressed twice within 0.25 s dashes straight that way, relative to
+  the facing: 30 m/s easing to 14 m/s over 0.3 s, times Dash speed (about 8.7 m at 130%, 6.7 m at
+  100%), slowed by water and the like as walking is but never below the walk speed there. Retail's
+  dash sound and rumble; a wall, a lock-on, a grapple or morphing ends it; one a jump in the air,
+  0.35 s apart. Not with a lock-on (retail's dash) or in split screen. The detector is
+  `platform/include/port_double_tap.h` (`tests/port_double_tap.cpp`), fed by
+  `PortInputDevices`' keyboard poll; the movement is `CPlayer::ComputeMovement`.
 - `pointer_aim`, `pointer_aim_box`, `pointer_aim_turn`: Aiming > Pointer aim (Trilogy style),
   Dead box, Edge turn speed. An empty lock (L with nothing targeted, outside the Scan Visor)
   holds the view and leaves the pointer free, as Trilogy's Z does, whatever Lock-on free aim says.

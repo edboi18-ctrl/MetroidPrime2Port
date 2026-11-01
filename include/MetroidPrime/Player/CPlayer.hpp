@@ -408,6 +408,12 @@ public:
   // The gun position moved down so the arm cannon stays on the screen's 4:3 bottom edge when the
   // view is Vert+ widened (MP1 af5e42ade); the position unchanged at 4:3 and wider.
   CVector3f PortAnchorGunDown(const CVector3f& pos) const;
+  // Gun sway (PortOverlay::GunSway, MP1 dead-space-prime 93aff5324): once a tick (PostUpdate),
+  // follows the first-person view's turn. PortGunLean is the lean as a rotation in the world for
+  // the view `camXf` (identity when straight); the gun, its aim and the crosshair all lean by it,
+  // as in Metroid Prime Hunters, so shots still go to the crosshair.
+  void PortUpdateGunSway(float dt, CStateManager& mgr);
+  CTransform4f PortGunLean(const CTransform4f& camXf) const;
 #endif
   void UpdateArmAndGunTransforms(float dt, CStateManager& mgr);
   void ForceGunOrientation(const CTransform4f& transform, CStateManager& mgr);
@@ -509,6 +515,12 @@ public:
   bool PortAimCrosshairsOpen() const;
   bool PortDirectAimControls() const;
   CVector3f PortMovementInput(const CFinalInput& input) const;
+  // The double-tap dash (PortOverlay::DoubleTapDash, MP1 dead-space-prime a10ee2274), straight and
+  // without a lock-on. Start takes a PortDoubleTap direction; Update carries Samus while it lasts
+  // and says whether it did this tick (CPlayerDynamics.cpp keeps its state).
+  void PortStartDash(int direction, CStateManager& mgr);
+  bool PortUpdateDash(float dt);
+  void PortEndDash();
   void UpdateMouseAim(CStateManager& mgr, float dt);
   // The right stick, cached from ProcessInput for UpdateMouseAim (twin-stick aim).
   float mPortLookX = 0.f;

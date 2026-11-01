@@ -101,6 +101,10 @@ bool sAimLockOn = false;
 bool sSpiderToggle = false;
 bool sStickyCharge = false;
 bool sAutoAim = true;
+bool sManualAim = false;
+bool sDoubleTapDash = false;
+int sDashSpeed = PortOverlay::kDashSpeedDefault;
+float sGunSway = PortOverlay::kGunSwayDefault;
 bool sPointerAim = false;
 bool sTrilogyRadialSelectors = false;
 int sPointerAimBox = PortOverlay::kPointerAimBoxDefault;
@@ -1252,6 +1256,62 @@ bool AutoAim() {
 void SetAutoAim(bool enabled) {
   ReadEnv();
   sAutoAim = enabled;
+  Persist();
+}
+
+bool ManualAim() {
+  ReadEnv();
+  if (OriginalExperience()) {
+    return false;
+  }
+  return EnvBool("MP2_MANUAL_AIM", sManualAim);
+}
+
+void SetManualAim(bool enabled) {
+  ReadEnv();
+  sManualAim = enabled;
+  Persist();
+}
+
+bool DoubleTapDash() {
+  ReadEnv();
+  if (OriginalExperience()) {
+    return false;
+  }
+  return EnvBool("MP2_DOUBLE_TAP_DASH", sDoubleTapDash);
+}
+
+void SetDoubleTapDash(bool enabled) {
+  ReadEnv();
+  sDoubleTapDash = enabled;
+  Persist();
+}
+
+int DashSpeed() {
+  ReadEnv();
+  return EnvIntIn("MP2_DASH_SPEED", sDashSpeed, kDashSpeedMin, kDashSpeedMax);
+}
+
+void SetDashSpeed(int percent) {
+  ReadEnv();
+  sDashSpeed = std::clamp(percent, kDashSpeedMin, kDashSpeedMax);
+  Persist();
+}
+
+float GunSway() {
+  ReadEnv();
+  if (OriginalExperience()) {
+    return 0.f;
+  }
+  return EnvFloatIn("MP2_GUN_SWAY", sGunSway, kGunSwayMin, kGunSwayMax);
+}
+
+void SetGunSway(float degrees) {
+  ReadEnv();
+  if (!std::isfinite(degrees)) {
+    return;
+  }
+  sGunSway = std::clamp(degrees, kGunSwayMin, kGunSwayMax);
   Persist();
 }
 

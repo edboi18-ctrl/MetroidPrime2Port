@@ -72,6 +72,9 @@ hp, hp_max, visor, beam, freecam) for scripts.
 - `dodge` — a press of the Dodge action: the player takes it within 0.12 s if on the ground and strafing, so hold the strafe first (e.g. `press sx:127 0`, locked on `press l+sx:127 0`); locked on it dashes as a jump tap does, otherwise straight sideways; off under Original Experience
 - `spidertoggle [0|1]` — an R press holds the spider ball on its track until the next (`spider_toggle`)
 - `aimlockon [0|1]` — lock-on picks the target nearest the crosshair (`aim_lock_on`)
+- `manualaim [0|1]` — manual aim: no lock-on outside the Scan Visor (grapple points still lock), no aim assist, and every homing shot seeks the target nearest the crosshair (`manual_aim`)
+- `dashtap [0|1] [75..150]` — double-tap dash on a movement key, and its speed in percent (`double_tap_dash`, `dash_speed`)
+- `gunsway [0..10]` — gun sway in degrees (0 off); with no argument prints the current value (`gun_sway`)
 - `sticky <0|1>` — sticky charge: a long A hold keeps charging after the release
 - `pointeraim [on|off|<x> <y>] pointer aim (the F1 row), or place its pointer (-1..1)`
 - `minimap` prints the HUD minimap tap rect (GUI pixels) and whether tap-to-open is on; `maptap` opens the map screen as a tap on the minimap does
