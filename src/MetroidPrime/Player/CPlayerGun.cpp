@@ -386,13 +386,14 @@ TUniqueId CPlayerGun::PortSeekTargetId(CStateManager& mgr) const {
   // homes only on the lock, which is an orbit candidate (kMT_Orbit, CPlayer::UpdateOrbitableObjects)
   // that GetTargetId accepts (kMT_Target or kMT_SeekerTarget).
   const float halfWidth = kSeekRange * tanf(radians);
-  const CVector3f far = eye + dir * kSeekRange;
-  const CVector3f lo(CMath::Min(eye.GetX(), far.GetX()) - halfWidth,
-                     CMath::Min(eye.GetY(), far.GetY()) - halfWidth,
-                     CMath::Min(eye.GetZ(), far.GetZ()) - halfWidth);
-  const CVector3f hi(CMath::Max(eye.GetX(), far.GetX()) + halfWidth,
-                     CMath::Max(eye.GetY(), far.GetY()) + halfWidth,
-                     CMath::Max(eye.GetZ(), far.GetZ()) + halfWidth);
+  // (Not `far`: Windows' headers define it away.)
+  const CVector3f farEnd = eye + dir * kSeekRange;
+  const CVector3f lo(CMath::Min(eye.GetX(), farEnd.GetX()) - halfWidth,
+                     CMath::Min(eye.GetY(), farEnd.GetY()) - halfWidth,
+                     CMath::Min(eye.GetZ(), farEnd.GetZ()) - halfWidth);
+  const CVector3f hi(CMath::Max(eye.GetX(), farEnd.GetX()) + halfWidth,
+                     CMath::Max(eye.GetY(), farEnd.GetY()) + halfWidth,
+                     CMath::Max(eye.GetZ(), farEnd.GetZ()) + halfWidth);
   rstl::reserved_vector< TUniqueId, kMaxObjects > nearList;
   mgr.BuildNearList(nearList, CAABox(lo, hi), CMaterialFilter::MakeInclude(CMaterialList(kMT_Orbit)),
                     player);

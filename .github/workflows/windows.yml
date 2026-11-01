@@ -1,11 +1,19 @@
 name: windows
 
-# Manual, like MP1's: a clang-cl build is the slowest job by far. Start it from
-# the Actions tab or with `gh workflow run windows.yml --ref port` when a Windows
-# zip is wanted. It also runs once a week, so a Windows break shows up within
+# Builds the Windows zip by itself on every push to `port` and every pull request
+# (a change to the docs alone builds nothing), so a build is there to download:
+# the run's summary page links each zip. A clang-cl build is the slowest job by
+# far, so a newer push to the same branch or PR cancels the running one. It can
+# still be started by hand (the Actions tab, or `gh workflow run windows.yml
+# --ref <branch>`), and it runs once a week, so a Windows break shows up within
 # days and its caches are used often enough not to be evicted.
 on:
   workflow_dispatch:
+  push:
+    branches: [port]
+    paths-ignore: ["**.md", "docs/**"]
+  pull_request:
+    paths-ignore: ["**.md", "docs/**"]
   schedule:
     - cron: "37 4 * * 1"
 
@@ -234,6 +242,14 @@ jobs:
           Remove-Item -Force -ErrorAction SilentlyContinue ./dist/*.log, ./dist/dawn_cache.db*, ./dist/pipeline_cache.db*
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        id: upload
         with:
           name: metroid_prime2_port-windows${{ matrix.suffix }}
           path: dist
+
+      # The zip's link at the top of the run's page, so nobody has to find the artifacts list.
+      - name: Download link
+        shell: bash
+        run: |
+          echo "### Windows ${{ matrix.arch }}: [metroid_prime2_port-windows${{ matrix.suffix }}.zip](${{ steps.upload.outputs.artifact-url }})" >> "$GITHUB_STEP_SUMMARY"
+          echo "Unzip it anywhere and run metroid_prime2_port.exe; it asks for your own disc image on first start." >> "$GITHUB_STEP_SUMMARY"
