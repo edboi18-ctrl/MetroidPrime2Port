@@ -73,6 +73,12 @@ void ClearSpringBallRequest();
 // CPlayer takes it once, only on the ground while strafing (false under Original Experience).
 void RequestDodge();
 bool TakeDodgeRequest();
+// The double-tap dash (PortOverlay::DoubleTapDash): a movement key double-tapped on the keyboard
+// (PortInputDevices) requests a dash that way, a PortDoubleTap::Direction (forward, back, left,
+// right). The request lasts 120 ms; CPlayer takes it once (-1 when there is none, or the dash is
+// off).
+void RequestDash(int direction);
+int TakeDashRequest();
 
 // Drag on the free screen to aim (MP1's `touch_aim`, on by default; `MP2_TOUCH_AIM`).
 bool AimEnabled();

@@ -74,6 +74,7 @@
 #include "port_overlay.h"
 #include "port_power_charge_release.h"
 #include "port_presentation_rules.h"
+#include "MetroidPrime/ScriptObjects/CScriptGrapplePoint.hpp"
 #endif
 
 static const TStateMachineState< CPlayerGun >::STriggerFunction skGunTriggerFunctions[] = {
@@ -324,7 +325,114 @@ bool CPlayerGun::PortShotOffLock(CStateManager& mgr) const {
 }
 
 TUniqueId CPlayerGun::PortHomingTargetId(CStateManager& mgr) {
-  return PortShotOffLock(mgr) ? kInvalidUniqueId : GetTargetId(mgr);
+  if (PortShotOffLock(mgr)) {
+    return kInvalidUniqueId;
+  }
+  const TUniqueId target = GetTargetId(mgr);
+  // Manual aim: with no lock-on to home in on, a homing shot seeks what the crosshair is nearest.
+  // This is every homing path: beam shots whose weapon data homes, the Phazon ball, Stack beams'
+  // extra shots, missiles and the charge combos (FireAuxWeapon).
+  if (target == kInvalidUniqueId && PortOverlay::ManualAim() && !mgr.IsMultiplayer()) {
+    return PortSeekTargetId(mgr);
+  }
+  return target;
+}
+
+// MP1 dead-space-prime's cone (platform/port_dead_space.cpp kSeekAngle, kSeekRange).
+static const float kSeekAngle = 15.f; // degrees off the crosshair's line
+static const float kSeekRange = 60.f; // metres from the eye
+
+// Whether `act` may be locked onto in `visor` (CPlayer::ValidateOrbitTargetId's visor switch).
+static bool PortTargetableInVisor(const CActor& act, CPlayerState::EPlayerVisor visor) {
+  const uint flags = act.GetTargetableVisorFlags();
+  switch (visor) {
+  case CPlayerState::kPV_Combat:
+    return (flags & 1) != 0;
+  case CPlayerState::kPV_Scan:
+    return (flags & 2) != 0;
+  case CPlayerState::kPV_Dark:
+    return (flags & 4) != 0;
+  case CPlayerState::kPV_Echo:
+    return (flags & 8) != 0;
+  default:
+    return true;
+  }
+}
+
+TUniqueId CPlayerGun::PortSeekTargetId(CStateManager& mgr) const {
+  const CPlayer* player = GetPlayer(mgr);
+  if (player == nullptr || player->GetCameraManager() == nullptr) {
+    return kInvalidUniqueId;
+  }
+  // What stops a lock-on stops the seeking too: static interference, or a script's orbit disable.
+  if (player->GetStaticTimer() != 0.f || player->CheckOrbitDisableSourceList()) {
+    return kInvalidUniqueId;
+  }
+  // The crosshair's line: the view's forward, leaned with gun sway (the crosshair is drawn there,
+  // CCompoundTargetReticle), or with pointer aim the ray through the pointer.
+  const CTransform4f cam = player->GetCameraManager()->GetCurrentCameraTransform(mgr, true);
+  const CVector3f eye = cam.GetTranslation();
+  CVector3f dir = player->PortGunLean(cam).Rotate(cam.GetForward());
+  if (mPortPointerAimValid && (mPortPointerAimPoint - eye).CanBeNormalized()) {
+    dir = mPortPointerAimPoint - eye;
+  }
+  if (!dir.CanBeNormalized()) {
+    return kInvalidUniqueId;
+  }
+  dir = dir.AsNormalized();
+  const float radians = kSeekAngle * (M_PIF / 180.f);
+  const float minCosine = cosf(radians);
+  // Everything lockable near the cone: the box around its axis, as wide as its far end. Retail
+  // homes only on the lock, which is an orbit candidate (kMT_Orbit, CPlayer::UpdateOrbitableObjects)
+  // that GetTargetId accepts (kMT_Target or kMT_SeekerTarget).
+  const float halfWidth = kSeekRange * tanf(radians);
+  // (Not `far`: Windows' headers define it away.)
+  const CVector3f farEnd = eye + dir * kSeekRange;
+  const CVector3f lo(CMath::Min(eye.GetX(), farEnd.GetX()) - halfWidth,
+                     CMath::Min(eye.GetY(), farEnd.GetY()) - halfWidth,
+                     CMath::Min(eye.GetZ(), farEnd.GetZ()) - halfWidth);
+  const CVector3f hi(CMath::Max(eye.GetX(), farEnd.GetX()) + halfWidth,
+                     CMath::Max(eye.GetY(), farEnd.GetY()) + halfWidth,
+                     CMath::Max(eye.GetZ(), farEnd.GetZ()) + halfWidth);
+  rstl::reserved_vector< TUniqueId, kMaxObjects > nearList;
+  mgr.BuildNearList(nearList, CAABox(lo, hi), CMaterialFilter::MakeInclude(CMaterialList(kMT_Orbit)),
+                    player);
+  const CPlayerState::EPlayerVisor visor = player->GetPlayerState()->GetCurrentVisor();
+  const uint playerBit = 1u << mgr.MaskUIdNumPlayers(player->GetUniqueId());
+  TUniqueId best = kInvalidUniqueId;
+  float bestCosine = minCosine;
+  for (int i = 0; i < nearList.size(); ++i) {
+    const CActor* act = TCastToConstPtr< CActor >(mgr.GetObjectById(nearList[i]));
+    if (act == nullptr || !act->GetActive() || (act->GetValidTargetPlayers() & playerBit) == 0 ||
+        TCastToConstPtr< CScriptGrapplePoint >(act) || !PortTargetableInVisor(*act, visor)) {
+      continue;
+    }
+    const CMaterialList& materials = act->GetMaterialList();
+    if (!materials.HasMaterial(kMT_Target) && !materials.HasMaterial(kMT_SeekerTarget)) {
+      continue;
+    }
+    if (const CHealthInfo* health = act->GetHealthInfo()) {
+      if (health->GetHP() <= 0.f) {
+        continue;
+      }
+    }
+    const CVector3f toTarget = act->GetAimPosition(mgr, 0.f) - eye;
+    const float distance = toTarget.Magnitude();
+    if (distance < 0.1f || distance > kSeekRange) {
+      continue;
+    }
+    const float cosine = CVector3f::Dot(toTarget, dir) / distance;
+    if (cosine < bestCosine) {
+      continue;
+    }
+    if (mgr.RayStaticIntersection(eye, toTarget / distance, distance, skWeaponCollisionFilter)
+            .IsValid()) {
+      continue;
+    }
+    best = act->GetUniqueId();
+    bestCosine = cosine;
+  }
+  return best;
 }
 
 // Pointer aim (MP1's mPortPointerAimPoint in CPlayerGun::PortShotFromDrawnMuzzle): the assist
@@ -1794,6 +1902,13 @@ void CPlayerGun::Update(float dt, CStateManager& mgr) {
 }
 
 float CPlayerGun::GetBeamVelocity() const {
+#ifdef TARGET_PC
+  // The lock-on's aim leads its target for the faster Power Beam (CGunWeapon::Fire) too.
+  if (mCurrentBeam->IsLoaded() && mCurrentBeam->GetType() == kWT_Power) {
+    return mCurrentBeam->GetVelocityInfo().GetVelocity(mChargeState).GetY() *
+           (static_cast< float >(PortOverlay::PowerBeamSpeed()) / 100.f);
+  }
+#endif
   return mCurrentBeam->IsLoaded() ? mCurrentBeam->GetVelocityInfo().GetVelocity(mChargeState).GetY()
                                   : 10.f;
 }

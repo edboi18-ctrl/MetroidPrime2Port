@@ -30,6 +30,9 @@
 #include "MetroidPrime/Weapons/GunController/CGunController.hpp"
 #include "MetroidPrime/Weapons/WeaponSound.hpp"
 #include "Weapons/CWeaponDescription.hpp"
+#ifdef TARGET_PC
+#include "port_overlay.h"
+#endif
 
 const char* const CGunWeapon::skMuzzleLocator = "LBEAM";
 const char* const CGunWeapon::skElbowLocator = "elbow";
@@ -409,6 +412,13 @@ void CGunWeapon::Fire(const TCachedToken< CWeaponDescription >& projectile, bool
       player->GetCurrentAreaId(), mPlayerId, homingTarget, chargeAttributes, underwater, scale,
       CImpactVisorEffect::None(), false, true, false, chargeFactor1, 4.f, 4.f);
   if (proj) {
+#ifdef TARGET_PC
+    // Power Beam speed: faster Power Beam shots, plain and charged (Stack beams' too), with the
+    // same reach. Not the Phazon ball fired while absorbed Phazon is full (the damage above).
+    if (mWeaponType == kWT_Power && absorbedShots != gpTweakPlayerGun->GetMaxAbsorbedPhazonShots()) {
+      proj->Projectile().PortScaleSpeed(static_cast< float >(PortOverlay::PowerBeamSpeed()) / 100.f);
+    }
+#endif
     mgr.AddObject(proj);
     if (chargeState != CPlayerState::kCS_Normal && chargeFactor1 == 1.f) {
       proj->SetX4104(true);

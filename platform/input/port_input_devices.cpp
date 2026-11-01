@@ -5,6 +5,7 @@
 
 #include "port_custom_actions.h"
 #include "port_debug.h"
+#include "port_double_tap.h"
 #include "port_input_remap_ui.h"
 #include "port_freecam.h"
 #include "port_gyro_motion.h"
@@ -1298,6 +1299,33 @@ static bool KeyboardCStickHeld(const Profile& p, const PortInput::RawState& raw,
   return false;
 }
 
+// A keyboard key bound on its own (no chord) to `action` is down, in a binding the game's
+// contexts read (MP1 dead-space-prime's KeyHeld).
+static bool KeyHeld(const Profile& p, const PortInput::RawState& raw, uint16_t contexts, Action action) {
+  for (const Binding& b : p.bindings) {
+    if (b.action != action || b.count != 1 || (b.contexts & contexts) == 0 || (b.blocked & contexts) != 0) {
+      continue;
+    }
+    const Input& in = b.inputs[0];
+    if (in.device == Device::Key && in.code < PortInput::kKeyCount && raw.keys.test(in.code)) return true;
+  }
+  return false;
+}
+
+// The double-tap dash (MP1 dead-space-prime a10ee2274): a movement key (one bound to a control stick
+// direction) pressed twice within PortDoubleTap::kWindowMs dashes that way. The detector sees every
+// poll, so a key held while F1 was open does not read as a fresh press; only the game's polls with
+// the dash on request one.
+static void RouteDoubleTapDash(const Profile& p, const PortInput::RawState& raw, uint16_t contexts,
+                               double nowMs, bool gameOwnsInput) {
+  static PortDoubleTap::Detector sTaps;
+  const bool held[PortDoubleTap::kDirections] = {
+      KeyHeld(p, raw, contexts, Action::MainUp), KeyHeld(p, raw, contexts, Action::MainDown),
+      KeyHeld(p, raw, contexts, Action::MainLeft), KeyHeld(p, raw, contexts, Action::MainRight)};
+  const int direction = sTaps.Update(held, nowMs);
+  if (direction >= 0 && gameOwnsInput && PortOverlay::DoubleTapDash()) PortTouch::RequestDash(direction);
+}
+
 SPoll Poll(unsigned mouseHeld, bool focused) {
   static Profile sProfile;
   static PortInput::Runtime sRuntime;
@@ -1342,6 +1370,8 @@ SPoll Poll(unsigned mouseHeld, bool focused) {
     RouteDirectActions(out, nowMs / 1000.0);
     r.status = Synthesize(out);
   }
+  RouteDoubleTapDash(sProfile, raw, contexts, nowMs,
+                     !PortInputRemap::Capturing() && !PortOverlay::Visible());
   // Aurora's extended buttons, which have no engine action (nothing in the game reads them).
   static constexpr std::pair<SDL_GamepadButton, PADExtButton> kExt[] = {
       {SDL_GAMEPAD_BUTTON_BACK, PAD_BUTTON_BACK},

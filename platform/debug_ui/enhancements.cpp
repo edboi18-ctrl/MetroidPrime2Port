@@ -25,6 +25,18 @@ void DrawEnhancementsTab() {
   ImGui::SeparatorText("Ammo");
   Changed(ImGui::Checkbox("Infinite Light and Dark Ammo", &sInfiniteBeamAmmo));
 
+  ImGui::SeparatorText("Weapons");
+  int powerBeamSpeed = sPowerBeamSpeed;
+  if (ImGui::SliderInt("Power Beam speed", &powerBeamSpeed, PortOverlay::kPowerBeamSpeedMin,
+                       PortOverlay::kPowerBeamSpeedMax, "%d%% of retail", ImGuiSliderFlags_AlwaysClamp)) {
+    sPowerBeamSpeed = std::clamp(powerBeamSpeed, PortOverlay::kPowerBeamSpeedMin,
+                                 PortOverlay::kPowerBeamSpeedMax);
+    Changed(true);
+  }
+  ItemHelp("How fast Power Beam shots fly, plain and charged. They reach as far as before: a shot "
+           "that fades out after a distance fades out at the same distance, sooner. Lock-on leads "
+           "its target for the new speed. The other beams, missiles and combos are unchanged.");
+
   ImGui::SeparatorText("Pace");
   // The game reads this every frame in its cinematic flow state.
   Changed(ImGui::Checkbox("Skippable cutscenes", &sSkipCinematics));

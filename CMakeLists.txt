@@ -875,6 +875,21 @@ if(AURORA_SDL3_TARGET)
     target_include_directories(port_hold_toggle_tests PRIVATE platform/include)
     add_test(NAME port_hold_toggle_tests COMMAND port_hold_toggle_tests)
     set_tests_properties(port_hold_toggle_tests PROPERTIES TIMEOUT 30 LABELS port)
+    # Header-only (port_gun_sway.h, port_double_tap.h): gun sway's lean and the double-tap dash's
+    # detector (MP1 dead-space-prime's tests).
+    add_executable(port_gun_sway_tests tests/port_gun_sway.cpp)
+    target_include_directories(port_gun_sway_tests PRIVATE platform/include)
+    add_test(NAME port_gun_sway_tests COMMAND port_gun_sway_tests)
+    set_tests_properties(port_gun_sway_tests PROPERTIES TIMEOUT 30 LABELS port)
+    add_executable(port_double_tap_tests tests/port_double_tap.cpp)
+    target_include_directories(port_double_tap_tests PRIVATE platform/include)
+    add_test(NAME port_double_tap_tests COMMAND port_double_tap_tests)
+    set_tests_properties(port_double_tap_tests PROPERTIES TIMEOUT 30 LABELS port)
+    # Header-only (port_shot_speed.h): Power Beam speed's lifetime for the same reach.
+    add_executable(port_shot_speed_tests tests/port_shot_speed.cpp)
+    target_include_directories(port_shot_speed_tests PRIVATE platform/include)
+    add_test(NAME port_shot_speed_tests COMMAND port_shot_speed_tests)
+    set_tests_properties(port_shot_speed_tests PROPERTIES TIMEOUT 30 LABELS port)
 
     # Header-only (port_input_pad.h): the MP2_INPUT `pN.` prefix parser.
     add_executable(port_input_pad_tests tests/port_input_pad.cpp)

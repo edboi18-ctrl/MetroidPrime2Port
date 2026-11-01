@@ -146,7 +146,13 @@ public:
   void PortAimShotAtPointer(CTransform4f& xf) const;
   // Lock-on free aim: a shot aimed off the combat lock's centre does not home on the lock.
   bool PortShotOffLock(CStateManager& mgr) const;
+  // The target a homing shot goes for: the lock (GetTargetId), none for a shot off it, and under
+  // manual aim with nothing locked, PortSeekTargetId.
   TUniqueId PortHomingTargetId(CStateManager& mgr);
+  // Manual aim (PortOverlay::ManualAim, MP1 dead-space-prime 16776192a): what a shot that homes
+  // in on a lock-on seeks instead: the lockable thing nearest the crosshair by angle, within
+  // kSeekAngle and kSeekRange, in sight, alive, and not a grapple point. kInvalidUniqueId if none.
+  TUniqueId PortSeekTargetId(CStateManager& mgr) const;
 #endif
   int GetBombsAvailable(CStateManager& mgr) const;
   TUniqueId DropPowerBomb(CStateManager& mgr) const;

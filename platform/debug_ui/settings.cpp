@@ -199,6 +199,8 @@ const SettingKey kSettingKeys[] = {
     BoolKey< &sMapSwapFingers >("map_swap_fingers"),
     BoolKey< &sMapInvertX >("map_invert_x"),
     BoolKey< &sMapInvertY >("map_invert_y"),
+    IntKey< &sPowerBeamSpeed, PortOverlay::kPowerBeamSpeedMin, PortOverlay::kPowerBeamSpeedMax >(
+        "power_beam_speed", "100", "150"),
     IntKey< &sWalkSpeed, PortOverlay::kWalkSpeedMin, PortOverlay::kWalkSpeedMax >("walk_speed", "50",
                                                                                   "200"),
     IntKey< &sScanSpeed, PortOverlay::kScanSpeedMin, PortOverlay::kScanSpeedMax >("scan_speed", "50",
@@ -263,6 +265,11 @@ const SettingKey kSettingKeys[] = {
     BoolKey< &sStickyCharge >("sticky_charge"),
     BoolKey< &sRapidCharge >("rapid_charge"),
     BoolKey< &sAutoAim >("auto_aim"),
+    BoolKey< &sManualAim >("manual_aim"),
+    BoolKey< &sDoubleTapDash >("double_tap_dash"),
+    IntKey< &sDashSpeed, PortOverlay::kDashSpeedMin, PortOverlay::kDashSpeedMax >("dash_speed",
+                                                                                  "75", "150"),
+    FloatKey< &sGunSway, 0, 10 >("gun_sway", "0", "3"),
     BoolKey< &sPointerAim >("pointer_aim"),
     IntKey< &sPointerAimBox, PortOverlay::kPointerAimBoxMin, PortOverlay::kPointerAimBoxMax >(
         "pointer_aim_box", "50", "70"),

@@ -1717,6 +1717,43 @@ void CmdAimLockOn(CStateManager&, const Args& args, std::string& out) {
   out += enabled ? "aim lock-on on\n" : "aim lock-on off\n";
 }
 
+void CmdManualAim(CStateManager&, const Args& args, std::string& out) {
+  const bool enabled = args.size() < 2 ? !PortOverlay::ManualAim() : ArgToInt(args[1], 1) != 0;
+  PortOverlay::SetManualAim(enabled);
+  out += enabled ? "manual aim on\n" : "manual aim off\n";
+}
+
+void CmdDashTap(CStateManager&, const Args& args, std::string& out) {
+  const bool enabled = args.size() < 2 ? !PortOverlay::DoubleTapDash() : ArgToInt(args[1], 1) != 0;
+  PortOverlay::SetDoubleTapDash(enabled);
+  if (args.size() >= 3) {
+    PortOverlay::SetDashSpeed(ArgToInt(args[2], PortOverlay::DashSpeed()));
+  }
+  out += std::string(enabled ? "double-tap dash on" : "double-tap dash off") + ", dash speed " +
+         std::to_string(PortOverlay::DashSpeed()) + "%\n";
+}
+
+void CmdBeamSpeed(CStateManager&, const Args& args, std::string& out) {
+  if (args.size() >= 2) {
+    PortOverlay::SetPowerBeamSpeed(ArgToInt(args[1], PortOverlay::PowerBeamSpeed()));
+  }
+  out += "power beam speed " + std::to_string(PortOverlay::PowerBeamSpeed()) + "%\n";
+}
+
+void CmdGunSway(CStateManager&, const Args& args, std::string& out) {
+  if (args.size() >= 2) {
+    const std::string text = Str(args[1]);
+    char* end = nullptr;
+    const float degrees = std::strtof(text.c_str(), &end);
+    if (end == nullptr || *end != '\0') {
+      out += "usage: gunsway [0..10]\n";
+      return;
+    }
+    PortOverlay::SetGunSway(degrees);
+  }
+  out += "gun sway " + std::to_string(PortOverlay::GunSway()) + " degrees\n";
+}
+
 void CmdSticky(CStateManager&, const Args& args, std::string& out) {
   const bool enabled = args.size() < 2 ? !PortOverlay::StickyCharge() : ArgToInt(args[1], 1) != 0;
   PortOverlay::SetStickyCharge(enabled);
@@ -5134,6 +5171,14 @@ const CommandSpec kCommands[] = {
       "spidertoggle [0|1]         an R press holds the spider ball on its track until the next (spider_toggle)\n"},
     {"aimlockon", CmdAimLockOn,
       "aimlockon [0|1]            lock-on picks the target nearest the crosshair (aim_lock_on)\n"},
+    {"manualaim", CmdManualAim,
+      "manualaim [0|1]            aim by hand: no lock-on outside the Scan Visor, homing seeks the crosshair (manual_aim)\n"},
+    {"dashtap", CmdDashTap,
+      "dashtap [0|1] [75..150]    double-tap a movement key to dash, and its speed in percent (double_tap_dash, dash_speed)\n"},
+    {"beamspeed", CmdBeamSpeed,
+      "beamspeed [100..300]        Power Beam shot speed in percent, same reach; no argument prints it (power_beam_speed)\n"},
+    {"gunsway", CmdGunSway,
+      "gunsway [0..10]            gun sway in degrees, 0 off; no argument prints it (gun_sway)\n"},
     {"sticky", CmdSticky,
       "sticky <0|1>                sticky charge: a long A hold keeps charging after the release\n"},
     {"pointeraim", CmdPointerAim,

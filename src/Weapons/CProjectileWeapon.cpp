@@ -15,6 +15,9 @@
 #include "Weapons/IWeaponRenderer.hpp"
 #include "rstl/math.hpp"
 #include <float.h>
+#ifdef TARGET_PC
+#include "port_shot_speed.h"
+#endif
 
 uint CProjectileWeapon::skGlobalSeed = 99;
 bool CProjectileWeapon::sDisableAlphaUpdates = false;
@@ -825,6 +828,19 @@ float CProjectileWeapon::GetAudibleFallOff() const {
 float CProjectileWeapon::GetMaxTurnRate() const { return mMaxTurnRate; }
 
 void CProjectileWeapon::SetVelocity(const CVector3f& velocity) { mVelocity = velocity; }
+#ifdef TARGET_PC
+
+// The shot moves by mVelocity once a 60 Hz frame while its frame is below mLifetime
+// (UpdatePSTranslationAndOrientation), so `scale` times the speed for 1/scale the frames reaches
+// as far. Homing turns the velocity without changing its length, so the shot stays this fast.
+void CProjectileWeapon::PortScaleSpeed(float scale) {
+  if (!(scale > 0.f) || scale == 1.f) {
+    return;
+  }
+  mVelocity = mVelocity * scale;
+  mLifetime = PortShotSpeed::ScaledLifetime(mLifetime, scale);
+}
+#endif
 
 const CVector3f& CProjectileWeapon::GetVelocity() const { return mVelocity; }
 

@@ -76,6 +76,21 @@ static float sDodgeStrafe = 0.f;
 static CVector3f sDodgeRight = CVector3f(1.f, 0.f, 0.f);
 static CVector3f sDodgeForward = CVector3f(0.f, 1.f, 0.f);
 static bool sDodgeOrbitDash = false;
+
+// The double-tap dash (PortOverlay::DoubleTapDash, MP1 dead-space-prime a10ee2274 83390a3d5).
+// Retail's dash circles a lock-on; this one goes straight whichever way was tapped: a burst from
+// kPortDashStartSpeed easing to kPortDashEndSpeed (metres a second, times PortOverlay::DashSpeed
+// percent) over kPortDashTime, slowed in water and the like as walking is, and never slower than
+// walking. One a jump in the air, kPortDashCooldown between dashes. Single player, so its state is
+// file-scope as the Dodge's is: CPlayer's layout and save-state schema are untouched.
+static const float kPortDashTime = 0.3f;
+static const float kPortDashStartSpeed = 30.f;
+static const float kPortDashEndSpeed = 14.f;
+static const float kPortDashCooldown = 0.35f;
+static CVector3f sPortDashDirection = CVector3f(0.f, 1.f, 0.f); // flat, in the world
+static float sPortDashTime = 0.f; // seconds left of the dash; 0 when not dashing
+static float sPortDashCooldown = 0.f;
+static bool sPortAirDashUsed = false; // one dash a jump
 #endif
 
 CVector3f CPlayer::GetDampedClampedVelocityWR() const {
@@ -408,6 +423,81 @@ CVector3f CPlayer::PortMovementInput(const CFinalInput& input) const {
   const PortMouse::Planar axes = PortMouse::ClampPlanar({strafe, forward}, 1.f);
   return CVector3f(axes.right, axes.forward, 0.f);
 }
+
+void CPlayer::PortStartDash(int direction, CStateManager& mgr) {
+  if (direction < 0 || direction > 3 || sPortDashTime > 0.f || sPortDashCooldown > 0.f ||
+      sDodgePhase != kDodgeNone || mOrbitState != kOS_NoOrbit || mMorphBallState != kMS_Unmorphed ||
+      IsMorphBallTransitioning() || mGrappleState != kGS_None || GetFrozenState() ||
+      !mPlayerState->IsPlayerAlive()) {
+    return;
+  }
+  const bool onGround = mMovementState == NPlayer::kMS_OnGround;
+  if (!onGround && sPortAirDashUsed) {
+    return;
+  }
+  // PortDoubleTap's order: forward, back, left, right; in the body's frame x is right, y forward.
+  static const float kLocal[4][2] = {{0.f, 1.f}, {0.f, -1.f}, {-1.f, 0.f}, {1.f, 0.f}};
+  CVector3f dir = GetTransform().Rotate(CVector3f(kLocal[direction][0], kLocal[direction][1], 0.f));
+  dir.SetZ(0.f);
+  if (!dir.CanBeNormalized()) {
+    return;
+  }
+  sPortDashDirection = dir.AsNormalized();
+  sPortDashTime = kPortDashTime;
+  if (!onGround) {
+    sPortAirDashUsed = true;
+  }
+  // Retail's dash sound and rumble (BeginSidewaysDash).
+  mDashSfx = CSfxManager::SfxStart(
+      mgr.ReturnFirstIfSingleElseSecond(SFXsam_b_sidejump_00_oneshot, SFXsa2_b_sidejump_00_oneshot),
+      127, GetSoundPan(kMSP_4), GetCurrentAreaId().Value(), true, false);
+  CSfxManager::SetIgnoreAreaLowPass(mDashSfx, true);
+  ApplySubmergedPitchBend(mDashSfx);
+  mgr.RumbleManager(GetPlayerIndex())->Rumble(mgr, kRFX_PlayerBump, 0.24375f, kRP_One);
+}
+
+bool CPlayer::PortUpdateDash(float dt) {
+  sPortDashCooldown = CMath::Max(0.f, sPortDashCooldown - dt);
+  if (mMovementState == NPlayer::kMS_OnGround) {
+    sPortAirDashUsed = false;
+  }
+  if (sPortDashTime <= 0.f) {
+    return false;
+  }
+  // A wall, a lock-on, a grapple, morphing, freezing or the setting going off ends it. The wall
+  // flag is the last move's, so on the dash's first tick it is the walk's: a dash away from a wall
+  // Samus was walking into still goes. (MP1's ends there.)
+  const bool dashWall = mHitWallDuringMove && sPortDashTime < kPortDashTime;
+  if (dashWall || mOrbitState != kOS_NoOrbit || mMorphBallState != kMS_Unmorphed ||
+      IsMorphBallTransitioning() || mGrappleState != kGS_None || GetFrozenState() ||
+      !PortOverlay::DoubleTapDash()) {
+    PortEndDash();
+    return false;
+  }
+  const float progress = 1.f - sPortDashTime / kPortDashTime;
+  const float normalMax = GetTweakPlayer()->GetPlayerTranslationMaxSpeed(kSR_Normal);
+  const float surfaceMax = GetTweakPlayer()->GetPlayerTranslationMaxSpeed(GetSurfaceRestraint());
+  const float surface = normalMax > 0.f ? CMath::Clamp(0.f, surfaceMax / normalMax, 1.f) : 1.f;
+  // Walking's top speed on this surface at 60 Hz (walk_speed included), which the force law
+  // holds at any tick rate.
+  const float walkSpeed = GetActualFirstPersonMaxVelocity(1.f / 60.f);
+  const float scale = static_cast< float >(PortOverlay::DashSpeed()) / 100.f;
+  const float eased = kPortDashStartSpeed + (kPortDashEndSpeed - kPortDashStartSpeed) * progress;
+  const float speed = CMath::Max(walkSpeed, surface * scale * eased);
+  SetVelocityWR(CVector3f(sPortDashDirection.GetX() * speed, sPortDashDirection.GetY() * speed,
+                          GetVelocityWR().GetZ()));
+  sPortDashTime -= dt;
+  if (sPortDashTime <= 0.f) {
+    PortEndDash();
+  }
+  return true;
+}
+
+void CPlayer::PortEndDash() {
+  sPortDashTime = 0.f;
+  sPortDashCooldown = kPortDashCooldown;
+  CSfxManager::RemoveEmitter(mDashSfx);
+}
 #endif
 
 void CPlayer::ComputeMovement(const CFinalInput& input, CStateManager& mgr, float dt) {
@@ -417,7 +507,7 @@ void CPlayer::ComputeMovement(const CFinalInput& input, CStateManager& mgr, floa
   bool dodgePressed = false;
   sDodgeOrbitDash = false;
   const bool lockedOn = mOrbitState == kOS_OrbitObject;
-  if (sDodgePhase == kDodgeNone && (mOrbitState == kOS_NoOrbit || lockedOn) &&
+  if (sDodgePhase == kDodgeNone && sPortDashTime <= 0.f && (mOrbitState == kOS_NoOrbit || lockedOn) &&
       mMovementState == NPlayer::kMS_OnGround && !IsMorphBallTransitioning() &&
       GetTweakPlayer()->GetDashEnabled() && !mSlidingOnWall && !mHitWallDuringMove) {
     const float strafe = mControlMapper.GetAnalogInput(CControlMapper::kC_StrafeRight, input) -
@@ -619,7 +709,24 @@ void CPlayer::ComputeMovement(const CFinalInput& input, CStateManager& mgr, floa
     strafeForce = 0.f;
   }
 #ifdef TARGET_PC
-  if (sDodgePhase == kDodgeDash) {
+  // The double-tap dash: a request from a double-tapped movement key starts it, and it carries
+  // Samus itself while it lasts; jumping and turning still work. Single player (the keyboard is
+  // player 1's).
+  bool portDashing = false;
+  if (GetPlayerIndex() == 0 && !mgr.IsMultiplayer()) {
+    const int portDash = PortTouch::TakeDashRequest();
+    if (portDash >= 0) {
+      PortStartDash(portDash, mgr);
+    }
+    portDashing = PortUpdateDash(dt);
+  }
+  if (portDashing) {
+    ApplyForceOR(CVector3f(0.f, 0.f, jumpInput), CAxisAngle::Identity());
+    if (turnInput != 0.f) {
+      ApplyForceOR(CVector3f::Zero(),
+                   CAxisAngle(CUnitVector3f(0.f, 0.f, 1.f, CUnitVector3f::kN_Yes), turnInput));
+    }
+  } else if (sDodgePhase == kDodgeDash) {
     // ComputeDash's speeds along the captured axes: the walk strafe speed on its
     // first tick, then the dash speed blended down to it.
     const ESurfaceRestraints restraint = GetSurfaceRestraint();

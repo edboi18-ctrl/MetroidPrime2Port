@@ -109,6 +109,8 @@
 #include "port_overlay.h"
 #include "port_photo.h"
 #include "port_touch.h"
+#include "port_gun_sway.h"
+#include "Kyoto/Math/CQuaternion.hpp"
 #endif
 
 // NonMatching structure pass; incomplete behavior is explicit below.
@@ -990,6 +992,50 @@ CVector3f CPlayer::PortAnchorGunDown(const CVector3f& pos) const {
   const float kBarrelDepth = 3.f;
   return depth > 0.f ? pos - camXf.GetColumn(kDZ) * (drop * depth * kBarrelDepth) : pos;
 }
+
+// Gun sway's state, one per player (split screen has up to four). File-scope, as the Dodge's is
+// (CPlayerDynamics.cpp), so CPlayer's layout and its save-state schema stay as they are. A lean
+// carried over a state load or a new CPlayer settles by itself: the first tick's jump in view is
+// over kCutAngle, or the view isn't first person and the state resets.
+static PortGunSway::State sPortGunSway[4];
+
+static PortGunSway::State& PortGunSwayFor(int playerIndex) {
+  return sPortGunSway[playerIndex >= 0 && playerIndex < 4 ? playerIndex : 0];
+}
+
+// Follows the first-person view's turn each tick, and straightens whenever the gun isn't Samus's
+// own first-person view (morph ball, a cinematic, another camera) or pointer aim turns the gun
+// itself, so it starts afresh from the next view.
+void CPlayer::PortUpdateGunSway(float dt, CStateManager& mgr) {
+  PortGunSway::State& sway = PortGunSwayFor(GetPlayerIndex());
+  const float maxRadians = PortOverlay::GunSway() * (M_PIF / 180.f);
+  float pointerX = 0.f;
+  float pointerY = 0.f;
+  if (maxRadians <= 0.f || mMorphBallState != kMS_Unmorphed ||
+      GetCameraState() != kCS_FirstPerson || mCameraManager == nullptr ||
+      !mCameraManager->IsInFPCamera() || mCameraManager->IsInCinematicCamera() ||
+      PortMouse::PointerAimPosition(pointerX, pointerY)) {
+    sway.Reset();
+    return;
+  }
+  const CVector3f forward = mCameraManager->GetFirstPersonCamera()->GetTransform().GetColumn(kDY);
+  sway.Update(forward.GetX(), forward.GetY(), forward.GetZ(), dt, maxRadians);
+}
+
+CTransform4f CPlayer::PortGunLean(const CTransform4f& camXf) const {
+  const PortGunSway::State& sway = PortGunSwayFor(GetPlayerIndex());
+  if (sway.Yaw() == 0.f && sway.Pitch() == 0.f) {
+    return CTransform4f::Identity();
+  }
+  // Yaw about the view's up axis (positive turns forward toward the left), then pitch about its
+  // right axis (positive turns forward up); the product applies the pitch first.
+  const CQuaternion lean =
+      CQuaternion::AxisAngle(CUnitVector3f(camXf.GetColumn(kDZ), CUnitVector3f::kN_Yes),
+                             CRelAngle::FromRadians(sway.Yaw())) *
+      CQuaternion::AxisAngle(CUnitVector3f(camXf.GetColumn(kDX), CUnitVector3f::kN_Yes),
+                             CRelAngle::FromRadians(sway.Pitch()));
+  return lean.BuildTransform4f();
+}
 #endif
 
 void CPlayer::UpdateGunTransform(const CVector3f& position, CStateManager& mgr) {
@@ -1077,6 +1123,20 @@ void CPlayer::UpdateGunTransform(const CVector3f& position, CStateManager& mgr) 
     UpdateAimPrediction(aimXf, mgr);
     mGun->SetAssistAimTransform(aimXf);
     return;
+  }
+  // Gun sway leans the gun about its own origin, and its aim with it (aimTransform below is the
+  // gun's), so shots follow the crosshair, which leans the same way (CCompoundTargetReticle). The
+  // rotation the holster tilts from leans too, so a gun being drawn or put away leans alike.
+  {
+    const PortGunSway::State& sway = PortGunSwayFor(GetPlayerIndex());
+    if (sway.Yaw() != 0.f || sway.Pitch() != 0.f) {
+      const CTransform4f lean = PortGunLean(cameraTransform);
+      gunTransform = lean * gunTransform.GetRotation();
+      gunTransform.SetTranslation(gunPosition);
+      const CVector3f cameraPosition = cameraTransform.GetTranslation();
+      cameraTransform = lean * cameraTransform.GetRotation();
+      cameraTransform.SetTranslation(cameraPosition);
+    }
   }
 #endif
   mGun->UpdateTransform(mgr, gunPosition, cameraTransform, gunTransform);
@@ -4278,6 +4338,9 @@ void CPlayer::PostUpdate(float dt, CStateManager& mgr) {
   mPlayerHintManager->Update(dt, mgr);
   mControlHintManager->Update(dt, mgr);
   UpdateCameraState(mgr);
+#ifdef TARGET_PC
+  PortUpdateGunSway(dt, mgr);
+#endif
   UpdateArmAndGunTransforms(dt, mgr);
   if (mGun->GrappleArm() && mGrappleState == kGS_Swinging) {
     mGun->GrappleArm()->SetSwingT(mGrappleSwingTimer / GetTweakPlayer()->GetGrappleSwingPeriod());

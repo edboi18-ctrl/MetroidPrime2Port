@@ -637,6 +637,22 @@ bool TakeDodgeRequest() {
   return SDL_GetTicksNS() < until && !PortOverlay::OriginalExperience();
 }
 
+// The double-tap dash's request, kept as the Dodge's is: the direction and until when it holds.
+std::atomic< int > sDashRequestDirection{-1};
+std::atomic< uint64_t > sDashRequestUntilNs{0};
+
+void RequestDash(int direction) {
+  if (direction < 0 || direction > 3) return;
+  sDashRequestDirection.store(direction);
+  sDashRequestUntilNs.store(SDL_GetTicksNS() + 120'000'000);
+}
+
+int TakeDashRequest() {
+  const uint64_t until = sDashRequestUntilNs.exchange(0);
+  const int direction = sDashRequestDirection.exchange(-1);
+  return until != 0 && SDL_GetTicksNS() < until && PortOverlay::DoubleTapDash() ? direction : -1;
+}
+
 bool AimEnabled() { return Read(&Settings::aim); }
 
 float AimSpeed() { return Read(&Settings::aimSpeed); }
