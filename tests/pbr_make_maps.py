@@ -287,6 +287,21 @@ class Settings(unittest.TestCase):
                                   "tex1_64x64_0123456789abcdef_14.dds")  # by the manifest name
         self.assertEqual(preset, "glass")
 
+    def test_reflective_lowers_roughness(self):
+        self.assertEqual([mm.reflective_fraction(x) for x in ("5/5", "1/4", "", "0/0", "x")],
+                         [1.0, 0.25, 0.0, 0.0, 0.0])
+        settings = mm.default_settings()
+        rel = mm.rel_path("Temple Grounds/tex1_8x8_m_0123456789abcdef_14.dds")
+        stone, shiny = mm.PRESETS["stone"]["roughness"], mm.PRESETS["stone"]["reflective_roughness"]
+        self.assertEqual(mm.params_for(settings, rel, "", 1.0)[1]["roughness"], shiny)
+        self.assertAlmostEqual(mm.params_for(settings, rel, "", 0.5)[1]["roughness"], (stone + shiny) / 2)
+        self.assertEqual(mm.params_for(settings, rel, "", 0.0)[1]["roughness"], stone)
+        suit = mm.rel_path("Samus/x.dds")  # already shinier than the reflective value: unchanged
+        self.assertEqual(mm.params_for(settings, suit, "", 1.0)[1]["roughness"], mm.PRESETS["suit"]["roughness"])
+        warnings = []
+        settings = mm.merge_settings(settings, {"textures": {rel.name: {"roughness": 0.7}}}, warnings)
+        self.assertEqual(mm.params_for(settings, rel, "", 1.0)[1]["roughness"], 0.7)  # a texture's own wins
+
     def test_written_settings_read_back(self):
         with tempfile.TemporaryDirectory() as d:
             path = pathlib.Path(d, "s.json")

@@ -92,7 +92,10 @@ is checked against that reader's formats. An atlas's empty ground (black, white 
 from the pieces' edges before the height is taken (`fill_empty`), so no bevel lands on the model's
 seams. `pbr_settings.json` in the current folder is read without `--settings`. The disc scan marks sky
 models (each MLVL's default sky, and `overrideSky` of the areas' AreaAttributes, `REAA`), and the
-report gives their textures the role `sky`, never a candidate. Needs numpy and Pillow; texconv
+report gives their textures the role `sky`, never a candidate. The report also counts, per diffuse texture, the
+materials that add a reflection layer (`reflective`) or a glow layer (`glow_layer`); the generator lowers
+a reflective texture's roughness towards `reflective_roughness` (0.35) in that proportion (Phazon, for
+one, is lit, with its glow and reflection added on top), unless the texture's own setting gives one. Needs numpy and Pillow; texconv
 (DirectXTex) compresses, else RGBA8 DDS. The port's loader skips `_nrm`/`_orm` names, so the folder can
 sit in `user_textures`; nothing draws them until step 3. Tests: `tests/pbr_make_maps.py`.
 

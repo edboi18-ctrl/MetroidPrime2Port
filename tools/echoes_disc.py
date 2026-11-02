@@ -63,13 +63,20 @@ class CisoFile:
             n = n - take if n > 0 else n
         return bytes(out)
 
+    def close(self):
+        self.f.close()
+
 
 def open_disc(path):
     """The disc at `path` as a file object: a plain ISO/GCM, or a CISO read through CisoFile."""
     f = open(path, "rb")
     if f.read(4) == b"CISO":
         f.seek(0)
-        return CisoFile(f)
+        try:
+            return CisoFile(f)
+        except ValueError:
+            f.close()
+            raise
     f.seek(0)
     return f
 

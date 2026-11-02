@@ -87,6 +87,27 @@ class Roles(unittest.TestCase):
         self.assertEqual(tr.classify(record("t", 2, stages, flags=tr.FLAG_INDIRECT)), "indirect")
 
 
+class Layers(unittest.TestCase):
+    def test_reflective_and_glow_columns(self):
+        # Phazon's material (CMDL 0x105600E8): lit diffuse, a glow added, a reflection added.
+        glow = stage(1, 1, (ZERO, TEXC, KONST, CPREV))
+        shine = stage(2, 2, (ZERO, TEXC, KONST, CPREV))
+        texgens = (texgen(TEX0), texgen(TEX0), texgen(tr.TG_NRM))
+        phazon = [DIFFUSE, glow, shine]
+        a, b, c, d = ("tex1_8x8_00000000000000%02x_14.dds" % i for i in (1, 2, 3, 4))
+        records = [record(a, 0, phazon, texgens, src="CMDL 1"), record(b, 1, phazon, texgens, src="CMDL 1"),
+                   record(c, 2, phazon, texgens, src="CMDL 1"),
+                   record(a, 0, [DIFFUSE], src="area 1"),  # the same texture, plain, elsewhere
+                   record(d, 0, [DIFFUSE], src="area 1", )]
+        records[-1]["mat"] = 1  # another material of the same source: not shiny
+        rows = {r["name"]: r for r in tr.build_report(records, {})}
+        self.assertEqual((rows[a]["reflective"], rows[a]["glow_layer"]), ("1/2", "1/2"))
+        self.assertEqual((rows[d]["reflective"], rows[d]["glow_layer"]), ("", ""))
+        self.assertEqual((rows[b]["roles"], rows[c]["roles"]), ("glow", "reflection"))
+        line = tr.summary(rows.values(), {}, 0, 0).splitlines()[2]
+        self.assertIn("with a reflection layer (made shinier) 0", line)  # nothing is in a pack here
+
+
 class WholeRun(unittest.TestCase):
     def test_report(self):
         wall = "tex1_64x64_00000000000000aa_14.dds"

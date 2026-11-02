@@ -31,6 +31,9 @@ Each map is made at --scale times the pack file's size (default 0.5, never below
   occlusion  1 - `occlusion` x how far the height sits below its surroundings (`ao_radius` texels).
              Kept light: the pack's art and the game's lightmaps already carry shading.
   roughness  `roughness`, rougher in hollows and smoother on ridges by up to `roughness_var`.
+             Where the report's `reflective` column says the texture's materials have a reflection
+             layer (the artists made it shiny, e.g. Phazon), it is lowered towards
+             `reflective_roughness` in that proportion, unless a texture's own setting gives one.
   metal      `metal`, scaled down in hollows (dirt isn't metal).
 A texture takes its preset from its pack folder (Temple Grounds stone, Agon Wastes rock, Torvus Bog
 wet stone, Sanctuary Fortress metal, Enemies creature, Samus suit, any other folder default).
@@ -73,7 +76,7 @@ except ImportError:  # main() reports it, so --help and --write-settings work wi
     np = None
     Image = None
 
-TOOL_VERSION = 3
+TOOL_VERSION = 4
 INDEX_NAME = "pbr_maps.json"
 SETTINGS_NAME = "pbr_settings.json"  # read from the current folder when --settings isn't given
 
@@ -84,7 +87,7 @@ SETTINGS_NAME = "pbr_settings.json"  # read from the current folder when --setti
 # 0-1; occlusion: darkening per unit of hollow; blur, relief and ao_radius: original texels;
 # max_tilt: degrees (0 is no cap); chroma: height taken off per unit of colourfulness.
 _COMMON = {"blur": 0.5, "relief": 8.0, "ao_radius": 2.0, "invert": False, "max_tilt": 30.0,
-           "chroma": 0.0, "fill_empty": True}
+           "chroma": 0.0, "fill_empty": True, "reflective_roughness": 0.35}
 BOOL_KEYS = ("invert", "fill_empty")
 EMPTY_LEVEL = 8.0 / 255.0  # an atlas's empty space: black or white to within this, or transparent
 PRESETS = {
@@ -171,8 +174,18 @@ def merge_settings(base, extra, warnings):
     return out
 
 
-def params_for(settings, rel, manifest_name):
-    """(preset name, parameters) for the pack file at `rel` (relative to the pack root)."""
+def reflective_fraction(text):
+    """The report's `reflective` column ("uses with a reflection layer / diffuse uses") as 0-1."""
+    try:
+        done, total = (int(x) for x in text.split("/"))
+        return min(1.0, max(0.0, done / total)) if total > 0 else 0.0
+    except (AttributeError, ValueError):
+        return 0.0
+
+
+def params_for(settings, rel, manifest_name, reflective=0.0):
+    """(preset name, parameters) for the pack file at `rel` (relative to the pack root);
+    `reflective` (0-1) is how many of its materials have a reflection layer."""
     folders = {k.lower(): v for k, v in settings["folders"].items()}
     folder = rel.parts[0].lower() if len(rel.parts) > 1 else ""
     textures = settings["textures"]
@@ -183,6 +196,9 @@ def params_for(settings, rel, manifest_name):
     params = dict(PRESETS["default"])
     params.update(settings["presets"][preset])
     params.update({k: v for k, v in override.items() if k != "preset"})
+    if reflective > 0.0 and "roughness" not in override:
+        shiny = min(params["roughness"], params["reflective_roughness"])
+        params["roughness"] = round(params["roughness"] + (shiny - params["roughness"]) * reflective, 4)
     return preset, params
 
 
@@ -578,7 +594,8 @@ def build_jobs(rows, pack, out, settings, args, texconv, index):
         if not source.is_file():
             missing.append(str(rel))
             continue
-        preset, params = params_for(settings, rel, row.get("name", ""))
+        preset, params = params_for(settings, rel, row.get("name", ""),
+                                    reflective_fraction(row.get("reflective", "")))
         stem = rel.name.rsplit(".", 1)[0]
         folder = out.joinpath(*rel.parts[:-1])
         job = {

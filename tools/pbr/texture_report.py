@@ -22,7 +22,9 @@ Roles, from how the material's TEV stages use the texture's texmap (GX: out = d 
   indirect    the material's indirect (warp) texture
   unused      bound but read by no stage
 These are heuristics over the raw facts the manifest keeps, so they can change without rebuilding
-the game. A texture used several ways lists every role. Python 3.8+, standard library only.
+the game. For a diffuse texture the CSV also counts the materials that give it a reflection layer
+(`reflective`: the artists made it shiny; make_pbr_maps.py lowers its roughness) and a glow layer
+(`glow_layer`: added light, the surface's emissive for the renderer), as "uses with / diffuse uses". A texture used several ways lists every role. Python 3.8+, standard library only.
 """
 
 import argparse
@@ -172,17 +174,32 @@ def read_manifest(path):
     return records, bad
 
 
+def material_roles(records):
+    """{(source, material index): set of its textures' roles}: a material's records share both."""
+    roles = collections.defaultdict(set)
+    for record in records:
+        roles[(record.get("src", ""), record.get("mat", 0))].add(classify(record))
+    return roles
+
+
 def build_report(records, index):
     """One row per texture: its roles, uses, sources and pack file."""
     textures = {}
+    by_material = material_roles(records)
     for record in records:
         key = parse_name(record["name"])
         if key is None:
             continue
         entry = textures.setdefault(record["name"], {
             "key": key, "roles": collections.Counter(), "sources": set(), "uses": 0,
-            "additive": False, "alpha_test": False})
-        entry["roles"][classify(record)] += 1
+            "additive": False, "alpha_test": False, "diffuse_uses": 0, "reflective": 0, "glow": 0})
+        role = classify(record)
+        entry["roles"][role] += 1
+        if role == "diffuse":
+            others = by_material[(record.get("src", ""), record.get("mat", 0))]
+            entry["diffuse_uses"] += 1
+            entry["reflective"] += "reflection" in others
+            entry["glow"] += "glow" in others
         entry["sources"].add(record.get("src", ""))
         entry["uses"] += 1
         entry["additive"] |= (record.get("blend", 0) >> 16) == BL_ONE
@@ -204,6 +221,8 @@ def build_report(records, index):
             "uses": e["uses"],
             "additive": "yes" if e["additive"] else "",
             "alpha_test": "yes" if e["alpha_test"] else "",
+            "reflective": "%d/%d" % (e["reflective"], e["diffuse_uses"]) if e["reflective"] else "",
+            "glow_layer": "%d/%d" % (e["glow"], e["diffuse_uses"]) if e["glow"] else "",
             "sources": "; ".join(sorted(s for s in e["sources"] if s)[:5]),
             "_pack_key": pack_key,
         })
@@ -211,7 +230,7 @@ def build_report(records, index):
 
 
 FIELDS = ["pbr_candidate", "roles", "name", "pack_file", "category", "width", "height", "format",
-          "uses", "additive", "alpha_test", "sources"]
+          "uses", "additive", "alpha_test", "reflective", "glow_layer", "sources"]
 
 
 def write_csv(rows, path):
@@ -229,8 +248,11 @@ def summary(rows, index, bad_lines, skipped_files):
                f" ({len(rows) - len(in_pack)} the pack doesn't replace).")
     roles = collections.Counter(r["roles"] for r in rows)
     out.append("Roles: " + ", ".join(f"{role} {n}" for role, n in roles.most_common()))
+    candidates = [r for r in rows if r["pbr_candidate"] == "yes"]
     out.append(f"PBR candidates (diffuse only, not additive, not in an HUD/FX folder, in the pack): "
-               f"{sum(r['pbr_candidate'] == 'yes' for r in rows)}")
+               f"{len(candidates)}; with a reflection layer (made shinier) "
+               f"{sum(1 for r in candidates if r['reflective'])}, with a glow layer "
+               f"{sum(1 for r in candidates if r['glow_layer'])}")
     by_category = collections.Counter(r["category"] or "(root)" for r in in_pack)
     if by_category:
         out.append("Seen, by pack folder: " +

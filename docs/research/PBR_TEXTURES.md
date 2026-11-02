@@ -171,6 +171,16 @@ draws; presets and per-texture overrides go in a JSON sidecar that the batch re-
   lightning texture on five models is plain diffuse; if its materials never read the lit colour,
   Aurora's PBR (which needs channel 0 sampled: `sampledColorChannels.test(0)`) can't apply to it,
   which the manifest's TEV stages can tell.
+- **The disc's materials, from that scan's manifest (39,624 records).** Every lightmapped area material
+  (29,393) reads the lit colour on channel 0, so Aurora's PBR condition holds for the world geometry
+  and step 3 can hook it as planned; 2% of area records and 7% of model records don't (fullbright
+  draws), and none of the 1,220 candidates is among them. The blue texture is Phazon (CMDL
+  0x105600E8 and four more): stage 0 lit diffuse (RASC x TEXC), stage 1 a glow added (CPREV + TEXC),
+  stages 2-3 a masked reflection added: lit, with its own light from the glow layer, which step 3
+  takes as the emissive. 331 candidates have a reflection layer in some or all of their materials
+  (the artists made them shiny) and 431 a glow layer; the report now counts both per texture and the
+  generator lowers roughness for the reflective ones. Rebuilt from this manifest, the report's
+  candidate decisions are unchanged.
 
 ## Risks
 

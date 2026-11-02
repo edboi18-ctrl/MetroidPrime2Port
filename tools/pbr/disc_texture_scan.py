@@ -470,9 +470,12 @@ def disc_problem(path):
                 "right-click the game > Convert File... > Format: ISO" % kind)
     try:
         disc = ed.open_disc(path)
-        head = disc.read(0x20)
     except ValueError as e:
         return str(e)
+    try:
+        head = disc.read(0x20)
+    finally:
+        disc.close()
     if len(head) < 0x20:
         return "the file is too short to be a disc image"
     if struct.unpack_from(">I", head, 0x18)[0] == WII_MAGIC:

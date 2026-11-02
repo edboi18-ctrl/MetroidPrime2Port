@@ -341,8 +341,11 @@ class DiscImages(unittest.TestCase):
                        (len(self.plain) - 10, 10), (0x2000, 0x900)):
             disc.seek(pos)
             self.assertEqual(disc.read(n), self.plain[pos:pos + n], (pos, n))
+        disc.close()
         # Both images list the same files with the same bytes.
         plain_iso, ciso_iso = ed.Iso(str(self.dir / "g.iso")), ed.Iso(str(self.dir / "g.ciso"))
+        self.addCleanup(plain_iso.f.close)
+        self.addCleanup(ciso_iso.f.close)
         self.assertEqual(plain_iso.files, ciso_iso.files)
         for name, data in self.files.items():
             self.assertEqual(ciso_iso.read(name), data)
