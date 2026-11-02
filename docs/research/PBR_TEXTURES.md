@@ -193,6 +193,14 @@ draws; presets and per-texture overrides go in a JSON sidecar that the batch re-
   being painted art: its material's base is 406a679e, a candidate with that mask), and 8 Samus suit
   textures whose mask use had read as a glow join. The roughness drop is weighted by the masks' mean
   brightness.
+- **Step 3 must keep the added layers (2026-11-02).** The lava rock's base (406a679e) is plain grey
+  stone with dark cracks; the orange in its cracks comes from the reflection layer, scaled by the
+  coloured mask (042ffe03) in C2. Aurora's PBR replaces the TEV colour result outright (`pbr_func`:
+  "replaces the TEV colour result with a metal/roughness evaluation of texture maps 0-3"), so a plain
+  switch would drop every added layer: that shimmer, Phazon's glow, every masked reflection (232
+  candidates have one, 397 a glow layer). The renderer has to light the base with PBR and then add
+  the material's later stages (glow, masked reflection) on top, or carry them as the emissive, rather
+  than replacing the whole result.
 
 ## Risks
 
