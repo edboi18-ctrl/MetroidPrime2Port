@@ -188,6 +188,16 @@ jobs:
           jobs: "-j"
           build-args: "'--' -k 0"
 
+      # Aurora's shader generator checks for the port's surface PBR (GXPortSetSurfacePBR,
+      # extern/aurora/tests/gx_surface_pbr_test.cpp): strings only, no GPU. gfx_recording_tests
+      # is outside the main build, so it is built here.
+      - name: Surface PBR shader tests
+        shell: pwsh
+        run: |
+          cmake --build build-win --target gfx_recording_tests -j
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./build-win/extern/aurora/tests/gfx_recording_tests --gtest_brief=1 --gtest_filter='GxSurfacePbr.*'
+
       # The settings self-test hangs on Windows before printing anything: give
       # every thread's stack of a run that is still alive after 15 s.
       - name: Stack of a hung settings self-test
