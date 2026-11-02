@@ -163,6 +163,14 @@ draws; presets and per-texture overrides go in a JSON sidecar that the batch re-
   textures out; an enemy atlas's pieces rose from their black ground with a bevel on the model's
   seams, so empty atlas space is filled (push-pull) before the height is taken; and a settings
   file is now read from the current folder, as the lava override had not been passed.
+- **Second run (2026-11-02, the same disc and pack).** The scan found 14 sky models; 90 textures
+  are sky (84 only, 6 shared), and all ten wide Temple Grounds panoramas left the candidates (1,231
+  to 1,220, with a Sanctuary texture both a sky and a room use). The 68 wide candidates left are
+  mostly trims used by rooms. The new previews showed the lava override and the atlas fill working,
+  and a Temple Grounds atlas on white ground, so white ground is now empty space too. Open: a blue
+  lightning texture on five models is plain diffuse; if its materials never read the lit colour,
+  Aurora's PBR (which needs channel 0 sampled: `sampledColorChannels.test(0)`) can't apply to it,
+  which the manifest's TEV stages can tell.
 
 ## Risks
 

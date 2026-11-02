@@ -88,7 +88,7 @@ to tune them, or single textures by name); maps at half the pack's size by defau
 light roughly as Aurora's PBR shader gives it without a reflection probe); `--limit` and `--only` try
 a few first; a rerun remakes only what changed (`pbr_maps.json`). texconv runs with `-dx10` (without it
 BC5 comes out as the legacy FourCC `BC5U`, which Aurora's DDS reader refuses), and every file it writes
-is checked against that reader's formats. An atlas's empty ground (black or transparent) is filled
+is checked against that reader's formats. An atlas's empty ground (black, white or transparent) is filled
 from the pieces' edges before the height is taken (`fill_empty`), so no bevel lands on the model's
 seams. `pbr_settings.json` in the current folder is read without `--settings`. The disc scan marks sky
 models (each MLVL's default sky, and `overrideSky` of the areas' AreaAttributes, `REAA`), and the

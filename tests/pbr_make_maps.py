@@ -170,6 +170,10 @@ class EmptySpace(unittest.TestCase):
         self.assertTrue(mask[:, :19].all() and not mask[:, 21:].any())
         flat = np.full((64, 64, 3), 0.5, np.float32)
         self.assertIsNone(mm.empty_space(flat, None, 2.0))
+        white = 1.0 - self.atlas()  # a piece on white ground counts the same
+        white[16:48, 16:48] = self.atlas()[16:48, 16:48]
+        mask = mm.empty_space(white, None, 2.0)
+        self.assertTrue(mask[0, 0] and mask[15, 30] and not mask[30, 30])
 
     def test_push_pull(self):
         values = np.zeros((16, 16), np.float32)

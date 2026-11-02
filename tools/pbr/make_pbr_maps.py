@@ -23,8 +23,8 @@ Each map is made at --scale times the pack file's size (default 0.5, never below
              light and shade painted across a wall doesn't become a slope. Darker is lower (`invert`
              turns that round), and `chroma` x the colourfulness (max - min of R, G, B) is taken
              off, for art whose bright colour sits low (lava or glow in cracks). The filters wrap at
-             the edges, as a tiling texture does. An atlas's empty ground (black, or transparent,
-             a few texels across) is first filled from the pieces' edges (`fill_empty`), so the
+             the edges, as a tiling texture does. An atlas's empty ground (black, white or
+             transparent, a few texels across) is first filled from the pieces' edges (`fill_empty`), so the
              pieces don't rise from it with a bevel along the model's seams.
   normal     the height's slope per original texel, times `normal`, lowered where needed so that
              the steepest 5% tilt no more than `max_tilt` degrees (a noisy texture stays calm).
@@ -86,7 +86,7 @@ SETTINGS_NAME = "pbr_settings.json"  # read from the current folder when --setti
 _COMMON = {"blur": 0.5, "relief": 8.0, "ao_radius": 2.0, "invert": False, "max_tilt": 30.0,
            "chroma": 0.0, "fill_empty": True}
 BOOL_KEYS = ("invert", "fill_empty")
-EMPTY_LEVEL = 8.0 / 255.0  # an atlas's empty space: black to within this, or transparent
+EMPTY_LEVEL = 8.0 / 255.0  # an atlas's empty space: black or white to within this, or transparent
 PRESETS = {
     "default":   {"normal": 1.0, "roughness": 0.75, "roughness_var": 0.15, "metal": 0.0, "occlusion": 2.0},
     "stone":     {"normal": 1.4, "roughness": 0.85, "roughness_var": 0.10, "metal": 0.0, "occlusion": 2.0},
@@ -199,10 +199,10 @@ def blur_wrap(image, sigma):
 
 
 def empty_space(rgb, alpha, texel_px):
-    """The empty space of an atlas (the black or transparent ground its pieces sit on) as a mask,
-    or None: black (or transparent) areas a few texels across, and the black up to their edges.
-    A thin dark line, such as a groove, is too narrow to count."""
-    empty = rgb.max(axis=-1) < EMPTY_LEVEL
+    """The empty space of an atlas (the black, white or transparent ground its pieces sit on) as a
+    mask, or None: such areas a few texels across, and the same ground up to their edges. A thin
+    line, such as a groove, is too narrow to count."""
+    empty = (rgb.max(axis=-1) < EMPTY_LEVEL) | (rgb.min(axis=-1) > 1.0 - EMPTY_LEVEL)
     if alpha is not None:
         empty |= alpha < 0.5
     if not empty.any():
