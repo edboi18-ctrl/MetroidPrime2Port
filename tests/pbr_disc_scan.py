@@ -343,13 +343,17 @@ class DiscImages(unittest.TestCase):
             self.assertEqual(disc.read(n), self.plain[pos:pos + n], (pos, n))
         disc.close()
         # Both images list the same files with the same bytes.
+        # Closed here, not with addCleanup: cleanups run after tearDown, which deletes the folder,
+        # and Windows can't delete a file that is still open (WinError 32, Windows run 17).
         plain_iso, ciso_iso = ed.Iso(str(self.dir / "g.iso")), ed.Iso(str(self.dir / "g.ciso"))
-        self.addCleanup(plain_iso.f.close)
-        self.addCleanup(ciso_iso.f.close)
-        self.assertEqual(plain_iso.files, ciso_iso.files)
-        for name, data in self.files.items():
-            self.assertEqual(ciso_iso.read(name), data)
-            self.assertEqual(plain_iso.read(name), data)
+        try:
+            self.assertEqual(plain_iso.files, ciso_iso.files)
+            for name, data in self.files.items():
+                self.assertEqual(ciso_iso.read(name), data)
+                self.assertEqual(plain_iso.read(name), data)
+        finally:
+            plain_iso.f.close()
+            ciso_iso.f.close()
 
     def test_disc_problem(self):
         self.assertIsNone(ds.disc_problem(str(self.dir / "g.iso")))
