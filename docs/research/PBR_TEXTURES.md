@@ -213,8 +213,9 @@ draws; presets and per-texture overrides go in a JSON sidecar that the batch re-
   the tangent frame from derivatives as `pbr_func` does, channel 0's lights summed again with the
   mapped normal (GX's attenuation and diffuse function, ambient and material colour) giving `rast'`;
   `L' = max(L - rast0 + rast', 0)` keeps the unlit part (lightmap); diffuse = base (1 - metal) L'
-  ao; per light a GGX lobe (alpha = max(roughness, 0.02)^2, k = alpha/2, Schlick F with F0 = mix(0.04,
-  base, metal)) times the light colour, in linear light; L' reflected as `lin(L') (F0 A + B) ao`
+  ao; per light Karis's GGX lobe ("Real Shading in Unreal Engine 4", SIGGRAPH 2013 notes, eq. 2-4:
+  alpha = max(roughness, 0.02)^2, Schlick-Smith G with k = (roughness + 1)^2 / 8 for analytic lights,
+  Schlick F with F0 = mix(0.04, base, metal)) times pi and the light colour, in linear light; L' reflected as `lin(L') (F0 A + B) ao`
   (Karis's EnvBRDFApprox); out = `gamma(lin(diffuse) + spec + env)`, clamped as the stage clamps.
   Flat normal, occlusion 1, metal 0: the diffuse is the stage's result exactly, plus the lobe and a
   few percent of reflected light. Checked: naga (30.0.1) validates the emitted WGSL for every

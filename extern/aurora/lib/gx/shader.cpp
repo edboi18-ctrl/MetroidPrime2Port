@@ -989,8 +989,11 @@ auto lighting_func(const ShaderConfig& config, const ColorChannelConfig& cc, u8 
 // texture coordinates. Channel 0's lights are summed again as GX sums them (its attenuation and
 // diffuse function, ambient and material colour) with the mapped normal, and replace rast0 in L, so
 // the part of L that isn't lit (the lightmap) is kept; occlusion darkens the diffuse, metal takes it
-// away, and a GGX lobe (alpha = roughness^2 floored at 0.02, k = alpha / 2, Schlick Fresnel) for each
-// light plus L reflected through Karis's split-sum fit (EnvBRDFApprox) are added in linear light.
+// away, and a GGX lobe for each light plus L reflected through Karis's split-sum fit (EnvBRDFApprox)
+// are added in linear light. The lobe is Karis's ("Real Shading in Unreal Engine 4", SIGGRAPH 2013
+// notes, eq. 2-4): D with alpha = roughness^2 (floored at 0.02), Schlick-Smith G with Disney's
+// k = (roughness + 1)^2 / 8 for analytic lights, Schlick's Fresnel; times pi, as GX's diffuse has
+// no 1/pi.
 // The tangent frame comes from screen-space derivatives as in pbr_func. Later stages (a glow, a
 // masked reflection) take this result as they took the stage's. With a flat normal, occlusion 1 and
 // metal 0, the diffuse is the stage's own result exactly; the lobe and the reflected light are added.
@@ -1030,7 +1033,7 @@ static std::string port_surface_pbr(const ShaderConfig& config, u32 idx, std::st
       let pbrs_metal = clamp(pbrs_orm.b, 0.0, 1.0);
       let pbrs_a = max(pbrs_rough, 0.02) * max(pbrs_rough, 0.02);
       let pbrs_a2 = pbrs_a * pbrs_a;
-      let pbrs_k = pbrs_a * 0.5;
+      let pbrs_k = (pbrs_rough + 1.0) * (pbrs_rough + 1.0) * 0.125;
       let pbrs_nv = clamp(dot(pbrs_n, pbrs_v), 1e-4, 1.0);
       let pbrs_f0 = mix(vec3f(0.04), pow(pbrs_base, vec3f(2.2)), pbrs_metal);
       var pbrs_lighting = {amb};
