@@ -214,11 +214,12 @@ u32 line_texcoord_mask() noexcept {
 } // namespace
 
 int port_surface_pbr_stage(const ShaderConfig& config) noexcept {
-  if (config.pbr != 0 || config.pbrKind == 0 || config.perPixelLight == 0 ||
+  const u32 kind = config.pbrKind & kPortSurfacePbrStageMask;
+  if (config.pbr != 0 || kind == 0 || config.perPixelLight == 0 ||
       !config.colorChannels[GX_COLOR0].lightingEnabled) {
     return -1;
   }
-  const u32 idx = config.pbrKind - 1u;
+  const u32 idx = kind - 1u;
   if (idx >= config.tevStageCount) {
     return -1;
   }
@@ -290,6 +291,33 @@ int port_surface_pbr_stage(const ShaderConfig& config) noexcept {
                : -1;
   }
   return -1;
+}
+
+u32 port_env_probe_stages(const ShaderConfig& config) noexcept {
+  if (config.pbr != 0 || (config.pbrKind & kPortEnvProbeBit) == 0 || config.perPixelLight == 0 ||
+      !config.colorChannels[GX_COLOR0].lightingEnabled) {
+    return 0;
+  }
+  u32 stages = 0;
+  for (u32 i = 0; i < config.tevStageCount; ++i) {
+    const auto& stage = config.tevStages[i];
+    if (stage.texMapId == GX_TEXMAP_NULL || stage.texCoordId == GX_TEXCOORD_NULL ||
+        stage.texCoordId >= MaxTexCoord) {
+      continue;
+    }
+    // Only a stage that reads its texture has a sample to replace (as the generator's
+    // uses_texture_sample decides).
+    const auto& c = stage.colorPass;
+    const auto& a = stage.alphaPass;
+    const auto tex = [](GXTevColorArg arg) { return arg == GX_CC_TEXC || arg == GX_CC_TEXA; };
+    const bool sampled = tex(c.a) || tex(c.b) || tex(c.c) || tex(c.d) || a.a == GX_CA_TEXA || a.b == GX_CA_TEXA ||
+                         a.c == GX_CA_TEXA || a.d == GX_CA_TEXA;
+    const auto& tcg = config.tcgs[stage.texCoordId];
+    if (sampled && tcg.src == GX_TG_NRM && (tcg.type == GX_TG_MTX2x4 || tcg.type == GX_TG_MTX3x4)) {
+      stages |= 1u << i;
+    }
+  }
+  return stages;
 }
 
 ShaderInfo build_shader_info(const ShaderConfig& config) noexcept {
@@ -444,13 +472,17 @@ ShaderInfo build_shader_info(const ShaderConfig& config) noexcept {
       info.usesPTTexMtx.set(postMtxIdx);
     }
   }
-  if (port_surface_pbr_stage(config) >= 0) {
-    // GXPortSetSurfacePBR's maps, sampled on the relit stage's texture coordinates, and the
-    // surface_pbr uniform.
+  const bool surfacePbr = port_surface_pbr_stage(config) >= 0;
+  if (surfacePbr) {
+    // GXPortSetSurfacePBR's maps, sampled on the relit stage's texture coordinates.
     info.sampledTextures.set(GX_TEXMAP6);
     info.sampledTextures.set(GX_TEXMAP7);
+  }
+  if (surfacePbr || port_env_probe_stages(config) != 0) {
+    // surface_pbr (highlight strength, the environment stages' probe level and weight) and
+    // surface_probe (GXSetPBRProbe's view-to-probe rows and weight).
     info.usesSurfacePbr = true;
-    info.uniformSize += sizeof(Vec4<float>);
+    info.uniformSize += sizeof(Vec4<float>) + sizeof(Mat3x4<float>);
   }
   if (config.pbr) {
     info.usesPbr = true;
@@ -665,7 +697,10 @@ static void fill_uniform(ByteBuffer& buf, const ShaderInfo& info) noexcept {
     buf.append(g_gxState.hudDyin);
   }
   if (info.usesSurfacePbr) {
-    buf.append(Vec4<float>{surface_pbr_highlight(), 0.f, 0.f, 0.f});
+    // y: the probe level an environment stage reads (of 0..MipCount-1; a little blur), z: how
+    // much of the probe replaces its texture.
+    buf.append(Vec4<float>{surface_pbr_highlight(), 1.f, 1.f, 0.f});
+    buf.append(g_gxState.pbrProbe);
   }
   if (info.usesPTTexMtx.any()) {
     for (int i = 0; i < info.usesPTTexMtx.size(); ++i) {

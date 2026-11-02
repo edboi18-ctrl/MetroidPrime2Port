@@ -609,14 +609,22 @@ void populate_pipeline_config(PipelineConfig& config, GXPrimitive primitive, GXV
       };
     }
   }
-  if (g_gxState.surfacePbr != 0 && g_gxState.pbr == 0) {
-    // GXPortSetSurfacePBR: pbrKind is the relit stage + 1 while pbr is 0, kept only when the stage
-    // can be relit (port_surface_pbr_stage, which needs per-pixel lights), so the draws it can't
-    // relight keep the config, and the pipeline, they had.
-    config.shaderConfig.pbrKind = g_gxState.surfacePbr;
-    config.shaderConfig.perPixelLight = 1;
-    if (port_surface_pbr_stage(config.shaderConfig) < 0) {
-      config.shaderConfig.pbrKind = 0;
+  if (g_gxState.pbr == 0 && (g_gxState.surfacePbr != 0 || g_gxState.envProbe)) {
+    // GXPortSetSurfacePBR and GXPortSetEnvProbe: pbrKind holds the relit stage + 1 and the probe
+    // bit while pbr is 0, each kept only when it applies (port_surface_pbr_stage,
+    // port_env_probe_stages, which need per-pixel lights), so the draws they can't change keep
+    // the config, and the pipeline, they had.
+    auto& sc = config.shaderConfig;
+    sc.perPixelLight = 1;
+    sc.pbrKind = g_gxState.surfacePbr & kPortSurfacePbrStageMask;
+    if (sc.pbrKind != 0 && port_surface_pbr_stage(sc) < 0) {
+      sc.pbrKind = 0;
+    }
+    if (g_gxState.envProbe) {
+      sc.pbrKind |= kPortEnvProbeBit;
+      if (port_env_probe_stages(sc) == 0) {
+        sc.pbrKind &= static_cast<u8>(~kPortEnvProbeBit);
+      }
     }
   }
   config.shaderConfig.perPixelLight = wants_per_pixel_light(config.shaderConfig);

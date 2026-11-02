@@ -62,6 +62,78 @@ ShaderConfig model_config() {
   return config;
 }
 
+// The arm cannon's shape (Echoes' beam guns): base x lit colour; a mask into C2; PREV += C2 x an
+// environment map on texture coordinates generated from the normal.
+ShaderConfig gun_config() {
+  auto config = base_config(3);
+  set_stage(config.tevStages[0], GX_CC_ZERO, GX_CC_RASC, GX_CC_TEXC, GX_CC_ZERO, GX_TEVPREV, 0);
+  set_stage(config.tevStages[1], GX_CC_ZERO, GX_CC_ZERO, GX_CC_ZERO, GX_CC_TEXC, GX_TEVREG2, 1);
+  set_stage(config.tevStages[2], GX_CC_ZERO, GX_CC_C2, GX_CC_TEXC, GX_CC_CPREV, GX_TEVPREV, 2);
+  config.tcgs[2].src = GX_TG_NRM;
+  config.tcgs[2].type = GX_TG_MTX3x4;
+  config.pbrKind = kPortEnvProbeBit;
+  return config;
+}
+
+TEST(GxSurfacePbr, EnvironmentStageReadsTheProbe) {
+  const auto config = gun_config();
+  EXPECT_EQ(port_env_probe_stages(config), 1u << 2);
+  EXPECT_EQ(port_surface_pbr_stage(config), -1);
+  const auto info = build_shader_info(config);
+  EXPECT_TRUE(info.usesSurfacePbr);
+  EXPECT_FALSE(info.sampledTextures.test(GX_TEXMAP6));
+  const std::string source = build_shader_source(config);
+  EXPECT_NE(source.find("TEV stage 2's environment map is the live probe"), std::string::npos) << source;
+  EXPECT_EQ(source.find("TEV stage 0's environment map"), std::string::npos);
+  EXPECT_NE(source.find("var pbr_cube: texture_cube<f32>;"), std::string::npos);
+  EXPECT_NE(source.find("surface_probe: mat3x4f,"), std::string::npos);
+  EXPECT_NE(source.find("let pe2_r = reflect(normalize(in.mv_pos), pp_nrm);"), std::string::npos);
+  // Replaced before the TEV stages read it.
+  EXPECT_LT(source.find("sampled2 = vec4f(mix(sampled2.rgb, pe2_c,"), source.find("// TEV stage 0"));
+  EXPECT_EQ(source.find("pbrs_"), std::string::npos);
+}
+
+TEST(GxSurfacePbr, EnvironmentProbeAndRelitStageTogether) {
+  auto config = gun_config();
+  config.pbrKind = kPortEnvProbeBit | 1;
+  EXPECT_EQ(port_surface_pbr_stage(config), 0);
+  EXPECT_EQ(port_env_probe_stages(config), 1u << 2);
+  const std::string source = build_shader_source(config);
+  EXPECT_NE(source.find("GXPortSetSurfacePBR: TEV stage 0 relit"), std::string::npos);
+  EXPECT_NE(source.find("TEV stage 2's environment map is the live probe"), std::string::npos);
+  // The relit stage reflects the probe too once it is filled.
+  EXPECT_NE(source.find("textureSampleLevel(pbr_cube, pbr_cube_samp, pbrs_pd, pbrs_rough * 5.0)"), std::string::npos);
+}
+
+TEST(GxSurfacePbr, EnvironmentProbeRefusals) {
+  {
+    auto config = gun_config();
+    config.pbrKind = 0;
+    EXPECT_EQ(port_env_probe_stages(config), 0u);
+    EXPECT_FALSE(build_shader_info(config).usesSurfacePbr);
+  }
+  {
+    auto config = gun_config();
+    config.perPixelLight = 0;
+    EXPECT_EQ(port_env_probe_stages(config), 0u);
+  }
+  {
+    auto config = gun_config();
+    config.pbr = 1;
+    EXPECT_EQ(port_env_probe_stages(config), 0u);
+  }
+  {
+    auto config = gun_config();
+    config.colorChannels[GX_COLOR0].lightingEnabled = false;
+    EXPECT_EQ(port_env_probe_stages(config), 0u);
+  }
+  {
+    auto config = gun_config();
+    config.tcgs[2].src = GX_TG_TEX2;
+    EXPECT_EQ(port_env_probe_stages(config), 0u) << "not an environment map";
+  }
+}
+
 TEST(GxSurfacePbr, RoomDiffuseStageIsRelit) {
   const auto config = room_config();
   EXPECT_EQ(port_surface_pbr_stage(config), 1);

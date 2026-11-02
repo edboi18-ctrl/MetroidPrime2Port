@@ -440,6 +440,11 @@ void GXPortSetSurfacePBR(s32 stage) {
   GX_WRITE_U8(stage >= 0 && stage < GX_MAX_TEVSTAGE ? static_cast<u8>(stage + 1) : 0);
 }
 
+void GXPortSetEnvProbe(GXBool on) {
+  GX_WRITE_AURORA(GX_AURORA_PORT_ENV_PROBE);
+  GX_WRITE_U8(on ? 1 : 0);
+}
+
 void GXSetSDF(u8 edge) {
   GX_WRITE_AURORA(GX_AURORA_SET_SDF);
   GX_WRITE_U8(edge);

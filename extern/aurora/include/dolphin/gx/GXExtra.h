@@ -30,6 +30,12 @@ void GXSetPBR(GXBool enable);
 // as they are. Draws whose stage isn't of that form, that use maps 6 or 7 themselves, or that
 // GXSetPBR shades, are drawn as before. Lit with per-pixel lights. A negative stage turns it off.
 void GXPortSetSurfacePBR(s32 stage);
+// Port extension: the following draws' environment-mapped TEV stages (texture coordinates from
+// the normal, GX_TG_NRM) sample the live probe (GXCopyProbeFace) in the view's reflected
+// direction, through GXSetPBRProbe's matrix, once its weight is above 0; before that they keep
+// their own texture. Draws with an unlit channel 0, or GXSetPBR's, are drawn as before. Lit
+// with per-pixel lights.
+void GXPortSetEnvProbe(GXBool on);
 // Aurora extension: distance-field texturing for the following draws (see
 // GX_AURORA_SET_SDF). 0 turns it off.
 void GXSetSDF(u8 edge);

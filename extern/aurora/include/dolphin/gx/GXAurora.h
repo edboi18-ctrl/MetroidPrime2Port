@@ -379,6 +379,9 @@ extern "C" {
 // Port extension: PBR maps on one TEV stage of the following draws (GXPortSetSurfacePBR). Payload: u8
 // stage + 1, 0 off.
 #define GX_AURORA_PORT_SURFACE_PBR 0x0071
+// Port extension: environment-mapped stages of the following draws read the live probe
+// (GXPortSetEnvProbe). Payload: u8 on.
+#define GX_AURORA_PORT_ENV_PROBE 0x0072
 
 #define GX2_SET_POLYGON_OFFSET 0x1000
 
