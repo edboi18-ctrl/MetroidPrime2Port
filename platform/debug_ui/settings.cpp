@@ -551,6 +551,7 @@ const SettingKey kSettingKeys[] = {
     BoolKey< &sShowCheats >("show_cheats"),
     BoolKey< &sPerPixelLighting >("per_pixel_lighting"),
     BoolKey< &sPbrMaps >("pbr_maps"),
+    BoolKey< &sLiveReflections >("live_reflections"),
     {"pbr_highlight",
      [](const std::string& value) { sPbrHighlight = std::clamp(std::atoi(value.c_str()), 0, 200); },
      [](std::ostream& out) { out << sPbrHighlight; }, false, "0", "150"},

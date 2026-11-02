@@ -286,6 +286,10 @@ void DrawVideoQuality() {
   ImGui::SetItemTooltip("Draws the PBR maps made by tools/pbr/make_pbr_maps.py (the _nrm and _orm files\n"
                         "in a texture pack folder): bumps, shine and metal on the surfaces they cover,\n"
                         "lit per pixel. The glow and reflection layers stay as they were.");
+  // Read each frame by CStateManager::PortCaptureProbeFace and CCubeMaterial::PortBeginSurfaceDraw.
+  Changed(ImGui::Checkbox("Live reflections", &sLiveReflections));
+  ImGui::SetItemTooltip("The arm cannon (and surfaces with PBR maps) reflect the room around you: a small\n"
+                        "cube map of the world, redrawn a side each frame. Costs a little GPU time.");
   if (sPbrMaps) {
     // Applied by PortVideo::Frame through aurora_set_pbr_highlight, on change.
     Changed(ImGui::SliderInt("PBR highlight strength", &sPbrHighlight, 0, 200, "%d%%",

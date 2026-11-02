@@ -126,6 +126,20 @@ shadow and the black pass are drawn as before. Those surfaces are lit per pixel 
 `per_pixel_lighting` says. Their pipelines are not in the embedded seed (`pipeline_seed.py` skips
 `pbrKind` rows), so each new one compiles the first time it is drawn.
 
+**Live reflections.** F1 > Video > Quality > Live reflections (`live_reflections`, off by default):
+`CStateManager::PortCaptureProbeFace`, ported from the MP1 port, draws one 128x128 face of a cube
+map of the world around the camera into a corner of the EFB before each frame's world (world geometry
+and sky, culled for that face) and copies it into Aurora's probe (`GXCopyProbeFace`), so the probe is
+six frames old at worst (a face every fourth frame once it is full and the camera holds still). It
+runs only while something reads it, in the normal render mode. `CPlayerGun::Render` sets
+`CCubeMaterial::sPortEnvProbe`, and `CCubeModel::DrawSurface` then calls `GXPortSetEnvProbe` around
+the gun's surfaces: their environment-map stages (texture coordinates from the normal; the beam guns
+add `C2 x env` over the base, C2 a mask) sample the probe along the view reflected about the
+per-pixel normal, through `GXSetPBRProbe`'s matrix, at level 1 of its six (a little blur), instead
+of their fixed texture, the mask and the rest of the material unchanged. Surfaces with PBR maps
+reflect the probe too, at the level their roughness asks, dimmed where the game lights them little.
+Until all six faces are drawn the materials keep their own look.
+
 Reload is a savestate-style world restart: `PortSaveState::RequestModReload` writes the current state
 to the undo slot and loads it back; `CMainFlow` (`kCFS_Game`) calls `ReloadModsNow` after the old world
 is gone, which closes every PAK, runs `PortMods::Reload` (rescan, overlay rebuilt through

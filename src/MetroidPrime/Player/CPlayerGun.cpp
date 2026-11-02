@@ -72,6 +72,7 @@
 #include "MetroidPrime/PortEfbCopy.hpp"
 #include "port_mouse.h"
 #include "port_overlay.h"
+#include "Kyoto/Graphics/CCubeMaterial.hpp"
 #include "port_power_charge_release.h"
 #include "port_presentation_rules.h"
 #include "MetroidPrime/ScriptObjects/CScriptGrapplePoint.hpp"
@@ -1603,6 +1604,8 @@ void CPlayerGun::Render(const CStateManager& mgr, const CVector3f& cameraTransla
 #ifdef TARGET_PC
   const CTransform4f portWorldView(CGraphics::GetViewMatrix());
   CGraphics::SetViewPointMatrix(PortGunView(mgr, portWorldView));
+  // The arm cannon's environment maps read the live probe (CCubeMaterial::PortBeginSurfaceDraw).
+  CCubeMaterial::sPortEnvProbe = true;
 #endif
   const CGraphics::CProjectionState backupProjection(CGraphics::GetProjectionState());
   CGraphics::SetDepthRange(1.f / 32.f, 1.f / 8.f);
@@ -1684,6 +1687,7 @@ void CPlayerGun::Render(const CStateManager& mgr, const CVector3f& cameraTransla
   CGraphics::SetViewPointMatrix(effectView);
 #ifdef TARGET_PC
   CGraphics::SetViewPointMatrix(portWorldView);
+  CCubeMaterial::sPortEnvProbe = false;
 #endif
   CGraphics::SetDepthRange(1.f / 8.f, 1.f);
   CGraphics::SetProjectionState(backupProjection);

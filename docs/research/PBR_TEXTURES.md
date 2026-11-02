@@ -238,6 +238,17 @@ draws; presets and per-texture overrides go in a JSON sidecar that the batch re-
   10 ms per sample at 512x512 on an RTX 3080 (arXiv 2407.19977), far from a game frame. An offline
   bake (path-traced room probes, the lightmaps as the radiance a ray finds) is the plan for
   reflections instead.
+- **Live reflections instead of a bake (2026-11-02).** The MP1 port already draws a live probe (one
+  face of a cube map around the camera a frame, `CStateManager::PortCaptureProbeFace`), and the
+  vendored Aurora has its capture, blurred mips and cube sampling. It reflects the room as drawn
+  (lightmaps, PBR maps, dynamic lights), so the user's point that the bake lacks the PBR textures
+  doesn't arise, and a reflection of a reflection builds up over frames. MP2's own "real reflection"
+  (`CCubeRenderer::CacheReflection`) is a picture of Samus for surfaces near her, not an environment.
+  The arm cannon's look comes from its material: in all six materials of the beam gun models
+  (CMDL 0x05778239 and the three sharing its textures) a stage adds `C2 x env`, the env texture on
+  coordinates from the normal (`GX_TG_NRM`, texture matrix 0, normalised) and C2 a mask loaded by an
+  earlier stage. `GXPortSetEnvProbe` makes such stages sample the probe instead (MODS.md, "Live
+  reflections"); the surface PBR's reflected environment is the probe too once filled.
 
 ## Risks
 
