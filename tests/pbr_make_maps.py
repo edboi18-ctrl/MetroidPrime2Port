@@ -302,6 +302,19 @@ class Settings(unittest.TestCase):
         settings = mm.merge_settings(settings, {"textures": {rel.name: {"roughness": 0.7}}}, warnings)
         self.assertEqual(mm.params_for(settings, rel, "", 1.0)[1]["roughness"], 0.7)  # a texture's own wins
 
+    def test_reflection_shine(self):
+        means = {("white", "c"): 1.0, ("black", "c"): 0.0, ("grey", "a"): 0.4}
+        mean_of = lambda name, channel: means.get((name, channel))
+        shine = lambda masks, reflective="2/2": mm.reflection_shine(
+            {"reflective": reflective, "reflection_masks": masks}, mean_of)
+        self.assertEqual(shine("white:c*2"), 1.0)
+        self.assertEqual(shine("black:c*2"), 0.0)
+        self.assertAlmostEqual(shine("grey:a*1; full*1"), 0.7)
+        self.assertAlmostEqual(shine("unknown*1", "1/2"), 0.25)
+        self.assertAlmostEqual(shine("missing:c*1", "1/1"), 0.5)  # a mask not in the pack: half
+        self.assertAlmostEqual(mm.reflection_shine({"reflective": "1/2"}, mean_of), 0.25)  # old report
+        self.assertEqual(mm.reflection_shine({}, mean_of), 0.0)
+
     def test_written_settings_read_back(self):
         with tempfile.TemporaryDirectory() as d:
             path = pathlib.Path(d, "s.json")
@@ -517,6 +530,25 @@ class WholeRun(unittest.TestCase):
         code, text = self.run_tool("--force", "-j", "2")  # two worker processes
         self.assertEqual(code, 0, text)
         self.assertIn("Made 2, 0 up to date, 0 failed", text)
+
+    def test_masked_reflection_from_the_pack(self):
+        # The stone texture's one material reflects through a mask; its brightness sets the shine.
+        rows = list(csv.reader(open(str(self.report), newline="", encoding="utf-8")))
+        header = rows[0] + ["reflective", "reflection_masks"]
+        mask_name = "tex1_16x16_00000000000000d4_14.dds"
+        body = [r + (["1/1", mask_name + ":c*1"] if STONE in r[3] else ["", ""]) for r in rows[1:]]
+        body.append(["no", "mask", mask_name, "Temple Grounds\\tex1_16x16_m_00000000000000d4_14.png",
+                     "Temple Grounds", 16, 16, 14, 1, "", "", "CMDL 1", "", ""])
+        with open(str(self.report), "w", newline="", encoding="utf-8") as f:
+            csv.writer(f).writerows([header] + body)
+        stone, shiny = mm.PRESETS["stone"]["roughness"], mm.PRESETS["stone"]["reflective_roughness"]
+        for value, roughness in ((255, shiny), (0, stone)):
+            Image.new("RGB", (64, 64), (value,) * 3).save(
+                str(self.pack / "Temple Grounds" / "tex1_16x16_m_00000000000000d4_14.png"))
+            code, text = self.run_tool("--force")
+            self.assertEqual(code, 0, text)
+            index = json.loads((self.out / mm.INDEX_NAME).read_text("utf-8"))
+            self.assertAlmostEqual(index["maps"]["Temple Grounds/%s.dds" % STONE]["params"]["roughness"], roughness)
 
     def test_output_inside_the_pack_is_refused(self):
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):

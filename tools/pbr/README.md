@@ -45,7 +45,8 @@ real surfaces. Python 3.8 or later. Run the commands from the folder that holds 
    Is your `texture_report.csv` from a scan that didn't print a "sky models" line, or does it lack the
    `reflective` column? Run steps 2 and 3 again: the scan now marks sky models (sky textures are no
    longer candidates), and the report counts the materials that make a texture shiny (a reflection
-   layer), which the maps take as lower roughness.
+   layer, mostly scaled by a mask texture: masks get the role `mask` and are no candidates), which the
+   maps take as lower roughness, as much as the masks are bright.
 
 (`py -3` is the Windows Python launcher; elsewhere use `python3`, with `/` in paths.)
 

@@ -93,9 +93,13 @@ from the pieces' edges before the height is taken (`fill_empty`), so no bevel la
 seams. `pbr_settings.json` in the current folder is read without `--settings`. The disc scan marks sky
 models (each MLVL's default sky, and `overrideSky` of the areas' AreaAttributes, `REAA`), and the
 report gives their textures the role `sky`, never a candidate. The report also counts, per diffuse texture, the
-materials that add a reflection layer (`reflective`) or a glow layer (`glow_layer`); the generator lowers
-a reflective texture's roughness towards `reflective_roughness` (0.35) in that proportion (Phazon, for
-one, is lit, with its glow and reflection added on top), unless the texture's own setting gives one. Needs numpy and Pillow; texconv
+materials that add a reflection layer (`reflective`) or a glow layer (`glow_layer`), and lists each
+reflection's mask (`reflection_masks`): 92% of the disc's reflections are scaled by a texture the
+material first loads into a register (where it shines). Such a texture gets the role `mask`, and one that
+is only ever a mask is no candidate (its maps would never be sampled as a base colour). The generator
+lowers a reflective texture's roughness towards `reflective_roughness` (0.35) by each use's mask mean
+brightness, read from the pack (1 unmasked, 0.5 when unknown or not in the pack); the mask has its own
+UVs, so only its mean carries over. A texture's own roughness setting wins. Needs numpy and Pillow; texconv
 (DirectXTex) compresses, else RGBA8 DDS. The port's loader skips `_nrm`/`_orm` names, so the folder can
 sit in `user_textures`; nothing draws them until step 3. Tests: `tests/pbr_make_maps.py`.
 

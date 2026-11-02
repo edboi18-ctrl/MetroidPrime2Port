@@ -31,9 +31,11 @@ Each map is made at --scale times the pack file's size (default 0.5, never below
   occlusion  1 - `occlusion` x how far the height sits below its surroundings (`ao_radius` texels).
              Kept light: the pack's art and the game's lightmaps already carry shading.
   roughness  `roughness`, rougher in hollows and smoother on ridges by up to `roughness_var`.
-             Where the report's `reflective` column says the texture's materials have a reflection
-             layer (the artists made it shiny, e.g. Phazon), it is lowered towards
-             `reflective_roughness` in that proportion, unless a texture's own setting gives one.
+             Where the texture's materials have a reflection layer (the artists made it shiny, e.g.
+             Phazon), it is lowered towards `reflective_roughness` by how much they shine: each such
+             use counts its mask's mean brightness (the report's `reflection_masks`, read from the
+             pack; the mask has its own UVs, so only its mean carries over), 1 unmasked, 0.5 when
+             unknown. A texture's own roughness setting wins.
   metal      `metal`, scaled down in hollows (dirt isn't metal).
 A texture takes its preset from its pack folder (Temple Grounds stone, Agon Wastes rock, Torvus Bog
 wet stone, Sanctuary Fortress metal, Enemies creature, Samus suit, any other folder default).
@@ -76,7 +78,7 @@ except ImportError:  # main() reports it, so --help and --write-settings work wi
     np = None
     Image = None
 
-TOOL_VERSION = 4
+TOOL_VERSION = 5
 INDEX_NAME = "pbr_maps.json"
 SETTINGS_NAME = "pbr_settings.json"  # read from the current folder when --settings isn't given
 
@@ -183,9 +185,49 @@ def reflective_fraction(text):
         return 0.0
 
 
+def mask_mean(path, channel):
+    """A reflection mask's mean brightness (0-1): BT.709 luma of the colour, or the alpha."""
+    with Image.open(str(path)) as image:
+        image.load()
+        image = image.convert("RGBA")
+        image.thumbnail((64, 64))
+        pixels = np.asarray(image, dtype=np.float32) / 255.0
+    if channel == "a":
+        return float(pixels[..., 3].mean())
+    return float((pixels[..., 0] * LUMA[0] + pixels[..., 1] * LUMA[1] + pixels[..., 2] * LUMA[2]).mean())
+
+
+def reflection_shine(row, mean_of):
+    """0-1: how shiny the texture's materials make it, averaged over its diffuse uses. `mean_of`
+    gives a mask's mean brightness from its manifest name and channel, or None if unknown."""
+    try:
+        total = int(row.get("reflective", "").split("/")[1])
+    except (IndexError, ValueError):
+        return 0.0
+    entries = row.get("reflection_masks")
+    if not entries:  # a report from before the column: each reflective use counts half
+        return 0.5 * reflective_fraction(row.get("reflective", ""))
+    shine = 0.0
+    for part in entries.split("; "):
+        kind, _, count = part.rpartition("*")
+        try:
+            count = int(count)
+        except ValueError:
+            continue
+        if kind == "full":
+            shine += count
+        elif kind == "unknown":
+            shine += 0.5 * count
+        else:
+            name, _, channel = kind.rpartition(":")
+            mean = mean_of(name, channel)
+            shine += count * (0.5 if mean is None else mean)
+    return min(1.0, shine / total) if total > 0 else 0.0
+
+
 def params_for(settings, rel, manifest_name, reflective=0.0):
     """(preset name, parameters) for the pack file at `rel` (relative to the pack root);
-    `reflective` (0-1) is how many of its materials have a reflection layer."""
+    `reflective` (0-1) is how shiny its materials make it (reflection_shine)."""
     folders = {k.lower(): v for k, v in settings["folders"].items()}
     folder = rel.parts[0].lower() if len(rel.parts) > 1 else ""
     textures = settings["textures"]
@@ -558,12 +600,14 @@ def process(job):
         return {"ok": False, "error": "%s: %s" % (type(e).__name__, e)}
 
 
-def read_candidates(report):
+def read_report(report):
+    """(the candidate rows, {manifest name: pack file} for every row with one)."""
     with open(str(report), "r", encoding="utf-8", newline="") as f:
         rows = list(csv.DictReader(f))
     if rows and "pbr_candidate" not in rows[0]:
         raise ValueError("%s isn't a texture_report.csv (no pbr_candidate column)" % report)
-    return [r for r in rows if r.get("pbr_candidate") == "yes" and r.get("pack_file")]
+    pack_files = {r["name"]: r["pack_file"] for r in rows if r.get("name") and r.get("pack_file")}
+    return [r for r in rows if r.get("pbr_candidate") == "yes" and r.get("pack_file")], pack_files
 
 
 def rel_path(pack_file):
@@ -585,17 +629,30 @@ def job_hash(job, source_stat):
     return hashlib.sha1(json.dumps(data, sort_keys=True).encode("utf-8")).hexdigest()
 
 
-def build_jobs(rows, pack, out, settings, args, texconv, index):
-    """(jobs to run, rows already up to date, rows whose pack file is missing)."""
+def build_jobs(rows, pack, out, settings, args, texconv, index, pack_files=None):
+    """(jobs to run, rows already up to date, rows whose pack file is missing). `pack_files` maps
+    every manifest name in the report to its pack file, for the reflection masks."""
     jobs, current, missing = [], 0, []
+    pack_files = pack_files or {}
+    means = {}
+
+    def mean_of(name, channel):
+        key = (name, channel)
+        if key not in means:
+            rel = pack_files.get(name)
+            path = pack.joinpath(*rel_path(rel).parts) if rel else None
+            try:
+                means[key] = mask_mean(path, channel) if path and path.is_file() else None
+            except (OSError, ValueError):
+                means[key] = None
+        return means[key]
     for row in rows:
         rel = rel_path(row["pack_file"])
         source = pack.joinpath(*rel.parts)
         if not source.is_file():
             missing.append(str(rel))
             continue
-        preset, params = params_for(settings, rel, row.get("name", ""),
-                                    reflective_fraction(row.get("reflective", "")))
+        preset, params = params_for(settings, rel, row.get("name", ""), reflection_shine(row, mean_of))
         stem = rel.name.rsplit(".", 1)[0]
         folder = out.joinpath(*rel.parts[:-1])
         job = {
@@ -712,7 +769,7 @@ def main(argv=None):
         print("warning: " + warning)
 
     try:
-        rows = read_candidates(args.report)
+        rows, pack_files = read_report(args.report)
     except (OSError, ValueError) as e:
         parser.error(str(e))
     rows = [r for r in rows if selected(rel_path(r["pack_file"]), args.only)]
@@ -728,7 +785,7 @@ def main(argv=None):
 
     index_path = out / INDEX_NAME
     index = load_index(index_path)
-    jobs, current, missing = build_jobs(rows, pack, out, settings, args, texconv, index)
+    jobs, current, missing = build_jobs(rows, pack, out, settings, args, texconv, index, pack_files)
     print("%d candidate textures: %d to make, %d up to date, %d missing from the pack folder. Output: %s"
           % (len(rows), len(jobs), current, len(missing), out))
     for rel in missing[:5]:

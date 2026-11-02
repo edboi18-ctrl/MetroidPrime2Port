@@ -181,6 +181,18 @@ draws; presets and per-texture overrides go in a JSON sidecar that the batch re-
   (the artists made them shiny) and 431 a glow layer; the report now counts both per texture and the
   generator lowers roughness for the reflective ones. Rebuilt from this manifest, the report's
   candidate decisions are unchanged.
+- **Reflection masks (2026-11-02).** The next 20 previews put 12 at the full shiny roughness, so
+  the reflection layers were looked at closely: all 1,981 take their coordinates from the normal
+  (real environment maps, 124 textures, two of them in 862 materials), and 1,822 are scaled by a
+  register an earlier stage loaded from a texture: the artists' mask of where the surface shines (55
+  are unscaled, 17 scaled by the lit colour, 87 written to a register for later). The masks have their
+  own UV sets (TEX1/TEX2 against the diffuse's TEX0; 0 of 1,124 pairs share texture coordinates), so
+  only a mask's mean can carry over to the diffuse's roughness. The report classified 313 masks as
+  diffuse; they are now `mask` (the texture written to the register a reflection stage is scaled by):
+  99 candidates were only ever masks and leave (1,220 to 1,129; e.g. the lava rock, Retro's masks
+  being painted art: its material's base is 406a679e, a candidate with that mask), and 8 Samus suit
+  textures whose mask use had read as a glow join. The roughness drop is weighted by the masks' mean
+  brightness.
 
 ## Risks
 
