@@ -101,7 +101,44 @@ lowers a reflective texture's roughness towards `reflective_roughness` (0.35) by
 brightness, read from the pack (1 unmasked, 0.5 when unknown or not in the pack); the mask has its own
 UVs, so only its mean carries over. A texture's own roughness setting wins. Needs numpy and Pillow; texconv
 (DirectXTex) compresses, else RGBA8 DDS. The port's loader skips `_nrm`/`_orm` names, so the folder can
-sit in `user_textures`; nothing draws them until step 3. Tests: `tests/pbr_make_maps.py`.
+sit in `user_textures`. Tests: `tests/pbr_make_maps.py`.
+
+**Drawing the PBR maps (step 3).** Put the `"<pack> PBR"` folder inside a loaded texture pack folder
+(`<user>/user_textures`, beside the pack's own folder, or pass `--out` there), then F1 > Video > Quality >
+PBR maps (`pbr_maps`, `MP2_PBR_MAPS=1`). `PortPbrMaps` (`platform/port_pbr_maps.cpp`) reads every
+`*_nrm`/`*_orm` (.dds or .png) under the loaded packs' folders (user pack first; logs `[pbr] N PBR map
+pairs`) and keys each pair by the pack name it sits beside. `CCubeMaterial::SetCurrent` picks the first of
+the material's own TEV stages that is `0 + lerp(0, L, TEXC)` (`PortPbrMaps::ChooseStage`,
+`platform/include/port_pbr_rules.h`; the room's diffuse stage after its lightmap stage, a model's only
+one) and asks for that texture's maps (cached per `CTexture` and rescan generation). The first ask
+registers both files with Aurora under stand-in texture objects (neutral 4x4 texels until a file has
+streamed in); `CCubeModel::DrawSurface` loads them into GX_TEXMAP6/7 and calls `GXPortSetSurfacePBR`
+for that surface's display list only. Aurora relights just that stage (`port_surface_pbr`,
+`extern/aurora/lib/gx/shader.cpp`): channel 0's lights summed again per pixel with the mapped normal
+(GX's own attenuation and diffuse function) replace the vertex/pixel light in L, so a room's lightmap
+term is kept; occlusion and metal scale the diffuse; a GGX lobe per light and L reflected through
+Karis's EnvBRDFApprox are added in linear light (each light feeds its lobe at most what GX lets it light
+the surface, and the lights together at most GX's clamped 1.0; Quality > PBR highlight strength,
+`pbr_highlight`, scales the lobes). The later stages run as before, so glow and masked
+reflections stay. With neutral maps the diffuse is the original exactly. Draws whose stage isn't of
+that form (Aurora's `port_surface_pbr_stage` checks), that use maps 6/7, the thermal visor, the model
+shadow and the black pass are drawn as before. Those surfaces are lit per pixel whatever
+`per_pixel_lighting` says. Their pipelines are not in the embedded seed (`pipeline_seed.py` skips
+`pbrKind` rows), so each new one compiles the first time it is drawn.
+
+**Live reflections.** F1 > Video > Quality > Live reflections (`live_reflections`, off by default):
+`CStateManager::PortCaptureProbeFace`, ported from the MP1 port, draws one 128x128 face of a cube
+map of the world around the camera into a corner of the EFB before each frame's world (world geometry
+and sky, culled for that face) and copies it into Aurora's probe (`GXCopyProbeFace`), so the probe is
+six frames old at worst (a face every fourth frame once it is full and the camera holds still). It
+runs only while something reads it, in the normal render mode. `CPlayerGun::Render` sets
+`CCubeMaterial::sPortEnvProbe`, and `CCubeModel::DrawSurface` then calls `GXPortSetEnvProbe` around
+the gun's surfaces: their environment-map stages (texture coordinates from the normal; the beam guns
+add `C2 x env` over the base, C2 a mask) sample the probe along the view reflected about the
+per-pixel normal, through `GXSetPBRProbe`'s matrix, at level 1 of its six (a little blur), instead
+of their fixed texture, the mask and the rest of the material unchanged. Surfaces with PBR maps
+reflect the probe too, at the level their roughness asks, dimmed where the game lights them little.
+Until all six faces are drawn the materials keep their own look.
 
 Reload is a savestate-style world restart: `PortSaveState::RequestModReload` writes the current state
 to the undo slot and loads it back; `CMainFlow` (`kCFS_Game`) calls `ReloadModsNow` after the old world

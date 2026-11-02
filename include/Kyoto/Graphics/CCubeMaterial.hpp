@@ -71,6 +71,22 @@ public:
   uint GetCompressedBlend() const;
 
   static const CVector3f& GetViewingReflection() { return sViewingFrom; }
+#ifdef TARGET_PC
+  // Port: around a surface's display list, GXPortSetSurfacePBR with the PBR maps SetCurrent chose
+  // for the material it set last (port_pbr_maps.h), GXPortSetEnvProbe while sPortEnvProbe is set,
+  // and for either the live probe's matrix (GXSetPBRProbe). Begin returns what End undoes.
+  static uint PortBeginSurfaceDraw();
+  static void PortEndSurfaceDraw(uint begun);
+  // CPlayerGun::Render sets it: the first-person gun's environment maps read the live probe.
+  static bool sPortEnvProbe;
+  // CStateManager::PortCaptureProbeFace is drawing one of the probe's faces.
+  static bool sPortCapturingProbe;
+  // Draws that read the probe since the start (captures not counted): the capture runs only
+  // while something reads it.
+  static uint sPortProbeDraws;
+  // 1 once all six faces have been drawn, else 0 (draws keep their own look until then).
+  static float sPortProbeWeight;
+#endif
 
 private:
   static void SetupBlendMode(uint blendFactors, const CModelFlags& flags, bool alphaTest);

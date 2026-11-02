@@ -155,6 +155,10 @@ private:
   bool mPortPrompt; // bound to a prompt icon (port_prompts.h)
 
 public:
+  // PortPbrMaps' answer for this texture (its PBR maps or null), valid while the generation matches
+  // PortPbrMaps::Generation (never 0, so a new or reloaded texture asks again).
+  mutable const void* mPortPbrMaps;
+  mutable unsigned mPortPbrGeneration;
   // Binds this texture to its prompt icon when the asset id is one (port_prompts.h).
   void PortSetAssetId(uint id);
 #endif

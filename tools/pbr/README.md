@@ -35,12 +35,15 @@ real surfaces. Python 3.8 or later. Run the commands from the folder that holds 
    it up), and a rerun only remakes what changed. To tune: `--write-settings
    pbr_settings.json`, edit the presets (or add single textures under `"textures"`), and run again
    (a `pbr_settings.json` in the folder you run it from is read without `--settings`, and writing it
-   again keeps your edits). For example, a rock whose bright lava cracks come out raised
-   (the maps take brightness as height) is fixed with, under `"textures"`:
-   `"tex1_128x128_m_042ffe03bbd4ae68_14": {"chroma": 1.0}` (the name is the preview's file name).
-   `-h` lists the rest.
+   again keeps your edits). Under `"textures"`, a texture's preview file name takes its own values:
+   `{"chroma": 1.0}` for a rock whose bright lava cracks come out raised (the maps take brightness as
+   height), or `{"preset": "metal"}` for machinery in a folder of stone. `--only "*<name>*"` remakes
+   and previews just that texture. `-h` lists the rest.
 
-   The game doesn't draw these maps yet: that is step 3, the renderer.
+   To see them in the game, put the `PBR` folder inside your texture pack folder (`user_textures` in
+   the port's user folder, beside the pack; or make the maps there with `--out`) and turn on F1 >
+   Video > PBR maps. The log says `[pbr] N PBR map pairs` when it has found them. Surfaces with maps
+   get bumps, shine and metal; their glow and reflection layers stay as they were.
 
    Is your `texture_report.csv` from a scan that didn't print a "sky models" line, or does it lack the
    `reflective` column? Run steps 2 and 3 again: the scan now marks sky models (sky textures are no

@@ -4,6 +4,7 @@
 #include "port_textures.h"
 
 #include "port_embedded.h"
+#include "port_pbr_maps.h"
 #include "port_prompts.h"
 
 #include <dolphin/gx.h>
@@ -318,6 +319,18 @@ void LoadUser(bool force) {
     Load(sUser, force);
   }
 }
+
+// The folders PortPbrMaps reads: each loaded set's on disk, the user pack first (its maps win, as
+// its textures do). `rescan` for a pack whose files may have changed in place.
+void SyncPbrMaps(bool rescan) {
+  std::vector< std::string > folders;
+  for (const Layer* layer : {&sUser, &sBuiltIn}) {
+    if (layer->loaded && !layer->embedded && !layer->dir.empty()) {
+      folders.push_back(PortUtf8::ToUtf8(layer->dir));
+    }
+  }
+  PortPbrMaps::SetFolders(folders, rescan);
+}
 } // namespace
 
 namespace PortTextures {
@@ -332,6 +345,7 @@ void Initialize(const char* root, const char* userRoot) {
   ApplyPendingUserPack();
   Load(sBuiltIn, true);
   LoadUser(true);
+  SyncPbrMaps(true);
   std::fprintf(stderr, "[textures] device '%s'; built-in set: %s; user pack: %s\n", sDevice.c_str(),
                sBuiltIn.embedded ? "(built into the executable)"
                                   : sBuiltIn.root.empty() ? "(none)" : sBuiltIn.root.c_str(),
@@ -342,6 +356,7 @@ void Poll() {
   if (sUserPending.exchange(false, std::memory_order_acq_rel)) {
     ApplyPendingUserPack();
     LoadUser(true);
+    SyncPbrMaps(true);
   }
   if (const bool on = sUserEnabled.load(std::memory_order_acquire); on != sUserOn) {
     sUserOn = on;
@@ -350,18 +365,20 @@ void Poll() {
     } else {
       Unload(sUser);
     }
+    SyncPbrMaps(false);
     std::fprintf(stderr, "[textures] user texture pack %s\n", on ? "on" : "off");
   }
   const char* device = ResolveDeviceName();
-  if (sDevice == device) {
-    return;
+  if (sDevice != device) {
+    sDevice = device;
+    const uint64_t startNs = SDL_GetTicksNS();
+    Load(sBuiltIn, false);
+    LoadUser(false);
+    SyncPbrMaps(false);
+    std::fprintf(stderr, "[textures] switched the texture set to '%s' in %llu ms\n", device,
+                   static_cast<unsigned long long>((SDL_GetTicksNS() - startNs) / 1000000ull));
   }
-  sDevice = device;
-  const uint64_t startNs = SDL_GetTicksNS();
-  Load(sBuiltIn, false);
-  LoadUser(false);
-  std::fprintf(stderr, "[textures] switched the texture set to '%s' in %llu ms\n", device,
-                 static_cast<unsigned long long>((SDL_GetTicksNS() - startNs) / 1000000ull));
+  PortPbrMaps::Poll();
 }
 
 void RequestUserPackReload() { sUserPending.store(true, std::memory_order_release); }

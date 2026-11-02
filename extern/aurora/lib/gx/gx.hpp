@@ -45,6 +45,9 @@ constexpr float GX_LARGE_NUMBER = -1048576.0f;
 #endif
 
 namespace aurora::gx {
+// ShaderConfig::pbrKind while pbr is 0: the relit stage + 1, and the live-probe bit.
+constexpr u8 kPortSurfacePbrStageMask = 0x1F;
+constexpr u8 kPortEnvProbeBit = 0x20;
 constexpr bool EnableNormalVisualization = false;
 constexpr bool EnableDebugPrints = false;
 constexpr bool UseReversedZ = true;
@@ -408,6 +411,8 @@ struct GXState {
   u8 numTevStages = 0;
   u8 numTexGens = 0;
   u8 pbr = 0; // GX_AURORA_SET_PBR: above 1, a cost test (GXSetPBRCostTest)
+  u8 surfacePbr = 0; // GX_AURORA_PORT_SURFACE_PBR: the relit TEV stage + 1 (GXPortSetSurfacePBR), 0 off
+  bool envProbe = false; // GX_AURORA_PORT_ENV_PROBE: environment-mapped stages read the probe (GXPortSetEnvProbe)
   u8 sdf = 0; // GX_AURORA_SET_SDF
   u8 hudSample = 0; // GX_AURORA_SET_HUD_SAMPLE
   Vec4<float> hudDyin{0.f, 0.f, 0.f, 0.f}; // its DYIN
@@ -623,7 +628,10 @@ struct ShaderConfig {
   u8 pbr = 0; // GX_AURORA_SET_PBR
   u8 sdf = 0; // GX_AURORA_SET_SDF
   u8 depthOnly = 0; // pass 1 of GX_AURORA_PORT_DEPTH_PREPASS: the colour is not written
-  u8 pbrKind = 0; // with pbr, the special surface kind (pbrLayer.y), a constant in the shader
+  // With pbr, the special surface kind (pbrLayer.y), a constant in the shader. Without it, the
+  // port's GXPortSetSurfacePBR stage + 1 (kPortSurfacePbrStageMask) and GXPortSetEnvProbe
+  // (kPortEnvProbeBit), kept by populate_pipeline_config only on the draws they apply to.
+  u8 pbrKind = 0;
   // GXState::volFog: how the draw fogs itself (VolFog*), chosen from its blend.
   u8 volFog = 0;
   // With pbr, the vertex attribute holding the baked lightmap's UV (GX_VA_TEX0..7), or GX_VA_NULL: a varying in the shader.
@@ -687,6 +695,7 @@ struct ShaderInfo {
   bool shadowReceive : 1 = false; // shadow_receives: group 2 uses the shadow layout
   bool actorDecal : 1 = false;    // actor_decal: group 2 uses the shadow layout with the actor maps
   bool usesHdrTone : 1 = false;   // sceneHdr without pbr: hdr_tone (pbrTone) and hdr_tev_blend
+  bool usesSurfacePbr : 1 = false; // port_surface_pbr_stage or port_env_probe_stages: surface_pbr, surface_probe
 };
 struct BindGroupRanges {
   std::array<gfx::Range, MaxIndexAttr> vaRanges{};
@@ -695,6 +704,9 @@ void populate_pipeline_config(PipelineConfig& config, GXPrimitive primitive, GXV
 // aurora_set_per_pixel_lighting; any thread.
 void set_per_pixel_lighting(bool enabled) noexcept;
 bool per_pixel_lighting() noexcept;
+// aurora_set_pbr_highlight: GXPortSetSurfacePBR's highlight strength (1 as computed); any thread.
+void set_surface_pbr_highlight(float strength) noexcept;
+float surface_pbr_highlight() noexcept;
 // While set, every draw's pipeline lookup joins the front of the compile queue and waits for it
 // (see gfx::PipelinePriority::Blocking): the draws of the passes that set it are never skipped for a
 // pipeline that is still compiling. The GPU self-test sets it for its own passes; off by default.
@@ -703,7 +715,16 @@ bool blocking_pipelines() noexcept;
 // ShaderConfig::perPixelLight for a config with its other fields set: a PBR draw shades per
 // pixel already (and has no interpolators to spare).
 inline bool wants_per_pixel_light(const ShaderConfig& config) noexcept {
-  if (!per_pixel_lighting() || config.pbr != 0) {
+  if (config.pbr != 0) {
+    return false;
+  }
+  // GXPortSetSurfacePBR's and GXPortSetEnvProbe's draws (populate_pipeline_config keeps pbrKind
+  // only on a draw they apply to, whose channel 0 is lit) light per pixel: the relit stage needs
+  // it, and the probe needs the per-pixel position and normal.
+  if (config.pbrKind != 0) {
+    return true;
+  }
+  if (!per_pixel_lighting()) {
     return false;
   }
   for (const auto& cc : config.colorChannels) {

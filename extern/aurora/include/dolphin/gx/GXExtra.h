@@ -24,6 +24,18 @@ void GXDestroyCopyTex(void* dest);
 void GXSetArrayBaseIndex(GXAttr attr, u32 base);
 // Aurora extension: PBR shading for the following draws (see GX_AURORA_SET_PBR).
 void GXSetPBR(GXBool enable);
+// Port extension: the following draws light TEV stage `stage` (0 + lerp(0, L, TEXC), L channel 0's lit
+// colour or a register an earlier stage set to it plus something) with an ORM map in GX_TEXMAP6 and
+// a normal map in GX_TEXMAP7, sampled on that stage's texture coordinates; later stages are left
+// as they are. Draws whose stage isn't of that form, that use maps 6 or 7 themselves, or that
+// GXSetPBR shades, are drawn as before. Lit with per-pixel lights. A negative stage turns it off.
+void GXPortSetSurfacePBR(s32 stage);
+// Port extension: the following draws' environment-mapped TEV stages (texture coordinates from
+// the normal, GX_TG_NRM) sample the live probe (GXCopyProbeFace) in the view's reflected
+// direction, through GXSetPBRProbe's matrix, once its weight is above 0; before that they keep
+// their own texture. Draws with an unlit channel 0, or GXSetPBR's, are drawn as before. Lit
+// with per-pixel lights.
+void GXPortSetEnvProbe(GXBool on);
 // Aurora extension: distance-field texturing for the following draws (see
 // GX_AURORA_SET_SDF). 0 turns it off.
 void GXSetSDF(u8 edge);

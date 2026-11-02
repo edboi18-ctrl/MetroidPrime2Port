@@ -1,6 +1,7 @@
 #include "gx.hpp"
 
 #include "pipeline.hpp"
+#include "shader_info.hpp"
 #include "texture.hpp"
 #include "../dolphin/vi/vi_internal.hpp"
 #include "../webgpu/gpu.hpp"
@@ -245,11 +246,18 @@ wgpu::PrimitiveState to_primitive_state(GXCullMode gx_cullMode) {
   };
 }
 std::atomic_bool sPerPixelLighting{false};
+std::atomic<float> sSurfacePbrHighlight{1.f};
 std::atomic_bool sBlockingPipelines{false};
 } // namespace
 
 void set_per_pixel_lighting(bool enabled) noexcept { sPerPixelLighting.store(enabled, std::memory_order_relaxed); }
 bool per_pixel_lighting() noexcept { return sPerPixelLighting.load(std::memory_order_relaxed); }
+
+void set_surface_pbr_highlight(float strength) noexcept {
+  sSurfacePbrHighlight.store(std::isfinite(strength) ? std::clamp(strength, 0.f, 4.f) : 1.f,
+                             std::memory_order_relaxed);
+}
+float surface_pbr_highlight() noexcept { return sSurfacePbrHighlight.load(std::memory_order_relaxed); }
 
 void set_blocking_pipelines(bool enabled) noexcept { sBlockingPipelines.store(enabled, std::memory_order_relaxed); }
 bool blocking_pipelines() noexcept { return sBlockingPipelines.load(std::memory_order_relaxed); }
@@ -599,6 +607,24 @@ void populate_pipeline_config(PipelineConfig& config, GXPrimitive primitive, GXV
       config.shaderConfig.colorChannels[i] = {
           .matSrc = cc.matSrc,
       };
+    }
+  }
+  if (g_gxState.pbr == 0 && (g_gxState.surfacePbr != 0 || g_gxState.envProbe)) {
+    // GXPortSetSurfacePBR and GXPortSetEnvProbe: pbrKind holds the relit stage + 1 and the probe
+    // bit while pbr is 0, each kept only when it applies (port_surface_pbr_stage,
+    // port_env_probe_stages, which need per-pixel lights), so the draws they can't change keep
+    // the config, and the pipeline, they had.
+    auto& sc = config.shaderConfig;
+    sc.perPixelLight = 1;
+    sc.pbrKind = g_gxState.surfacePbr & kPortSurfacePbrStageMask;
+    if (sc.pbrKind != 0 && port_surface_pbr_stage(sc) < 0) {
+      sc.pbrKind = 0;
+    }
+    if (g_gxState.envProbe) {
+      sc.pbrKind |= kPortEnvProbeBit;
+      if (port_env_probe_stages(sc) == 0) {
+        sc.pbrKind &= static_cast<u8>(~kPortEnvProbeBit);
+      }
     }
   }
   config.shaderConfig.perPixelLight = wants_per_pixel_light(config.shaderConfig);

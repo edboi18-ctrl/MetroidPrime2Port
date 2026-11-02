@@ -382,6 +382,10 @@ public:
                         const rstl::string& profileName);
   void GetWorldGeometryMasks(uint& mask, uint& targetMask, CPlayerState::EPlayerVisor visor);
   void DrawSky(const TVisibleAreas& areas, CPlayerState::EPlayerVisor visor);
+#ifdef TARGET_PC
+  // Port: one face of the live reflection probe (GXCopyProbeFace), drawn before the frame's world.
+  void PortCaptureProbeFace();
+#endif
   void RenderAreaActors(bool& deferPlayerRender, CEchoEmitter*& emitters, const CGameArea& area,
                         const CPVSVisSet& visibility);
   void DrawDarkWorldEffects(CPlayerState::EPlayerVisor visor);

@@ -414,6 +414,16 @@ Video > Quality and Frame rate:
   saved).
 - `per_pixel_lighting`: Quality > Per-pixel lighting (Aurora lights per pixel); env
   `MP2_PER_PIXEL_LIGHTING`.
+- `pbr_maps`: Quality > PBR maps (off by default): draws the `_nrm`/`_orm` maps of
+  `tools/pbr/make_pbr_maps.py` found in the texture pack folders (`platform/port_pbr_maps.cpp`,
+  docs/MODS.md "PBR maps"); those surfaces are lit per pixel whatever `per_pixel_lighting` says;
+  env `MP2_PBR_MAPS`.
+- `pbr_highlight` (0..200, percent; default 100): Quality > PBR highlight strength (shown while PBR
+  maps is on), the highlights' strength (`aurora_set_pbr_highlight`); env `MP2_PBR_HIGHLIGHT`.
+- `live_reflections` (off by default): Quality > Live reflections, the live reflection probe
+  (`CStateManager::PortCaptureProbeFace`, one 128x128 face of a cube map around the camera a
+  frame) that the arm cannon's environment maps (`GXPortSetEnvProbe`) and the PBR maps' surfaces
+  reflect; env `MP2_LIVE_REFLECTIONS`.
 - `MP2_PIPELINE_SEED=0` ignores the embedded pipeline cache seed (docs/RELEASING.md).
 - Pipeline memory (env only, not saved; `platform/port_memory_log.cpp`): `MP2_PIPELINE_LAZY=0|1`
   builds pipelines when first drawn instead of all at startup (default on for Android, where a

@@ -363,6 +363,12 @@ void Frame() {
       sAppliedPerPixel = perPixel;
       aurora_set_per_pixel_lighting(perPixel != 0);
     }
+    static int sAppliedPbrHighlight = -1;
+    const int pbrHighlight = PortOverlay::PbrHighlight();
+    if (pbrHighlight != sAppliedPbrHighlight) {
+      sAppliedPbrHighlight = pbrHighlight;
+      aurora_set_pbr_highlight(static_cast< float >(pbrHighlight) / 100.f);
+    }
   }
   if (++sFramesSeen == 60) {
     DriverWorkaroundsStarted();

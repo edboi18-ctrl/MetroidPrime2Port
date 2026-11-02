@@ -376,6 +376,12 @@ extern "C" {
 // Port extension: Remastered's actor shadow (GXPortActorShadow*). Payload: u8 mode (0 end, 1 casters
 // begin, 2 decal begin, 3 render the actor maps), then for 1 and 2 u8 layer and 16 vec4 floats.
 #define GX_AURORA_PORT_ACTOR_SHADOW 0x0070
+// Port extension: PBR maps on one TEV stage of the following draws (GXPortSetSurfacePBR). Payload: u8
+// stage + 1, 0 off.
+#define GX_AURORA_PORT_SURFACE_PBR 0x0071
+// Port extension: environment-mapped stages of the following draws read the live probe
+// (GXPortSetEnvProbe). Payload: u8 on.
+#define GX_AURORA_PORT_ENV_PROBE 0x0072
 
 #define GX2_SET_POLYGON_OFFSET 0x1000
 

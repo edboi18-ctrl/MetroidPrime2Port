@@ -879,17 +879,9 @@ constexpr std::string_view nbt_slice_local(NbtSlice slice) noexcept {
 
 constexpr bool is_emboss_texgen(GXTexGenType type) noexcept { return type >= GX_TG_BUMP0 && type <= GX_TG_BUMP7; }
 
-auto lighting_func(const ShaderConfig& config, const ColorChannelConfig& cc, u8 i, bool alpha) -> std::string {
-  std::string_view swizzle = alpha ? ".a"sv : ""sv;
-  std::string outVar;
-  std::string_view posVar;
-  if (config.perPixelLight) {
-    outVar = fmt::format("rast{}", i);
-    posVar = "in.mv_pos"sv;
-  } else {
-    outVar = fmt::format("out.cc{}", i);
-    posVar = "mv_pos"sv;
-  }
+// Colour channel i's ambient and material sources (GXSetChanCtrl's ambSrc and matSrc) as WGSL.
+static auto channel_sources(const ShaderConfig& config, const ColorChannelConfig& cc, u8 i, bool alpha)
+    -> std::pair<std::string, std::string> {
   std::string ambSrc, matSrc;
   if (cc.ambSrc == GX_SRC_VTX) {
     if (config.perPixelLight) {
@@ -909,47 +901,65 @@ auto lighting_func(const ShaderConfig& config, const ColorChannelConfig& cc, u8 
   } else if (cc.matSrc == GX_SRC_REG) {
     matSrc = fmt::format("ubuf.cc{0}{1}_mat", i, alpha ? "a"sv : ""sv);
   }
-  if (!cc.lightingEnabled) {
-    return fmt::format("\n    {0}{2} = {1}{2};", outVar, matSrc, swizzle);
-  }
-  GXDiffuseFn diffFn = cc.diffFn;
-  std::string lightAttnFn;
+  return {ambSrc, matSrc};
+}
+
+// GX's light attenuation (GXSetChanCtrl's attnFn) as WGSL setting `attn`, with `normal` where the
+// specular kind needs one.
+static std::string light_attn_code(const ColorChannelConfig& cc, std::string_view normal) {
   if (cc.attnFn == GX_AF_NONE) {
-    lightAttnFn = "attn = 1.0;"s;
-  } else if (cc.attnFn == GX_AF_SPOT) {
-    lightAttnFn = fmt::format(R"""(
+    return "attn = 1.0;"s;
+  }
+  if (cc.attnFn == GX_AF_SPOT) {
+    return fmt::format(R"""(
           var cosine = max(0.0, dot(ldir, light.dir));
           var cos_attn = dot(light.cos_att, vec3f(1.0, cosine, cosine * cosine));
           var dist_attn = dot(light.dist_att, vec3f(1.0, dist, dist2));
           attn = max(0.0, cos_attn / dist_attn);)""");
-  } else if (cc.attnFn == GX_AF_SPEC) {
-    std::string_view normal = config.perPixelLight ? "pp_nrm"sv : "mv_nrm"sv;
-    std::string dist_attn = diffFn != GX_DF_NONE
+  }
+  if (cc.attnFn == GX_AF_SPEC) {
+    std::string dist_attn = cc.diffFn != GX_DF_NONE
                                 ? "max(0.0, dot(normalize(light.dist_att), vec3f(1.0, attn, attn * attn)));"
                                 : "max(0.0, dot(light.dist_att, vec3f(1.0, attn, attn * attn)));";
-    lightAttnFn = fmt::format(R"""(
+    return fmt::format(R"""(
           attn = select(0.0, max(0.0, dot({0}, light.dir)), dot({0}, ldir) >= 0.0);
           var cos_attn = dot(light.cos_att, vec3f(1.0, attn, attn * attn));
           var dist_attn = {1};
           attn = max(0.0, cos_attn / dist_attn);)""",
-                              normal, dist_attn);
+                       normal, dist_attn);
   }
-  std::string_view lightDiffFn;
-  if (diffFn == GX_DF_NONE) {
-    lightDiffFn = "1.0"sv;
-  } else if (diffFn == GX_DF_SIGN) {
-    if (config.perPixelLight) {
-      lightDiffFn = "dot(ldir, pp_nrm)"sv;
-    } else {
-      lightDiffFn = "dot(ldir, mv_nrm)"sv;
-    }
-  } else if (diffFn == GX_DF_CLAMP) {
-    if (config.perPixelLight) {
-      lightDiffFn = "max(0.0, dot(ldir, pp_nrm))"sv;
-    } else {
-      lightDiffFn = "max(0.0, dot(ldir, mv_nrm))"sv;
-    }
+  return {};
+}
+
+// GX's diffuse function (GXSetChanCtrl's diffFn) as a WGSL expression, with `normal`.
+static std::string light_diff_code(const ColorChannelConfig& cc, std::string_view normal) {
+  if (cc.diffFn == GX_DF_SIGN) {
+    return fmt::format("dot(ldir, {})", normal);
   }
+  if (cc.diffFn == GX_DF_CLAMP) {
+    return fmt::format("max(0.0, dot(ldir, {}))", normal);
+  }
+  return "1.0"s;
+}
+
+auto lighting_func(const ShaderConfig& config, const ColorChannelConfig& cc, u8 i, bool alpha) -> std::string {
+  std::string_view swizzle = alpha ? ".a"sv : ""sv;
+  std::string outVar;
+  std::string_view posVar;
+  if (config.perPixelLight) {
+    outVar = fmt::format("rast{}", i);
+    posVar = "in.mv_pos"sv;
+  } else {
+    outVar = fmt::format("out.cc{}", i);
+    posVar = "mv_pos"sv;
+  }
+  const auto [ambSrc, matSrc] = channel_sources(config, cc, i, alpha);
+  if (!cc.lightingEnabled) {
+    return fmt::format("\n    {0}{2} = {1}{2};", outVar, matSrc, swizzle);
+  }
+  const std::string_view normal = config.perPixelLight ? "pp_nrm"sv : "mv_nrm"sv;
+  const std::string lightAttnFn = light_attn_code(cc, normal);
+  const std::string lightDiffFn = light_diff_code(cc, normal);
   return fmt::format(R"""(
     {{
       var lighting = {5};
@@ -968,6 +978,153 @@ auto lighting_func(const ShaderConfig& config, const ColorChannelConfig& cc, u8 
     }})""",
                      i, GX::MaxLights, lightAttnFn, lightDiffFn, matSrc, ambSrc, posVar, outVar, swizzle,
                      alpha ? "a"sv : ""sv);
+}
+
+// GXPortSetEnvProbe (pbrKind's kPortEnvProbeBit; port_env_probe_stages says which stages): an
+// environment-mapped stage (texture coordinates from the normal) samples the live probe instead
+// of its texture, along the view reflected about the per-pixel normal, through GXSetPBRProbe's
+// view-to-probe rows (surface_probe, its weight in [0].w: 0 until the probe has been filled, and
+// the stage keeps its texture). surface_pbr.y is the probe level read (a little blur), z how much
+// of the probe replaces the texture. The probe is the display-referred scene, as the TEV's colours
+// are. The stage's alpha stays the texture's. explicit-level sampling, so no derivatives.
+static std::string port_env_probe(u32 stages) {
+  std::string out;
+  for (u32 i = 0; i < MaxTevStages; ++i) {
+    if ((stages & (1u << i)) == 0) {
+      continue;
+    }
+    out += fmt::format(R"""(
+    // GXPortSetEnvProbe: TEV stage {0}'s environment map is the live probe
+    if (ubuf.surface_probe[0].w > 0.0) {{
+        let pe{0}_r = reflect(normalize(in.mv_pos), pp_nrm);
+        let pe{0}_d = ubuf.surface_probe[0].xyz * pe{0}_r.x + ubuf.surface_probe[1].xyz * pe{0}_r.y +
+                      ubuf.surface_probe[2].xyz * pe{0}_r.z;
+        let pe{0}_c = textureSampleLevel(pbr_cube, pbr_cube_samp, pe{0}_d, ubuf.surface_pbr.y).rgb;
+        sampled{0} = vec4f(mix(sampled{0}.rgb, pe{0}_c,
+                               clamp(ubuf.surface_pbr.z * ubuf.surface_probe[0].w, 0.0, 1.0)), sampled{0}.a);
+    }})""",
+                       i);
+  }
+  return out;
+}
+
+// GXPortSetSurfacePBR (pbr 0, pbrKind = stage + 1; port_surface_pbr_stage says when it applies):
+// the TEV stage that lights the surface's base colour, 0 + lerp(0, L, TEXC) with L channel 0's lit
+// colour or a register an earlier stage set to it plus something (a room's lightmap stage: C0 =
+// RASC + C1 x lightmap), is evaluated again with the ORM map (GX_TEXMAP6: glTF occlusion, roughness,
+// metal in R/G/B) and the normal map (GX_TEXMAP7: tangent-space X/Y in R/G, decoded x * 255/128 - 1
+// so byte 128 is flat; glTF's +X right, +Y up with V down the image), both sampled on the stage's
+// texture coordinates. Channel 0's lights are summed again as GX sums them (its attenuation and
+// diffuse function, ambient and material colour) with the mapped normal, and replace rast0 in L, so
+// the part of L that isn't lit (the lightmap) is kept; occlusion darkens the diffuse, metal takes it
+// away, and a GGX lobe for each light plus the environment (the live probe once filled, else L)
+// reflected through Karis's split-sum fit (EnvBRDFApprox) are added in linear light. The lobe is Karis's ("Real Shading in Unreal Engine 4", SIGGRAPH 2013
+// notes, eq. 2-4): D with alpha = roughness^2 (floored at 0.02), Schlick-Smith G with Disney's
+// k = (roughness + 1)^2 / 8 for analytic lights, Schlick's Fresnel; times pi, as GX's diffuse has
+// no 1/pi. GX's lights aren't physical (the default point light falls off as 1/distance, and GX
+// clamps the lit sum to 1), so a light feeds its lobe at most 1.0 (min(attn x colour, 1)) and the
+// lights together at most 1.0 per channel, as GX's clamped sum allows the diffuse; the lobes are
+// then scaled by aurora_set_pbr_highlight's strength (the surface_pbr uniform's x).
+// The tangent frame comes from screen-space derivatives as in pbr_func. Later stages (a glow, a
+// masked reflection) take this result as they took the stage's. With a flat normal, occlusion 1 and
+// metal 0, the diffuse is the stage's own result exactly; the lobe and the reflected light are added.
+static std::string port_surface_pbr(const ShaderConfig& config, u32 idx, std::string_view outReg,
+                                    std::string_view base, std::string_view light) {
+  const auto& stage = config.tevStages[idx];
+  const auto& cc = config.colorChannels[GX_COLOR0];
+  const auto [ambSrc, matSrc] = channel_sources(config, cc, 0, false);
+  return fmt::format(
+      R"""(
+    // GXPortSetSurfacePBR: TEV stage {stage} relit with its ORM and normal maps
+    {{
+      let pbrs_pi = 3.14159265;
+      let pbrs_uv = {uv};
+      let pbrs_base = max({base}, vec3f(0.0));
+      let pbrs_orm = textureSampleBias(tex6, tex6_samp, pbrs_uv, ubuf.tex6_size_bias.z);
+      let pbrs_nmap = textureSampleBias(tex7, tex7_samp, pbrs_uv, ubuf.tex7_size_bias.z);
+      let pbrs_dp1 = dpdx(in.mv_pos);
+      let pbrs_dp2 = -dpdy(in.mv_pos);
+      let pbrs_duv1 = dpdx(pbrs_uv);
+      let pbrs_duv2 = -dpdy(pbrs_uv);
+      let pbrs_dp2perp = cross(pbrs_dp2, pp_nrm);
+      let pbrs_dp1perp = cross(pp_nrm, pbrs_dp1);
+      let pbrs_t = pbrs_dp2perp * pbrs_duv1.x + pbrs_dp1perp * pbrs_duv2.x;
+      let pbrs_b = pbrs_dp2perp * pbrs_duv1.y + pbrs_dp1perp * pbrs_duv2.y;
+      let pbrs_tlen = max(dot(pbrs_t, pbrs_t), dot(pbrs_b, pbrs_b));
+      let pbrs_ts = pbrs_nmap.rg * 1.9921875 - 1.0;
+      var pbrs_n = pp_nrm;
+      if (pbrs_tlen > 1e-24) {{
+          let pbrs_s = inverseSqrt(pbrs_tlen);
+          pbrs_n = normalize(pbrs_t * (pbrs_s * pbrs_ts.x) - pbrs_b * (pbrs_s * pbrs_ts.y) +
+                             pp_nrm * sqrt(max(0.0, 1.0 - dot(pbrs_ts, pbrs_ts))));
+      }}
+      let pbrs_v = select(vec3f(0.0, 0.0, 1.0), normalize(-in.mv_pos), dot(in.mv_pos, in.mv_pos) > 1e-12);
+      let pbrs_ao = clamp(pbrs_orm.r, 0.0, 1.0);
+      let pbrs_rough = clamp(pbrs_orm.g, 0.0, 1.0);
+      let pbrs_metal = clamp(pbrs_orm.b, 0.0, 1.0);
+      let pbrs_a = max(pbrs_rough, 0.02) * max(pbrs_rough, 0.02);
+      let pbrs_a2 = pbrs_a * pbrs_a;
+      let pbrs_k = (pbrs_rough + 1.0) * (pbrs_rough + 1.0) * 0.125;
+      let pbrs_nv = clamp(dot(pbrs_n, pbrs_v), 1e-4, 1.0);
+      let pbrs_f0 = mix(vec3f(0.04), pow(pbrs_base, vec3f(2.2)), pbrs_metal);
+      var pbrs_lighting = {amb};
+      var pbrs_spec = vec3f(0.0);
+      var pbrs_feed = vec3f(0.0);
+      for (var i = 0u; i < {max_lights}u; i++) {{
+          if ((ubuf.lightState0 & (1u << i)) == 0u) {{ continue; }}
+          var light = ubuf.lights[i];
+          var ldir = light.pos - in.mv_pos;
+          var dist2 = dot(ldir, ldir);
+          var dist = sqrt(dist2);
+          ldir = ldir / dist;
+          var attn: f32;{attn}
+          var diff = {diff};
+          pbrs_lighting = pbrs_lighting + (attn * diff * light.color);
+          let nl = max(dot(pbrs_n, ldir), 0.0);
+          let h = normalize(ldir + pbrs_v);
+          let nh = max(dot(pbrs_n, h), 0.0);
+          let vh = max(dot(pbrs_v, h), 0.0);
+          let dd = nh * nh * (pbrs_a2 - 1.0) + 1.0;
+          let d = pbrs_a2 / max(pbrs_pi * dd * dd, 1e-6 * pbrs_a2);
+          let vis = 0.25 / (max(nl * (1.0 - pbrs_k) + pbrs_k, 1e-4) * max(pbrs_nv * (1.0 - pbrs_k) + pbrs_k, 1e-4));
+          let f = pbrs_f0 + (1.0 - pbrs_f0) * pow(1.0 - vh, 5.0);
+          // A light feeds its highlight no more than GX lets it light the surface (1.0).
+          let e = min(max(attn, 0.0) * max(light.color.rgb, vec3f(0.0)), vec3f(1.0));
+          pbrs_feed += e;
+          pbrs_spec += (pbrs_pi * d * vis * nl) * f * pow(e, vec3f(2.2));
+      }}
+      // And the lights together no more than GX's clamped sum (1.0), scaled by the setting.
+      pbrs_spec *= min(vec3f(1.0), 1.0 / max(pbrs_feed, vec3f(1e-4))) * ubuf.surface_pbr.x;
+      let pbrs_rast = ({mat} * clamp(pbrs_lighting, vec4f(0.0), vec4f(1.0))).rgb;
+      let pbrs_light = max({light} - rast0.rgb + pbrs_rast, vec3f(0.0));
+      let pbrs_r = vec4f(-1.0, -0.0275, -0.572, 0.022) * pbrs_rough + vec4f(1.0, 0.0425, 1.04, -0.04);
+      let pbrs_a004 = min(pbrs_r.x * pbrs_r.x, exp2(-9.28 * pbrs_nv)) * pbrs_r.x + pbrs_r.y;
+      let pbrs_ab = vec2f(-1.04, 1.04) * pbrs_a004 + pbrs_r.zw;
+      // What it reflects: the live probe (the room around the camera) once filled, at the level the
+      // roughness asks, dimmed where the game lights the surface little (reflection occlusion, as
+      // Remastered scales its probe by the baked light); until then L' itself.
+      var pbrs_envl = pow(pbrs_light, vec3f(2.2));
+      if (ubuf.surface_probe[0].w > 0.0) {{
+          let pbrs_rv = reflect(normalize(in.mv_pos), pbrs_n);
+          let pbrs_pd = ubuf.surface_probe[0].xyz * pbrs_rv.x + ubuf.surface_probe[1].xyz * pbrs_rv.y +
+                        ubuf.surface_probe[2].xyz * pbrs_rv.z;
+          let pbrs_pc = textureSampleLevel(pbr_cube, pbr_cube_samp, pbrs_pd, pbrs_rough * {probe_lod}).rgb;
+          let pbrs_occ = mix(0.2, 1.0, clamp(max(pbrs_light.r, max(pbrs_light.g, pbrs_light.b)) * 2.0, 0.0, 1.0));
+          pbrs_envl = mix(pbrs_envl, pow(max(pbrs_pc, vec3f(0.0)), vec3f(2.2)) * pbrs_occ,
+                          min(ubuf.surface_probe[0].w, 1.0));
+      }}
+      let pbrs_env = pbrs_envl * (pbrs_f0 * pbrs_ab.x + pbrs_ab.y) * pbrs_ao;
+      let pbrs_diff = pbrs_base * (1.0 - pbrs_metal) * pbrs_light * pbrs_ao;
+      let pbrs_lit = pow(pow(pbrs_diff, vec3f(2.2)) + pbrs_spec + max(pbrs_env, vec3f(0.0)), vec3f(1.0 / 2.2));
+      {out} = vec4f({result}, {out}.a);
+    }})""",
+      fmt::arg("stage", idx), fmt::arg("uv", fmt::format("tex{}_uv", underlying(stage.texCoordId))),
+      fmt::arg("base", base), fmt::arg("amb", ambSrc), fmt::arg("mat", matSrc),
+      fmt::arg("max_lights", GX::MaxLights), fmt::arg("attn", light_attn_code(cc, "pbrs_n")),
+      fmt::arg("diff", light_diff_code(cc, "pbrs_n")), fmt::arg("light", light), fmt::arg("out", outReg),
+      fmt::arg("probe_lod", fmt::format("{:.1f}", static_cast<float>(gfx::probe::MipCount - 1))),
+      fmt::arg("result",
+               stage.colorOp.clamp ? "clamp(pbrs_lit, vec3f(0.0), vec3f(1.0))"sv : "pbrs_lit"sv));
 }
 
 // GX_AURORA_SET_PBR: replaces the TEV colour result with a metal/roughness evaluation of
@@ -3376,6 +3533,10 @@ std::string build_shader_source(const ShaderConfig& config) noexcept {
   std::string fragmentFn;
 
   static std::array regName{"prev"sv, "tevreg0"sv, "tevreg1"sv, "tevreg2"sv};
+  const int portPbrStage = port_surface_pbr_stage(config);
+  if (const u32 envStages = port_env_probe_stages(config); envStages != 0) {
+    fragmentFn += port_env_probe(envStages);
+  }
   std::array<bool, MaxTevRegs> colorNormalized{};
   std::array<bool, MaxTevRegs> alphaNormalized{};
   for (u32 idx = 0; idx < config.tevStageCount; ++idx) {
@@ -3400,6 +3561,11 @@ std::string build_shader_source(const ShaderConfig& config) noexcept {
                                     stage.colorOp.clamp, color_arg(stage.colorPass.a), color_arg(stage.colorPass.b),
                                     color_arg(stage.colorPass.c), color_arg_reg(stage.colorPass.d, idx, config, stage));
       fragmentFn += fmt::format("\n    // TEV stage {2}\n    {0} = vec4f({1}, {0}.a);", outReg, op, idx);
+      if (static_cast<int>(idx) == portPbrStage) {
+        const bool texIsB = stage.colorPass.b == GX_CC_TEXC;
+        fragmentFn += port_surface_pbr(config, idx, outReg, color_arg(GX_CC_TEXC),
+                                       color_arg(texIsB ? stage.colorPass.c : stage.colorPass.b));
+      }
       colorNormalized[stage.colorOp.outReg] = stage.colorOp.clamp;
     }
     {
@@ -4178,6 +4344,14 @@ fn vf_apply_hdr(c: vec4f, fog: vec4f, w: f32) -> vec4f {
       }
     }
   }
+  if (info.usesSurfacePbr && !pbrEmitted) {
+    // The probe the port's draws reflect: the same slots every bind group fills (build_bind_groups).
+    texBindings += fmt::format("\n@group(2) @binding({})\n"
+                               "var pbr_cube: texture_cube<f32>;\n"
+                               "@group(2) @binding({})\n"
+                               "var pbr_cube_samp: sampler;",
+                               MaxTextures * 2, MaxTextures * 2 + 1);
+  }
   if (info.usesHdrTone) {
     uniBufAttrs += "\n    hdr_tone: array<vec4f, 3>,";
     uniBufAttrs += "\n    hdr_tev_blend: vec4f, // x: SRCALPHA/ONE or SRCALPHA/INVSRCALPHA, y: dst factor mode";
@@ -4201,6 +4375,10 @@ fn vf_apply_hdr(c: vec4f, fog: vec4f, w: f32) -> vec4f {
   };
   if (info.usesHudDyin) {
     uniBufAttrs += "\n    hud_dyin: vec4f,";
+  }
+  if (info.usesSurfacePbr) {
+    uniBufAttrs += "\n    surface_pbr: vec4f, // x: highlight strength, y: env stages' probe level, z: their probe weight";
+    uniBufAttrs += "\n    surface_probe: mat3x4f, // GXSetPBRProbe: view to probe rows, weight in [0].w";
   }
   if (info.usesPTTexMtx.any()) {
     uniBufAttrs += fmt::format("\n    postmtx: array<mat3x4f, {}>,", MaxPTTexMtx);

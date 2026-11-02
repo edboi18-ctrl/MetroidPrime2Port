@@ -665,7 +665,7 @@ if(AURORA_SDL3_TARGET)
         platform/input/port_input_remap_ui.cpp
         platform/input/port_input_devices.cpp
         platform/input/port_input_user_presets.cpp platform/input/port_input_user_presets_store.cpp
-        platform/port_embedded.cpp platform/port_textures.cpp platform/port_texture_manifest.cpp platform/port_zip.cpp platform/port_prompts.cpp
+        platform/port_embedded.cpp platform/port_textures.cpp platform/port_pbr_maps.cpp platform/port_texture_manifest.cpp platform/port_zip.cpp platform/port_prompts.cpp
         platform/port_discord.cpp
         platform/port_disc_verify.cpp
         platform/port_disc_verify_core.cpp)
@@ -912,6 +912,11 @@ if(AURORA_SDL3_TARGET)
     target_include_directories(port_texture_manifest_tests PRIVATE platform/include)
     add_test(NAME port_texture_manifest_tests COMMAND port_texture_manifest_tests)
     set_tests_properties(port_texture_manifest_tests PROPERTIES TIMEOUT 30 LABELS port)
+    # Header-only (port_pbr_rules.h): which files are PBR maps, and the stage they relight.
+    add_executable(port_pbr_rules_tests tests/port_pbr_rules.cpp)
+    target_include_directories(port_pbr_rules_tests PRIVATE platform/include)
+    add_test(NAME port_pbr_rules_tests COMMAND port_pbr_rules_tests)
+    set_tests_properties(port_pbr_rules_tests PROPERTIES TIMEOUT 30 LABELS port)
 
     # Header-only (port_input_pad.h): the MP2_INPUT `pN.` prefix parser.
     add_executable(port_input_pad_tests tests/port_input_pad.cpp)

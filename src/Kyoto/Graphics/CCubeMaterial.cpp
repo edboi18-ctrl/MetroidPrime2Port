@@ -24,6 +24,8 @@
 
 #ifdef TARGET_PC
 #include "Kyoto/Basics/CBasics.hpp"
+#include "port_overlay.h"
+#include "port_pbr_maps.h"
 #include "port_texture_manifest.h"
 // Material data is big-endian on disc; every read must be swapped on a little-endian host.
 #ifdef TARGET_PC
@@ -912,6 +914,98 @@ static void PortRecordTextureManifest(const CCubeModel& model, const CCubeSurfac
   }
 }
 
+// The PBR maps (port_pbr_maps.h) chosen for the material SetCurrent set last, and the TEV stage
+// they relight; DrawSurface sends them around the surface's display list (PortBeginSurfacePbr).
+struct SPortPbrChoice {
+  const PortPbrMaps::Maps* maps;
+  int stage;
+  unsigned generation;
+};
+static SPortPbrChoice sPortPbrChoice = {nullptr, -1, 0};
+
+static const PortPbrMaps::Maps* PortPbrMapsFor(const CTexture& texture) {
+  const unsigned generation = PortPbrMaps::Generation();
+  if (texture.mPortPbrGeneration != generation) {
+    texture.mPortPbrMaps = PortPbrMaps::Find(texture.PortTexObj());
+    texture.mPortPbrGeneration = generation;
+  }
+  return static_cast< const PortPbrMaps::Maps* >(texture.mPortPbrMaps);
+}
+
+// The stage that lights the material's base texture, among its own stages (PortPbrMaps::
+// ChooseStage), and that texture's maps. Ordinary draws only, as for the manifest.
+static void PortChooseSurfacePbr(const CTexture* const* textures, uint texCount, uint tevCount) {
+  sPortPbrChoice.maps = nullptr;
+  sPortPbrChoice.stage = -1;
+  if (textures == nullptr || !PortPbrMaps::Active() || sTevHandler != HandleNormalTevs ||
+      sbRenderModelShadow || sbRenderModelBlack) {
+    return;
+  }
+  uint32_t colorIn[16];
+  uint32_t order[16];
+  const uint stages = tevCount < 16 ? tevCount : 16;
+  for (uint i = 0; i < stages; ++i) {
+    const CGX::STevState& s = CGX::GetTevState(static_cast< GXTevStageID >(i));
+    colorIn[i] = s.mColorInArgs;
+    order[i] = s.mTevOrderFlags;
+  }
+  unsigned map = 0;
+  const int stage = PortPbrMaps::ChooseStage(colorIn, order, stages, map);
+  if (stage < 0 || map >= texCount || map >= 8 || textures[map] == nullptr) {
+    return;
+  }
+  sPortPbrChoice.maps = PortPbrMapsFor(*textures[map]);
+  sPortPbrChoice.stage = sPortPbrChoice.maps != nullptr ? stage : -1;
+  sPortPbrChoice.generation = PortPbrMaps::Generation();
+}
+
+bool CCubeMaterial::sPortEnvProbe = false;
+bool CCubeMaterial::sPortCapturingProbe = false;
+uint CCubeMaterial::sPortProbeDraws = 0;
+float CCubeMaterial::sPortProbeWeight = 0.f;
+
+uint CCubeMaterial::PortBeginSurfaceDraw() {
+  uint begun = 0;
+  if (sPortPbrChoice.maps != nullptr && sPortPbrChoice.generation == PortPbrMaps::Generation()) {
+    PortPbrMaps::Load(*sPortPbrChoice.maps);
+    // The slots now hold the maps: the next CTexture bound to them must load again.
+    CTexture::InvalidateTexmap(GX_TEXMAP6);
+    CTexture::InvalidateTexmap(GX_TEXMAP7);
+    GXPortSetSurfacePBR(sPortPbrChoice.stage);
+    begun |= 1;
+  }
+  const bool liveReflections = PortOverlay::LiveReflections();
+  if (sPortEnvProbe && liveReflections && !sPortCapturingProbe) {
+    GXPortSetEnvProbe(GX_TRUE);
+    begun |= 2;
+  }
+  if (begun != 0) {
+    // The probe is in world space with Y and Z swapped (world Z-up to the cube's Y-up), and the
+    // shader's reflection vector is in view space (right, up, -forward): the rows that take one
+    // to the other, as the MP1 port's CCubeModel builds them for its PBR draws.
+    const CTransform4f& view = CGraphics::GetViewMatrix();
+    const f32 viewToProbe[3][3] = {
+        {view.Get00(), view.Get02(), -view.Get01()},
+        {view.Get20(), view.Get22(), -view.Get21()},
+        {view.Get10(), view.Get12(), -view.Get11()},
+    };
+    GXSetPBRProbe(viewToProbe, liveReflections ? sPortProbeWeight : 0.f);
+    if (!sPortCapturingProbe) {
+      ++sPortProbeDraws;
+    }
+  }
+  return begun;
+}
+
+void CCubeMaterial::PortEndSurfaceDraw(uint begun) {
+  if ((begun & 1) != 0) {
+    GXPortSetSurfacePBR(-1);
+  }
+  if ((begun & 2) != 0) {
+    GXPortSetEnvProbe(GX_FALSE);
+  }
+}
+
 #endif
 void CCubeMaterial::SetCurrent(const CModelFlags& flags, const CCubeSurface& surface,
                                const CCubeModel& model) const {
@@ -930,6 +1024,9 @@ void CCubeMaterial::SetCurrent(const CModelFlags& flags, const CCubeSurface& sur
   }
 
   if (sbRenderModelBlack) {
+#ifdef TARGET_PC
+    PortChooseSurfacePbr(nullptr, 0, 0);
+#endif
     SetCurrentBlack();
     return;
   }
@@ -1034,6 +1131,8 @@ void CCubeMaterial::SetCurrent(const CModelFlags& flags, const CCubeSurface& sur
       PortRecordTextureManifest(model, surface, GetData(), matFlags, SBig(*materialDataCur),
                                 portTextures, portTexCount, sPortGroupTevCount, true);
     }
+    // The group's TEV is still set: this material's textures choose the maps.
+    PortChooseSurfacePbr(portTexturesBound ? portTextures : nullptr, portTexCount, sPortGroupTevCount);
 #endif
     return;
   }
@@ -1140,6 +1239,7 @@ void CCubeMaterial::SetCurrent(const CModelFlags& flags, const CCubeSurface& sur
     PortRecordTextureManifest(model, surface, GetData(), matFlags, blendFactors, portTextures,
                               portTexCount, portMaterialTevCount, false);
   }
+  PortChooseSurfacePbr(portTexturesBound ? portTextures : nullptr, portTexCount, portMaterialTevCount);
 #endif
 }
 

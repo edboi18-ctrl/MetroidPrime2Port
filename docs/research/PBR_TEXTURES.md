@@ -193,6 +193,62 @@ draws; presets and per-texture overrides go in a JSON sidecar that the batch re-
   being painted art: its material's base is 406a679e, a candidate with that mask), and 8 Samus suit
   textures whose mask use had read as a glow join. The roughness drop is weighted by the masks' mean
   brightness.
+- **Step 3 must keep the added layers (2026-11-02).** The lava rock's base (406a679e) is plain grey
+  stone with dark cracks; the orange in its cracks comes from the reflection layer, scaled by the
+  coloured mask (042ffe03) in C2. Aurora's PBR replaces the TEV colour result outright (`pbr_func`:
+  "replaces the TEV colour result with a metal/roughness evaluation of texture maps 0-3"), so a plain
+  switch would drop every added layer: that shimmer, Phazon's glow, every masked reflection (232
+  candidates have one, 397 a glow layer). The renderer has to light the base with PBR and then add
+  the material's later stages (glow, masked reflection) on top, or carry them as the emissive, rather
+  than replacing the whole result.
+- **Step 3, the renderer: done (2026-11-02), untested in game.** "Port surface PBR": only the TEV
+  stage that lights the base texture is relit, and the stages after it run unchanged, so the added
+  layers stay. `GXPortSetSurfacePBR(stage)` (`GX_AURORA_PORT_SURFACE_PBR` 0x0071) sets `pbrKind =
+  stage + 1` with `pbr` 0, which keeps `ShaderConfig`'s layout and so the pipeline seed's
+  (`GXPipelineConfigVersion` unchanged; the seed never holds these rows). Aurora keeps the kind only
+  when `port_surface_pbr_stage` accepts the stage: `0 + lerp(0, L, TEXC)`, plain add, no indirect, L
+  = RASC on channel 0 (unswapped) or a colour register whose last writer is a plain add with d = RASC
+  on channel 0 (the lightmap stage), maps 6 and 7 unused by the material. Such draws are lit per
+  pixel. The WGSL (`port_surface_pbr`): ORM from map 6 and the normal from map 7 on the stage's UVs,
+  the tangent frame from derivatives as `pbr_func` does, channel 0's lights summed again with the
+  mapped normal (GX's attenuation and diffuse function, ambient and material colour) giving `rast'`;
+  `L' = max(L - rast0 + rast', 0)` keeps the unlit part (lightmap); diffuse = base (1 - metal) L'
+  ao; per light Karis's GGX lobe ("Real Shading in Unreal Engine 4", SIGGRAPH 2013 notes, eq. 2-4:
+  alpha = max(roughness, 0.02)^2, Schlick-Smith G with k = (roughness + 1)^2 / 8 for analytic lights,
+  Schlick F with F0 = mix(0.04, base, metal)) times pi and the light colour, in linear light; L' reflected as `lin(L') (F0 A + B) ao`
+  (Karis's EnvBRDFApprox); out = `gamma(lin(diffuse) + spec + env)`, clamped as the stage clamps.
+  Flat normal, occlusion 1, metal 0: the diffuse is the stage's result exactly, plus the lobe and a
+  few percent of reflected light. Checked: naga (30.0.1) validates the emitted WGSL for every
+  attenuation/diffuse function and channel source (18 variants, the real generator built against fmt
+  12.1.0); `extern/aurora/tests/gx_surface_pbr_test.cpp` checks the predicate and the emitted lines;
+  `tests/port_pbr_rules.cpp` the file names and the stage choice. Not yet seen running: the first
+  in-game look decides the presets (metal 0.5, `reflective_roughness`) and whether the lobe is too
+  strong under the game's lights.
+- **First in-game look (2026-11-02): highlights too bright near lights.** GX's lights aren't physical:
+  `CLight`'s default point light falls off as 1/distance (distC 0, distL 1, distQ 0), and GX clamps
+  each channel's lit sum to 1 (`lighting_func`: `mat * clamp(lighting, 0, 1)`), so the original never
+  passes 1 however close a light is. The lobe took `attn` unclamped: head-on at roughness 0.35 its
+  peak was 1.3x the light's colour at half a metre and 6.7x at 0.1 m (a metal 15x and 76x), and
+  overlapping lights added up. Now each light feeds its lobe at most `min(attn x colour, 1)` and the
+  lights together at most 1.0 per channel (GX's clamped sum): the same peaks are 0.67x (a metal 7.6x,
+  a glint's centre) wherever the light is and however many overlap. `pbr_highlight` (F1 > Video,
+  0-200%, `aurora_set_pbr_highlight`, the `surface_pbr` uniform) scales what is left. Ray or path
+  tracing was weighed and left: WebGPU has no ray tracing (acceleration structures and ray queries
+  are draft proposals, gpuweb#11054 and #11056), and a software path tracer on WebGPU takes about
+  10 ms per sample at 512x512 on an RTX 3080 (arXiv 2407.19977), far from a game frame. An offline
+  bake (path-traced room probes, the lightmaps as the radiance a ray finds) is the plan for
+  reflections instead.
+- **Live reflections instead of a bake (2026-11-02).** The MP1 port already draws a live probe (one
+  face of a cube map around the camera a frame, `CStateManager::PortCaptureProbeFace`), and the
+  vendored Aurora has its capture, blurred mips and cube sampling. It reflects the room as drawn
+  (lightmaps, PBR maps, dynamic lights), so the user's point that the bake lacks the PBR textures
+  doesn't arise, and a reflection of a reflection builds up over frames. MP2's own "real reflection"
+  (`CCubeRenderer::CacheReflection`) is a picture of Samus for surfaces near her, not an environment.
+  The arm cannon's look comes from its material: in all six materials of the beam gun models
+  (CMDL 0x05778239 and the three sharing its textures) a stage adds `C2 x env`, the env texture on
+  coordinates from the normal (`GX_TG_NRM`, texture matrix 0, normalised) and C2 a mask loaded by an
+  earlier stage. `GXPortSetEnvProbe` makes such stages sample the probe instead (MODS.md, "Live
+  reflections"); the surface PBR's reflected environment is the probe too once filled.
 
 ## Risks
 
