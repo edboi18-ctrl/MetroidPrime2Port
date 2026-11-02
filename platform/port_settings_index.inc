@@ -157,6 +157,7 @@
 {"Video", "Quality", "Quality", "Anisotropic filtering", "aniso texture sharp quality graphics"},
 {"Video", "Quality", "Quality", "Per-pixel lighting", "per pixel lighting shading smooth dolphin"},
 {"Video", "Quality", "Quality", "PBR maps", "pbr normal map roughness metal bumps shine texture pack physically based"},
+{"Video", "Quality", "Quality", "PBR highlight strength", "pbr specular shine gloss glare too bright highlights"},
 {"Video", "Quality", "Quality", "Auto render scale (native)", "resolution internal efb"},
 {"Video", "Quality", "Quality", "EFB scale", "resolution internal supersample render scale"},
 {"Video", "Quality", "Quality", "Dynamic resolution", "dynamic resolution scale performance fps"},

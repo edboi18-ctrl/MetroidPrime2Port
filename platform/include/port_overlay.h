@@ -696,6 +696,8 @@ bool PerPixelLighting();
 // The texture pack's PBR maps on surfaces (`MP2_PBR_MAPS`, F1 > Video > Quality; port_pbr_maps.h);
 // off by default.
 bool PbrMaps();
+// Their highlights' strength in percent, 0..200 (`MP2_PBR_HIGHLIGHT`, F1 > Video > Quality); 100 by default.
+int PbrHighlight();
 // F1 > Video > Compatibility, read when the GPU device is made (so after a restart):
 // OpenGL ES instead of Vulkan (`MP2_OPENGLES`, only where Aurora has the backend), the Adreno
 // storage clamp (-1 auto; Aurora reads `MP2_STORAGE_CLAMP` itself), the Dawn driver workarounds

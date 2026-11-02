@@ -1932,6 +1932,7 @@ bool sShowMenuHint = true;
 bool sShowCheats = false;
 bool sPerPixelLighting = false;
 bool sPbrMaps = false;
+int sPbrHighlight = 100;
 PortGraphicsBackend::EGraphicsBackend sGraphicsBackend = PortGraphicsBackend::kGraphicsBackend_Auto;
 PortGraphicsBackend::EGraphicsBackend sGraphicsBackendAtStart = PortGraphicsBackend::kGraphicsBackend_Auto;
 bool sOpenGles = false;
@@ -2021,6 +2022,11 @@ bool PerPixelLighting() {
 bool PbrMaps() {
   ReadEnv();
   return EnvBool("MP2_PBR_MAPS", sPbrMaps);
+}
+
+int PbrHighlight() {
+  ReadEnv();
+  return EnvIntIn("MP2_PBR_HIGHLIGHT", sPbrHighlight, 0, 200);
 }
 
 bool OpenGles() {

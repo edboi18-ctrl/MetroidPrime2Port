@@ -117,7 +117,9 @@ for that surface's display list only. Aurora relights just that stage (`port_sur
 `extern/aurora/lib/gx/shader.cpp`): channel 0's lights summed again per pixel with the mapped normal
 (GX's own attenuation and diffuse function) replace the vertex/pixel light in L, so a room's lightmap
 term is kept; occlusion and metal scale the diffuse; a GGX lobe per light and L reflected through
-Karis's EnvBRDFApprox are added in linear light. The later stages run as before, so glow and masked
+Karis's EnvBRDFApprox are added in linear light (each light feeds its lobe at most what GX lets it light
+the surface, and the lights together at most GX's clamped 1.0; Quality > PBR highlight strength,
+`pbr_highlight`, scales the lobes). The later stages run as before, so glow and masked
 reflections stay. With neutral maps the diffuse is the original exactly. Draws whose stage isn't of
 that form (Aurora's `port_surface_pbr_stage` checks), that use maps 6/7, the thermal visor, the model
 shadow and the black pass are drawn as before. Those surfaces are lit per pixel whatever

@@ -879,5 +879,12 @@ void aurora_set_per_pixel_lighting(bool enabled) {
   (void)enabled;
 #endif
 }
+void aurora_set_pbr_highlight(float strength) {
+#ifdef AURORA_ENABLE_GX
+  aurora::gx::set_surface_pbr_highlight(strength);
+#else
+  (void)strength;
+#endif
+}
 void aurora_set_timescale(float scale) { aurora::time::set_scale(scale); }
 float aurora_get_timescale() { return aurora::time::scale(); }

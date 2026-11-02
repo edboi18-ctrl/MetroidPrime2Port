@@ -68,6 +68,7 @@ TEST(GxSurfacePbr, RoomDiffuseStageIsRelit) {
   const auto info = build_shader_info(config);
   EXPECT_TRUE(info.sampledTextures.test(GX_TEXMAP6));
   EXPECT_TRUE(info.sampledTextures.test(GX_TEXMAP7));
+  EXPECT_TRUE(info.usesSurfacePbr);
   EXPECT_FALSE(info.usesPbr);
 
   const std::string source = build_shader_source(config);
@@ -91,6 +92,13 @@ TEST(GxSurfacePbr, RoomDiffuseStageIsRelit) {
   EXPECT_NE(source.find("let pbrs_rast = (ubuf.cc0_mat * clamp(pbrs_lighting"), std::string::npos);
   EXPECT_NE(source.find("var diff = max(0.0, dot(ldir, pbrs_n));"), std::string::npos);
   EXPECT_NE(source.find("prev = vec4f(clamp(pbrs_lit, vec3f(0.0), vec3f(1.0)), prev.a);"), std::string::npos);
+  // The highlights: each light feeds at most 1.0, all of them together at most 1.0 (GX's clamped
+  // sum), scaled by aurora_set_pbr_highlight through the surface_pbr uniform.
+  EXPECT_NE(source.find("surface_pbr: vec4f,"), std::string::npos);
+  EXPECT_NE(source.find("let e = min(max(attn, 0.0) * max(light.color.rgb, vec3f(0.0)), vec3f(1.0));"),
+            std::string::npos);
+  EXPECT_NE(source.find("pbrs_spec *= min(vec3f(1.0), 1.0 / max(pbrs_feed, vec3f(1e-4))) * ubuf.surface_pbr.x;"),
+            std::string::npos);
 }
 
 TEST(GxSurfacePbr, ModelStageIsRelit) {
@@ -108,6 +116,7 @@ TEST(GxSurfacePbr, OffLeavesTheShaderAlone) {
   config.pbrKind = 0;
   EXPECT_EQ(port_surface_pbr_stage(config), -1);
   EXPECT_FALSE(build_shader_info(config).sampledTextures.test(GX_TEXMAP6));
+  EXPECT_FALSE(build_shader_info(config).usesSurfacePbr);
   EXPECT_EQ(build_shader_source(config).find("pbrs_"), std::string::npos);
 }
 

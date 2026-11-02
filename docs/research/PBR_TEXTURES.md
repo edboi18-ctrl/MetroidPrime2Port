@@ -224,6 +224,20 @@ draws; presets and per-texture overrides go in a JSON sidecar that the batch re-
   `tests/port_pbr_rules.cpp` the file names and the stage choice. Not yet seen running: the first
   in-game look decides the presets (metal 0.5, `reflective_roughness`) and whether the lobe is too
   strong under the game's lights.
+- **First in-game look (2026-11-02): highlights too bright near lights.** GX's lights aren't physical:
+  `CLight`'s default point light falls off as 1/distance (distC 0, distL 1, distQ 0), and GX clamps
+  each channel's lit sum to 1 (`lighting_func`: `mat * clamp(lighting, 0, 1)`), so the original never
+  passes 1 however close a light is. The lobe took `attn` unclamped: head-on at roughness 0.35 its
+  peak was 1.3x the light's colour at half a metre and 6.7x at 0.1 m (a metal 15x and 76x), and
+  overlapping lights added up. Now each light feeds its lobe at most `min(attn x colour, 1)` and the
+  lights together at most 1.0 per channel (GX's clamped sum): the same peaks are 0.67x (a metal 7.6x,
+  a glint's centre) wherever the light is and however many overlap. `pbr_highlight` (F1 > Video,
+  0-200%, `aurora_set_pbr_highlight`, the `surface_pbr` uniform) scales what is left. Ray or path
+  tracing was weighed and left: WebGPU has no ray tracing (acceleration structures and ray queries
+  are draft proposals, gpuweb#11054 and #11056), and a software path tracer on WebGPU takes about
+  10 ms per sample at 512x512 on an RTX 3080 (arXiv 2407.19977), far from a game frame. An offline
+  bake (path-traced room probes, the lightmaps as the radiance a ray finds) is the plan for
+  reflections instead.
 
 ## Risks
 

@@ -445,9 +445,12 @@ ShaderInfo build_shader_info(const ShaderConfig& config) noexcept {
     }
   }
   if (port_surface_pbr_stage(config) >= 0) {
-    // GXPortSetSurfacePBR's maps, sampled on the relit stage's texture coordinates.
+    // GXPortSetSurfacePBR's maps, sampled on the relit stage's texture coordinates, and the
+    // surface_pbr uniform.
     info.sampledTextures.set(GX_TEXMAP6);
     info.sampledTextures.set(GX_TEXMAP7);
+    info.usesSurfacePbr = true;
+    info.uniformSize += sizeof(Vec4<float>);
   }
   if (config.pbr) {
     info.usesPbr = true;
@@ -660,6 +663,9 @@ static void fill_uniform(ByteBuffer& buf, const ShaderInfo& info) noexcept {
   }
   if (info.usesHudDyin) {
     buf.append(g_gxState.hudDyin);
+  }
+  if (info.usesSurfacePbr) {
+    buf.append(Vec4<float>{surface_pbr_highlight(), 0.f, 0.f, 0.f});
   }
   if (info.usesPTTexMtx.any()) {
     for (int i = 0; i < info.usesPTTexMtx.size(); ++i) {

@@ -993,7 +993,10 @@ auto lighting_func(const ShaderConfig& config, const ColorChannelConfig& cc, u8 
 // are added in linear light. The lobe is Karis's ("Real Shading in Unreal Engine 4", SIGGRAPH 2013
 // notes, eq. 2-4): D with alpha = roughness^2 (floored at 0.02), Schlick-Smith G with Disney's
 // k = (roughness + 1)^2 / 8 for analytic lights, Schlick's Fresnel; times pi, as GX's diffuse has
-// no 1/pi.
+// no 1/pi. GX's lights aren't physical (the default point light falls off as 1/distance, and GX
+// clamps the lit sum to 1), so a light feeds its lobe at most 1.0 (min(attn x colour, 1)) and the
+// lights together at most 1.0 per channel, as GX's clamped sum allows the diffuse; the lobes are
+// then scaled by aurora_set_pbr_highlight's strength (the surface_pbr uniform's x).
 // The tangent frame comes from screen-space derivatives as in pbr_func. Later stages (a glow, a
 // masked reflection) take this result as they took the stage's. With a flat normal, occlusion 1 and
 // metal 0, the diffuse is the stage's own result exactly; the lobe and the reflected light are added.
@@ -1038,6 +1041,7 @@ static std::string port_surface_pbr(const ShaderConfig& config, u32 idx, std::st
       let pbrs_f0 = mix(vec3f(0.04), pow(pbrs_base, vec3f(2.2)), pbrs_metal);
       var pbrs_lighting = {amb};
       var pbrs_spec = vec3f(0.0);
+      var pbrs_feed = vec3f(0.0);
       for (var i = 0u; i < {max_lights}u; i++) {{
           if ((ubuf.lightState0 & (1u << i)) == 0u) {{ continue; }}
           var light = ubuf.lights[i];
@@ -1056,8 +1060,13 @@ static std::string port_surface_pbr(const ShaderConfig& config, u32 idx, std::st
           let d = pbrs_a2 / max(pbrs_pi * dd * dd, 1e-6 * pbrs_a2);
           let vis = 0.25 / (max(nl * (1.0 - pbrs_k) + pbrs_k, 1e-4) * max(pbrs_nv * (1.0 - pbrs_k) + pbrs_k, 1e-4));
           let f = pbrs_f0 + (1.0 - pbrs_f0) * pow(1.0 - vh, 5.0);
-          pbrs_spec += (pbrs_pi * d * vis * attn * nl) * f * pow(max(light.color.rgb, vec3f(0.0)), vec3f(2.2));
+          // A light feeds its highlight no more than GX lets it light the surface (1.0).
+          let e = min(max(attn, 0.0) * max(light.color.rgb, vec3f(0.0)), vec3f(1.0));
+          pbrs_feed += e;
+          pbrs_spec += (pbrs_pi * d * vis * nl) * f * pow(e, vec3f(2.2));
       }}
+      // And the lights together no more than GX's clamped sum (1.0), scaled by the setting.
+      pbrs_spec *= min(vec3f(1.0), 1.0 / max(pbrs_feed, vec3f(1e-4))) * ubuf.surface_pbr.x;
       let pbrs_rast = ({mat} * clamp(pbrs_lighting, vec4f(0.0), vec4f(1.0))).rgb;
       let pbrs_light = max({light} - rast0.rgb + pbrs_rast, vec3f(0.0));
       let pbrs_r = vec4f(-1.0, -0.0275, -0.572, 0.022) * pbrs_rough + vec4f(1.0, 0.0425, 1.04, -0.04);
@@ -4313,6 +4322,9 @@ fn vf_apply_hdr(c: vec4f, fog: vec4f, w: f32) -> vec4f {
   };
   if (info.usesHudDyin) {
     uniBufAttrs += "\n    hud_dyin: vec4f,";
+  }
+  if (info.usesSurfacePbr) {
+    uniBufAttrs += "\n    surface_pbr: vec4f, // x: highlight strength (aurora_set_pbr_highlight)";
   }
   if (info.usesPTTexMtx.any()) {
     uniBufAttrs += fmt::format("\n    postmtx: array<mat3x4f, {}>,", MaxPTTexMtx);
