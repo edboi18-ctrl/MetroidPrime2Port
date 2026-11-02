@@ -86,7 +86,20 @@ the normals capped at `max_tilt` (30 degrees); presets by pack folder (`--write-
 to tune them, or single textures by name); maps at half the pack's size by default (`--scale`).
 `--preview` writes a labelled PNG per texture (pack, normal, ORM, lit without and with the maps, the
 light roughly as Aurora's PBR shader gives it without a reflection probe); `--limit` and `--only` try
-a few first; a rerun remakes only what changed (`pbr_maps.json`). Needs numpy and Pillow; texconv
+a few first; a rerun remakes only what changed (`pbr_maps.json`). texconv runs with `-dx10` (without it
+BC5 comes out as the legacy FourCC `BC5U`, which Aurora's DDS reader refuses), and every file it writes
+is checked against that reader's formats. An atlas's empty ground (black, white or transparent) is filled
+from the pieces' edges before the height is taken (`fill_empty`), so no bevel lands on the model's
+seams. `pbr_settings.json` in the current folder is read without `--settings`. The disc scan marks sky
+models (each MLVL's default sky, and `overrideSky` of the areas' AreaAttributes, `REAA`), and the
+report gives their textures the role `sky`, never a candidate. The report also counts, per diffuse texture, the
+materials that add a reflection layer (`reflective`) or a glow layer (`glow_layer`), and lists each
+reflection's mask (`reflection_masks`): 92% of the disc's reflections are scaled by a texture the
+material first loads into a register (where it shines). Such a texture gets the role `mask`, and one that
+is only ever a mask is no candidate (its maps would never be sampled as a base colour). The generator
+lowers a reflective texture's roughness towards `reflective_roughness` (0.35) by each use's mask mean
+brightness, read from the pack (1 unmasked, 0.5 when unknown or not in the pack); the mask has its own
+UVs, so only its mean carries over. A texture's own roughness setting wins. Needs numpy and Pillow; texconv
 (DirectXTex) compresses, else RGBA8 DDS. The port's loader skips `_nrm`/`_orm` names, so the folder can
 sit in `user_textures`; nothing draws them until step 3. Tests: `tests/pbr_make_maps.py`.
 

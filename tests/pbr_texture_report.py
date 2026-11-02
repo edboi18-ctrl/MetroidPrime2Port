@@ -23,8 +23,9 @@ def args(a, b, c, d):
     return a | b << 5 | c << 10 | d << 15
 
 
-def stage(texmap, texcoord, color, alpha=(CA_ZERO, CA_ZERO, CA_ZERO, CA_KONST)):
-    return [texcoord | texmap << 8 | 0xFF << 16, args(*color), args(*alpha), 0x100, 0x100, 12, 28]
+def stage(texmap, texcoord, color, alpha=(CA_ZERO, CA_ZERO, CA_ZERO, CA_KONST), out=0):
+    """`out`: the colour result's register (0 PREV, 1-3 C0-C2), bits 9-10 of the op word."""
+    return [texcoord | texmap << 8 | 0xFF << 16, args(*color), args(*alpha), 0x100 | out << 9, 0x100, 12, 28]
 
 
 def texgen(src):
@@ -85,6 +86,58 @@ class Roles(unittest.TestCase):
         self.assertEqual(tr.classify(record("t", 1, stages)), "alpha")
         self.assertEqual(tr.classify(record("t", 2, stages)), "unused")
         self.assertEqual(tr.classify(record("t", 2, stages, flags=tr.FLAG_INDIRECT)), "indirect")
+
+
+class Layers(unittest.TestCase):
+    def test_reflective_and_glow_columns(self):
+        # Phazon's material (CMDL 0x105600E8): lit diffuse, a glow added, a reflection added.
+        glow = stage(1, 1, (ZERO, TEXC, KONST, CPREV))
+        shine = stage(2, 2, (ZERO, TEXC, KONST, CPREV))
+        texgens = (texgen(TEX0), texgen(TEX0), texgen(tr.TG_NRM))
+        phazon = [DIFFUSE, glow, shine]
+        a, b, c, d = ("tex1_8x8_00000000000000%02x_14.dds" % i for i in (1, 2, 3, 4))
+        records = [record(a, 0, phazon, texgens, src="CMDL 1"), record(b, 1, phazon, texgens, src="CMDL 1"),
+                   record(c, 2, phazon, texgens, src="CMDL 1"),
+                   record(a, 0, [DIFFUSE], src="area 1"),  # the same texture, plain, elsewhere
+                   record(d, 0, [DIFFUSE], src="area 1", )]
+        records[-1]["mat"] = 1  # another material of the same source: not shiny
+        rows = {r["name"]: r for r in tr.build_report(records, {})}
+        self.assertEqual((rows[a]["reflective"], rows[a]["glow_layer"]), ("1/2", "1/2"))
+        self.assertEqual((rows[d]["reflective"], rows[d]["glow_layer"]), ("", ""))
+        self.assertEqual((rows[b]["roles"], rows[c]["roles"]), ("glow", "reflection"))
+        line = tr.summary(rows.values(), {}, 0, 0).splitlines()[2]
+        self.assertIn("with a reflection layer (made shinier) 0", line)  # nothing is in a pack here
+
+
+class Masks(unittest.TestCase):
+    def test_reflection_mask(self):
+        # Phazon's shape: lit diffuse; a texture into C2; the reflection added, scaled by C2.
+        C2 = 6
+        stages = [DIFFUSE, stage(1, 1, (ZERO, ZERO, ZERO, TEXC), out=3),
+                  stage(2, 2, (ZERO, C2, TEXC, CPREV))]
+        texgens = (texgen(TEX0), texgen(TEX0 + 1), texgen(tr.TG_NRM))
+        wall, mask, shine, plain = ("tex1_8x8_00000000000000%02x_14.dds" % i for i in (1, 2, 3, 4))
+        records = [record(wall, 0, stages, texgens, src="CMDL 1"), record(mask, 1, stages, texgens, src="CMDL 1"),
+                   record(shine, 2, stages, texgens, src="CMDL 1"),
+                   record(mask, 0, [DIFFUSE], src="area 1")]  # the mask is a surface elsewhere
+        self.assertEqual([tr.classify(r) for r in records[:3]], ["diffuse", "mask", "reflection"])
+        index = {tr.parse_name(n): [pathlib.PurePosixPath("Agon Wastes/" + n)] for n in (wall, mask)}
+        rows = {r["name"]: r for r in tr.build_report(records, index)}
+        self.assertEqual((rows[wall]["reflective"], rows[wall]["reflection_masks"]), ("1/1", mask + ":c*1"))
+        self.assertEqual(set(rows[mask]["roles"].split("+")), {"diffuse", "mask"})  # ties keep first-seen order
+        self.assertEqual(rows[mask]["pbr_candidate"], "yes")  # its surface use still wants maps
+        only_mask = [r for r in records[:3]]
+        rows = {r["name"]: r for r in tr.build_report(only_mask, index)}
+        self.assertEqual((rows[mask]["roles"], rows[mask]["pbr_candidate"]), ("mask", "no"))
+
+    def test_strengths(self):
+        texgens = (texgen(TEX0), texgen(tr.TG_NRM))
+        unmasked = [DIFFUSE, stage(1, 1, (ZERO, TEXC, 12, CPREV))]  # scaled by ONE
+        konst = [DIFFUSE, stage(1, 1, (ZERO, TEXC, KONST, CPREV))]
+        strengths = lambda st: tr.reflection_strengths([tr.Stage(s) for s in st], list(texgens))
+        self.assertEqual(strengths(unmasked), [("full",)])
+        self.assertEqual(strengths(konst), [("unknown",)])
+        self.assertEqual(strengths([DIFFUSE]), [])
 
 
 class WholeRun(unittest.TestCase):

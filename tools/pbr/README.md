@@ -34,12 +34,19 @@ real surfaces. Python 3.8 or later. Run the commands from the folder that holds 
    for all of them. It prints its progress; texconv's BC7 step is the slow part (`--quick` speeds
    it up), and a rerun only remakes what changed. To tune: `--write-settings
    pbr_settings.json`, edit the presets (or add single textures under `"textures"`), and run again
-   with `--settings pbr_settings.json`. For example, a rock whose bright lava cracks come out raised
+   (a `pbr_settings.json` in the folder you run it from is read without `--settings`, and writing it
+   again keeps your edits). For example, a rock whose bright lava cracks come out raised
    (the maps take brightness as height) is fixed with, under `"textures"`:
    `"tex1_128x128_m_042ffe03bbd4ae68_14": {"chroma": 1.0}` (the name is the preview's file name).
    `-h` lists the rest.
 
    The game doesn't draw these maps yet: that is step 3, the renderer.
+
+   Is your `texture_report.csv` from a scan that didn't print a "sky models" line, or does it lack the
+   `reflective` column? Run steps 2 and 3 again: the scan now marks sky models (sky textures are no
+   longer candidates), and the report counts the materials that make a texture shiny (a reflection
+   layer, mostly scaled by a mask texture: masks get the role `mask` and are no candidates), which the
+   maps take as lower roughness, as much as the masks are bright.
 
 (`py -3` is the Windows Python launcher; elsewhere use `python3`, with `/` in paths.)
 

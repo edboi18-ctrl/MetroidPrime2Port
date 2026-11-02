@@ -12,16 +12,22 @@ This reads that, finds each texture in the pack, classifies its role, and writes
     (Windows: py -3 tools\\pbr\\texture_report.py texture_manifest.jsonl "C:\\...\\G2M")
 
 Roles, from how the material's TEV stages use the texture's texmap (GX: out = d + lerp(a, b, c)):
+  sky         the material belongs to a sky model (the disc scan marks them)
   lightmap    the first textured stage of a material with the lightmap flag
   reflection  its texture coordinates come from the normal or the position (an environment or
               projected map), not from the model's UVs
+  mask        it sets the register a reflection stage is scaled by: where the surface shines
   glow        added onto what earlier stages made (d is the previous colour or a register)
   diffuse     multiplied into the colour (lit, tinted or alone): the PBR candidates
   alpha       only its alpha is read (a mask)
   indirect    the material's indirect (warp) texture
   unused      bound but read by no stage
 These are heuristics over the raw facts the manifest keeps, so they can change without rebuilding
-the game. A texture used several ways lists every role. Python 3.8+, standard library only.
+the game. For a diffuse texture the CSV also counts the materials that give it a reflection layer
+(`reflective`: the artists made it shiny; make_pbr_maps.py lowers its roughness by as much as the
+reflection's masks, listed in `reflection_masks`, say it shines) and a glow layer (`glow_layer`: added
+light, the surface's emissive for the renderer), as "uses with / diffuse uses". A texture that is a
+mask in some materials and a surface in others stays a candidate. A texture used several ways lists every role. Python 3.8+, standard library only.
 """
 
 import argparse
@@ -34,7 +40,9 @@ import sys
 
 # GX enums (extern/aurora/include/dolphin/gx/GXEnum.h).
 CC_CPREV, CC_C0, CC_C1, CC_C2 = 0, 2, 4, 6
-CC_TEXC, CC_TEXA, CC_RASC, CC_ZERO = 8, 9, 10, 15
+CC_TEXC, CC_TEXA, CC_RASC, CC_ONE, CC_ZERO = 8, 9, 10, 12, 15
+# A register as a colour argument (C0/A0, C1/A1, C2/A2) -> the TEV output register that sets it.
+REGISTER_OF_ARG = {2: 1, 3: 1, 4: 2, 5: 2, 6: 3, 7: 3}
 CA_TEXA = 4
 TEV_ADD = 0
 TG_POS, TG_NRM = 0, 1
@@ -74,6 +82,7 @@ class Stage:
         self.color = [(color_in >> s) & 0x1F for s in (0, 5, 10, 15)]  # a, b, c, d
         self.alpha = [(alpha_in >> s) & 0x1F for s in (0, 5, 10, 15)]
         self.color_op = color_op & 0xF
+        self.out_reg = (color_op >> 9) & 3  # 0 is PREV (the colour carried on), 1-3 C0-C2
 
     def reads_color(self):
         return CC_TEXC in self.color or CC_TEXA in self.color
@@ -82,8 +91,36 @@ class Stage:
         return CA_TEXA in self.alpha
 
 
+def is_reflection_stage(stage, texgens):
+    return (stage.texmap != TEXMAP_NULL and stage.reads_color() and stage.texcoord < len(texgens) and
+            ((texgens[stage.texcoord] >> 4) & 0x1F) in (TG_POS, TG_NRM))
+
+
+def reflection_strengths(stages, texgens):
+    """For each reflection stage of a material, how strong the reflection is: ("mask", texmap,
+    "c" or "a") when it is scaled by a register an earlier stage took from a texture (the artists'
+    mask of where it shines), ("full",) when scaled by one, else ("unknown",)."""
+    out = []
+    for i, s in enumerate(stages):
+        if not is_reflection_stage(s, texgens):
+            continue
+        a, b, c, d = s.color
+        scale = b if c in (CC_TEXC, CC_TEXA) else c if b in (CC_TEXC, CC_TEXA) else None
+        register = REGISTER_OF_ARG.get(scale)
+        writer = next((w for w in reversed(stages[:i]) if w.out_reg == register), None) if register else None
+        if writer is not None and writer.texmap != TEXMAP_NULL and writer.reads_color():
+            out.append(("mask", writer.texmap, "c" if CC_TEXC in writer.color else "a"))
+        elif scale == CC_ONE:
+            out.append(("full",))
+        else:
+            out.append(("unknown",))
+    return out
+
+
 def classify(record):
     """The role of record["slot"] in its material (see the module docstring)."""
+    if record.get("sky"):
+        return "sky"
     slot = record["slot"]
     flags = record["flags"]
     stages = [Stage(s) for s in record["stages"]]
@@ -98,6 +135,8 @@ def classify(record):
         return "reflection"
     if not color_uses:
         return "alpha"
+    if any(kind[0] == "mask" and kind[1] == slot for kind in reflection_strengths(stages, texgens)):
+        return "mask"
     first_textured = next((i for i, s in enumerate(stages)
                            if s.texmap != TEXMAP_NULL and (s.reads_color() or s.reads_alpha())), None)
     index, stage = color_uses[0]
@@ -169,17 +208,58 @@ def read_manifest(path):
     return records, bad
 
 
+def material_roles(records):
+    """{(source, material index): set of its textures' roles}: a material's records share both."""
+    roles = collections.defaultdict(set)
+    for record in records:
+        roles[(record.get("src", ""), record.get("mat", 0))].add(classify(record))
+    return roles
+
+
+def material_reflections(records):
+    """{(source, material index): the strength of its first reflection, as "<mask name>:<c|a>",
+    "full" or "unknown"; absent when it has none}."""
+    names = collections.defaultdict(dict)
+    shape = {}
+    for record in records:
+        key = (record.get("src", ""), record.get("mat", 0))
+        names[key][record["slot"]] = record["name"]
+        shape.setdefault(key, record)
+    out = {}
+    for key, record in shape.items():
+        kinds = reflection_strengths([Stage(s) for s in record["stages"]], record.get("texgens", []))
+        if not kinds:
+            continue
+        kind = kinds[0]
+        if kind[0] == "mask" and kind[1] in names[key]:
+            out[key] = "%s:%s" % (names[key][kind[1]], kind[2])
+        else:
+            out[key] = kind[0] if kind[0] != "mask" else "unknown"
+    return out
+
+
 def build_report(records, index):
     """One row per texture: its roles, uses, sources and pack file."""
     textures = {}
+    by_material = material_roles(records)
+    reflections = material_reflections(records)
     for record in records:
         key = parse_name(record["name"])
         if key is None:
             continue
         entry = textures.setdefault(record["name"], {
             "key": key, "roles": collections.Counter(), "sources": set(), "uses": 0,
-            "additive": False, "alpha_test": False})
-        entry["roles"][classify(record)] += 1
+            "additive": False, "alpha_test": False, "diffuse_uses": 0, "reflective": 0, "glow": 0,
+            "masks": collections.Counter()})
+        role = classify(record)
+        entry["roles"][role] += 1
+        if role == "diffuse":
+            key = (record.get("src", ""), record.get("mat", 0))
+            entry["diffuse_uses"] += 1
+            entry["reflective"] += key in reflections
+            entry["glow"] += "glow" in by_material[key]
+            if key in reflections:
+                entry["masks"][reflections[key]] += 1
         entry["sources"].add(record.get("src", ""))
         entry["uses"] += 1
         entry["additive"] |= (record.get("blend", 0) >> 16) == BL_ONE
@@ -190,7 +270,9 @@ def build_report(records, index):
         pack_file = files[0] if files else None
         roles = [role for role, _ in e["roles"].most_common()]
         surface = pack_file is None or is_surface_folder(pack_file)
-        candidate = roles == ["diffuse"] and not e["additive"] and surface and pack_file is not None
+        # A mask elsewhere doesn't stop a texture being a surface here: its maps serve that use.
+        candidate = ([r for r in roles if r != "mask"] == ["diffuse"] and not e["additive"] and surface
+                     and pack_file is not None)
         rows.append({
             "pbr_candidate": "yes" if candidate else "no",
             "roles": "+".join(roles),
@@ -201,6 +283,9 @@ def build_report(records, index):
             "uses": e["uses"],
             "additive": "yes" if e["additive"] else "",
             "alpha_test": "yes" if e["alpha_test"] else "",
+            "reflective": "%d/%d" % (e["reflective"], e["diffuse_uses"]) if e["reflective"] else "",
+            "glow_layer": "%d/%d" % (e["glow"], e["diffuse_uses"]) if e["glow"] else "",
+            "reflection_masks": "; ".join("%s*%d" % kv for kv in sorted(e["masks"].items())),
             "sources": "; ".join(sorted(s for s in e["sources"] if s)[:5]),
             "_pack_key": pack_key,
         })
@@ -208,7 +293,7 @@ def build_report(records, index):
 
 
 FIELDS = ["pbr_candidate", "roles", "name", "pack_file", "category", "width", "height", "format",
-          "uses", "additive", "alpha_test", "sources"]
+          "uses", "additive", "alpha_test", "reflective", "glow_layer", "reflection_masks", "sources"]
 
 
 def write_csv(rows, path):
@@ -226,8 +311,11 @@ def summary(rows, index, bad_lines, skipped_files):
                f" ({len(rows) - len(in_pack)} the pack doesn't replace).")
     roles = collections.Counter(r["roles"] for r in rows)
     out.append("Roles: " + ", ".join(f"{role} {n}" for role, n in roles.most_common()))
+    candidates = [r for r in rows if r["pbr_candidate"] == "yes"]
     out.append(f"PBR candidates (diffuse only, not additive, not in an HUD/FX folder, in the pack): "
-               f"{sum(r['pbr_candidate'] == 'yes' for r in rows)}")
+               f"{len(candidates)}; with a reflection layer (made shinier) "
+               f"{sum(1 for r in candidates if r['reflective'])}, with a glow layer "
+               f"{sum(1 for r in candidates if r['glow_layer'])}")
     by_category = collections.Counter(r["category"] or "(root)" for r in in_pack)
     if by_category:
         out.append("Seen, by pack folder: " +

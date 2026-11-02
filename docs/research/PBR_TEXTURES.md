@@ -154,6 +154,45 @@ draws; presets and per-texture overrides go in a JSON sidecar that the batch re-
   (`max_tilt`, 30 degrees) and rock is weaker (1.5); lava in a Genn rock's cracks is brighter than
   the stone, so it came out raised: brightness as height can't tell, and `chroma` (per texture)
   takes colourful areas down; and wide textures got 32 px previews, now stacked and labelled.
+- **First maps from the pack (2026-11-01, the same 20, texconv BC5/BC7).** The data survived
+  compression (normals within 0.006-0.016 of the uncompressed vectors on average, ORM within about
+  one level: no colour-space conversion). Found: texconv wrote BC5 with the legacy FourCC `BC5U`,
+  which `dds_io.cpp` doesn't take (it takes `ATI2` or DX10 83), so the tool now runs it with `-dx10`
+  and checks every file it writes; all ten wide Temple Grounds candidates were sky panoramas, so the
+  disc scan now marks sky models (MLVL default sky, `REAA` `overrideSky`) and the report keeps their
+  textures out; an enemy atlas's pieces rose from their black ground with a bevel on the model's
+  seams, so empty atlas space is filled (push-pull) before the height is taken; and a settings
+  file is now read from the current folder, as the lava override had not been passed.
+- **Second run (2026-11-02, the same disc and pack).** The scan found 14 sky models; 90 textures
+  are sky (84 only, 6 shared), and all ten wide Temple Grounds panoramas left the candidates (1,231
+  to 1,220, with a Sanctuary texture both a sky and a room use). The 68 wide candidates left are
+  mostly trims used by rooms. The new previews showed the lava override and the atlas fill working,
+  and a Temple Grounds atlas on white ground, so white ground is now empty space too. Open: a blue
+  lightning texture on five models is plain diffuse; if its materials never read the lit colour,
+  Aurora's PBR (which needs channel 0 sampled: `sampledColorChannels.test(0)`) can't apply to it,
+  which the manifest's TEV stages can tell.
+- **The disc's materials, from that scan's manifest (39,624 records).** Every lightmapped area material
+  (29,393) reads the lit colour on channel 0, so Aurora's PBR condition holds for the world geometry
+  and step 3 can hook it as planned; 2% of area records and 7% of model records don't (fullbright
+  draws), and none of the 1,220 candidates is among them. The blue texture is Phazon (CMDL
+  0x105600E8 and four more): stage 0 lit diffuse (RASC x TEXC), stage 1 a glow added (CPREV + TEXC),
+  stages 2-3 a masked reflection added: lit, with its own light from the glow layer, which step 3
+  takes as the emissive. 331 candidates have a reflection layer in some or all of their materials
+  (the artists made them shiny) and 431 a glow layer; the report now counts both per texture and the
+  generator lowers roughness for the reflective ones. Rebuilt from this manifest, the report's
+  candidate decisions are unchanged.
+- **Reflection masks (2026-11-02).** The next 20 previews put 12 at the full shiny roughness, so
+  the reflection layers were looked at closely: all 1,981 take their coordinates from the normal
+  (real environment maps, 124 textures, two of them in 862 materials), and 1,822 are scaled by a
+  register an earlier stage loaded from a texture: the artists' mask of where the surface shines (55
+  are unscaled, 17 scaled by the lit colour, 87 written to a register for later). The masks have their
+  own UV sets (TEX1/TEX2 against the diffuse's TEX0; 0 of 1,124 pairs share texture coordinates), so
+  only a mask's mean can carry over to the diffuse's roughness. The report classified 313 masks as
+  diffuse; they are now `mask` (the texture written to the register a reflection stage is scaled by):
+  99 candidates were only ever masks and leave (1,220 to 1,129; e.g. the lava rock, Retro's masks
+  being painted art: its material's base is 406a679e, a candidate with that mask), and 8 Samus suit
+  textures whose mask use had read as a glow join. The roughness drop is weighted by the masks' mean
+  brightness.
 
 ## Risks
 

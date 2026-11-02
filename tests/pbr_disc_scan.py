@@ -207,6 +207,83 @@ class WholeScan(unittest.TestCase):
         self.assertEqual(scanner.stats["cmdl"], 1)
 
 
+def mlvl(skybox, mrea_ids, version=0x17):
+    """An MLVL in the layout CWorld::Update and echoes_disc.parse_mlvl read: no relays (version
+    0x17 has them only at 17), areas with no attached objects, docks or modules."""
+    body = be(0xDEAFBABE, version, 0x11, 0x12, 0x13, 0x14, skybox)  # STRG, dark STRG, temple, SAVW
+    body += be(len(mrea_ids))
+    for i, mrea in enumerate(mrea_ids):
+        body += be(0x20 + i) + b"\0" * (48 + 24) + be(mrea, i)
+        body += be(0) + be(0) + be(0) + be(0)  # attached areas, two 8-byte lists, a 4-byte list
+        body += be(0) + be(0) + be(0) + ("area_%d" % i).encode() + b"\0"  # docks, modules, offsets
+    return body
+
+
+def mrea(material_section, layer):
+    """A version-0x19 MREA: section 0 the world geometry's material set, section 1 one script
+    layer, each in a stored (uncompressed) block of its own."""
+    sections = [s + b"\0" * (-len(s) % 32) for s in (material_section, layer)]
+    h = [0] * 32
+    h[0], h[1], h[15], h[16], h[17], h[18], h[28] = 0xDEADBEEF, 0x19, 1, 2, 0, 1, 2
+    body = be(*h) + be(*map(len, sections))
+    body += b"\0" * (-len(body) % 32)
+    body += b"".join(be(len(sec), len(sec), 0, 1) for sec in sections)
+    body += b"\0" * (-len(body) % 32)
+    return body + b"".join(sections)
+
+
+def scly(objects):
+    """A script layer: 'SCLY', 6 bytes, a count, then per object FourCC, u16 length, editor id, no
+    connections, properties (CScriptObjectLoaderHelper)."""
+    out = b"SCLY" + b"\0" * 6 + be(len(objects))
+    for i, (fourcc, props) in enumerate(objects):
+        body = be(0x1000 + i) + struct.pack(">H", 0) + props
+        out += fourcc + struct.pack(">H", len(body)) + body
+    return out
+
+
+def props(*entries):
+    """A property struct: u16 count, then u32 id, u16 size, data per entry (SLdrAreaAttributes.inc)."""
+    out = struct.pack(">H", len(entries))
+    for pid, data in entries:
+        out += be(pid) + struct.pack(">H", len(data)) + data
+    return out
+
+
+class Sky(unittest.TestCase):
+    def test_world_and_area_skies(self):
+        wall = struct.pack(">IHHI", 7, 8, 8, 1) + pattern(128)
+        clouds = struct.pack(">IHHI", 7, 8, 8, 1) + pattern(130)[2:]  # distinct hashed bytes
+        stars = struct.pack(">IHHI", 7, 8, 8, 1) + pattern(133)[5:]
+        plain = (ARGS(15, 8, 10, 15), ARGS(7, 7, 7, 6), 0x100, 0x100, 0, 0)
+        def model(txtr):
+            return cmdl([material_set([txtr], [material(0, [0], 1, [plain], [4 << 4])])])[0]
+        reaa = props((0x95D4BEE7, b"\1"), (0xD208C9FA, be(0x600)), (0xBA5F801E, be(0x3F800000)))
+        layer = scly([(b"ACTR", props((0xD208C9FA, be(0x700)))),  # not an AreaAttributes: ignored
+                      (b"REAA", reaa)])
+        area = mrea(material_set([0x100], [material(0, [0], 1, [plain], [4 << 4])]), layer)
+        pak = FakePak("Metroid1.pak", {
+            0x100: ("TXTR", wall), 0x110: ("TXTR", clouds), 0x120: ("TXTR", stars),
+            0x300: ("CMDL", model(0x100)), 0x500: ("CMDL", model(0x110)), 0x600: ("CMDL", model(0x120)),
+            0x700: ("CMDL", model(0x100)), 0x800: ("MREA", area), 0x900: ("MLVL", mlvl(0x500, [0x800]))})
+        scanner = ds.Scanner([pak])
+        records = list(scanner.scan())
+        self.assertEqual(scanner.sky, {0x500, 0x600})
+        by_src = {r["src"]: r for r in records}
+        self.assertEqual(set(by_src), {"area area_0 (MREA 0x00000800)", "CMDL 0x00000300", "CMDL 0x00000700",
+                                       "CMDL 0x00000500 (sky)", "CMDL 0x00000600 (sky)"})
+        self.assertTrue(by_src["CMDL 0x00000500 (sky)"]["sky"] and by_src["CMDL 0x00000600 (sky)"]["sky"])
+        self.assertNotIn("sky", by_src["CMDL 0x00000300"])
+        self.assertEqual(tr.classify(by_src["CMDL 0x00000500 (sky)"]), "sky")
+        self.assertEqual(tr.classify(by_src["CMDL 0x00000300"]), "diffuse")
+        rows = tr.build_report(records, {})
+        self.assertEqual({r["name"]: r["roles"] for r in rows}[ds.texture_name(clouds)[0]], "sky")
+
+    def test_no_sky(self):
+        self.assertEqual(ds.area_sky_models(mrea(b"", scly([(b"REAA", props((0xD208C9FA, be(0xFFFFFFFF))))]))),
+                         set())
+
+
 def gc_disc(files):
     """A minimal GameCube disc image: the header's magic, the FST at 0x424 and `files` after it."""
     names = b"".join(name.encode() + b"\0" for name in files)
@@ -264,12 +341,19 @@ class DiscImages(unittest.TestCase):
                        (len(self.plain) - 10, 10), (0x2000, 0x900)):
             disc.seek(pos)
             self.assertEqual(disc.read(n), self.plain[pos:pos + n], (pos, n))
+        disc.close()
         # Both images list the same files with the same bytes.
+        # Closed here, not with addCleanup: cleanups run after tearDown, which deletes the folder,
+        # and Windows can't delete a file that is still open (WinError 32, Windows run 17).
         plain_iso, ciso_iso = ed.Iso(str(self.dir / "g.iso")), ed.Iso(str(self.dir / "g.ciso"))
-        self.assertEqual(plain_iso.files, ciso_iso.files)
-        for name, data in self.files.items():
-            self.assertEqual(ciso_iso.read(name), data)
-            self.assertEqual(plain_iso.read(name), data)
+        try:
+            self.assertEqual(plain_iso.files, ciso_iso.files)
+            for name, data in self.files.items():
+                self.assertEqual(ciso_iso.read(name), data)
+                self.assertEqual(plain_iso.read(name), data)
+        finally:
+            plain_iso.f.close()
+            ciso_iso.f.close()
 
     def test_disc_problem(self):
         self.assertIsNone(ds.disc_problem(str(self.dir / "g.iso")))

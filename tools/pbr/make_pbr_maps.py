@@ -23,23 +23,33 @@ Each map is made at --scale times the pack file's size (default 0.5, never below
              light and shade painted across a wall doesn't become a slope. Darker is lower (`invert`
              turns that round), and `chroma` x the colourfulness (max - min of R, G, B) is taken
              off, for art whose bright colour sits low (lava or glow in cracks). The filters wrap at
-             the edges, as a tiling texture does.
+             the edges, as a tiling texture does. An atlas's empty ground (black, white or
+             transparent, a few texels across) is first filled from the pieces' edges (`fill_empty`), so the
+             pieces don't rise from it with a bevel along the model's seams.
   normal     the height's slope per original texel, times `normal`, lowered where needed so that
              the steepest 5% tilt no more than `max_tilt` degrees (a noisy texture stays calm).
   occlusion  1 - `occlusion` x how far the height sits below its surroundings (`ao_radius` texels).
              Kept light: the pack's art and the game's lightmaps already carry shading.
   roughness  `roughness`, rougher in hollows and smoother on ridges by up to `roughness_var`.
+             Where the texture's materials have a reflection layer (the artists made it shiny, e.g.
+             Phazon), it is lowered towards `reflective_roughness` by how much they shine: each such
+             use counts its mask's mean brightness (the report's `reflection_masks`, read from the
+             pack; the mask has its own UVs, so only its mean carries over), 1 unmasked, 0.5 when
+             unknown. A texture's own roughness setting wins.
   metal      `metal`, scaled down in hollows (dirt isn't metal).
 A texture takes its preset from its pack folder (Temple Grounds stone, Agon Wastes rock, Torvus Bog
 wet stone, Sanctuary Fortress metal, Enemies creature, Samus suit, any other folder default).
---write-settings saves the presets and the folder table as JSON to edit, --settings reads it back,
-and its "textures" table sets a preset or values for single textures by name. The values are
-starting points, to be tuned once the renderer shows them.
+--write-settings saves the presets and the folder table as JSON to edit, --settings reads it back
+(pbr_settings.json in the current folder is read without it, and rewriting a settings file keeps its
+edits), and its "textures" table sets a preset or values for single textures by name. The values are
+starting points, to be tuned once the renderer shows them. Sky textures are no candidates once the
+disc scan and the report have been run again (the scan marks sky models).
 
 Needs Python 3.8+, numpy and Pillow. Compression uses texconv from Microsoft's DirectXTex
 (https://github.com/microsoft/DirectXTex/releases, or `winget install Microsoft.DirectXTex.Texconv`),
-found with --texconv, the TEXCONV variable, beside this script or on PATH; without it the maps are
-written uncompressed (RGBA8, four times the size), which the port reads as well. A second run
+found with --texconv, the TEXCONV variable, beside this script or on PATH; it is run with -dx10, and
+every file it writes is checked against the formats the port's DDS reader takes. Without it the maps
+are written uncompressed (RGBA8, four times the size), which the port reads as well. A second run
 remakes only the textures whose source, settings or options changed (pbr_maps.json in the output).
 """
 
@@ -68,8 +78,9 @@ except ImportError:  # main() reports it, so --help and --write-settings work wi
     np = None
     Image = None
 
-TOOL_VERSION = 2
+TOOL_VERSION = 5
 INDEX_NAME = "pbr_maps.json"
+SETTINGS_NAME = "pbr_settings.json"  # read from the current folder when --settings isn't given
 
 # The metal preset is half metal: the game lights its rooms through lightmaps, a diffuse light a full
 # metal drops, and without a reflection probe a metal reflects only the ambient and a part of its
@@ -78,7 +89,9 @@ INDEX_NAME = "pbr_maps.json"
 # 0-1; occlusion: darkening per unit of hollow; blur, relief and ao_radius: original texels;
 # max_tilt: degrees (0 is no cap); chroma: height taken off per unit of colourfulness.
 _COMMON = {"blur": 0.5, "relief": 8.0, "ao_radius": 2.0, "invert": False, "max_tilt": 30.0,
-           "chroma": 0.0}
+           "chroma": 0.0, "fill_empty": True, "reflective_roughness": 0.35}
+BOOL_KEYS = ("invert", "fill_empty")
+EMPTY_LEVEL = 8.0 / 255.0  # an atlas's empty space: black or white to within this, or transparent
 PRESETS = {
     "default":   {"normal": 1.0, "roughness": 0.75, "roughness_var": 0.15, "metal": 0.0, "occlusion": 2.0},
     "stone":     {"normal": 1.4, "roughness": 0.85, "roughness_var": 0.10, "metal": 0.0, "occlusion": 2.0},
@@ -137,7 +150,7 @@ def _check_values(where, values, warnings):
             clean[key] = str(value)
         elif key not in PARAM_KEYS:
             warnings.append("%s: unknown setting %r ignored" % (where, key))
-        elif key == "invert":
+        elif key in BOOL_KEYS:
             clean[key] = bool(value)
         elif isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value):
             clean[key] = float(value)
@@ -163,8 +176,58 @@ def merge_settings(base, extra, warnings):
     return out
 
 
-def params_for(settings, rel, manifest_name):
-    """(preset name, parameters) for the pack file at `rel` (relative to the pack root)."""
+def reflective_fraction(text):
+    """The report's `reflective` column ("uses with a reflection layer / diffuse uses") as 0-1."""
+    try:
+        done, total = (int(x) for x in text.split("/"))
+        return min(1.0, max(0.0, done / total)) if total > 0 else 0.0
+    except (AttributeError, ValueError):
+        return 0.0
+
+
+def mask_mean(path, channel):
+    """A reflection mask's mean brightness (0-1): BT.709 luma of the colour, or the alpha."""
+    with Image.open(str(path)) as image:
+        image.load()
+        image = image.convert("RGBA")
+        image.thumbnail((64, 64))
+        pixels = np.asarray(image, dtype=np.float32) / 255.0
+    if channel == "a":
+        return float(pixels[..., 3].mean())
+    return float((pixels[..., 0] * LUMA[0] + pixels[..., 1] * LUMA[1] + pixels[..., 2] * LUMA[2]).mean())
+
+
+def reflection_shine(row, mean_of):
+    """0-1: how shiny the texture's materials make it, averaged over its diffuse uses. `mean_of`
+    gives a mask's mean brightness from its manifest name and channel, or None if unknown."""
+    try:
+        total = int(row.get("reflective", "").split("/")[1])
+    except (IndexError, ValueError):
+        return 0.0
+    entries = row.get("reflection_masks")
+    if not entries:  # a report from before the column: each reflective use counts half
+        return 0.5 * reflective_fraction(row.get("reflective", ""))
+    shine = 0.0
+    for part in entries.split("; "):
+        kind, _, count = part.rpartition("*")
+        try:
+            count = int(count)
+        except ValueError:
+            continue
+        if kind == "full":
+            shine += count
+        elif kind == "unknown":
+            shine += 0.5 * count
+        else:
+            name, _, channel = kind.rpartition(":")
+            mean = mean_of(name, channel)
+            shine += count * (0.5 if mean is None else mean)
+    return min(1.0, shine / total) if total > 0 else 0.0
+
+
+def params_for(settings, rel, manifest_name, reflective=0.0):
+    """(preset name, parameters) for the pack file at `rel` (relative to the pack root);
+    `reflective` (0-1) is how shiny its materials make it (reflection_shine)."""
     folders = {k.lower(): v for k, v in settings["folders"].items()}
     folder = rel.parts[0].lower() if len(rel.parts) > 1 else ""
     textures = settings["textures"]
@@ -175,6 +238,9 @@ def params_for(settings, rel, manifest_name):
     params = dict(PRESETS["default"])
     params.update(settings["presets"][preset])
     params.update({k: v for k, v in override.items() if k != "preset"})
+    if reflective > 0.0 and "roughness" not in override:
+        shiny = min(params["roughness"], params["reflective_roughness"])
+        params["roughness"] = round(params["roughness"] + (shiny - params["roughness"]) * reflective, 4)
     return preset, params
 
 
@@ -190,14 +256,54 @@ def blur_wrap(image, sigma):
     return np.fft.irfft2(np.fft.rfft2(image) * gain, s=image.shape).astype(np.float32)
 
 
-def make_maps(rgb, texel_px, params):
-    """(normal, orm) for an RGB image (H x W x 3, 0-1 as stored) whose original texels are
-    `texel_px` pixels across: unit tangent-space normals (+X right, +Y up) and occlusion, roughness
-    and metal, both H x W x 3 float32."""
+def empty_space(rgb, alpha, texel_px):
+    """The empty space of an atlas (the black, white or transparent ground its pieces sit on) as a
+    mask, or None: such areas a few texels across, and the same ground up to their edges. A thin
+    line, such as a groove, is too narrow to count."""
+    empty = (rgb.max(axis=-1) < EMPTY_LEVEL) | (rgb.min(axis=-1) > 1.0 - EMPTY_LEVEL)
+    if alpha is not None:
+        empty |= alpha < 0.5
+    if not empty.any():
+        return None
+    core = blur_wrap(empty.astype(np.float32), 1.0 * texel_px) > 0.9
+    if not core.any():
+        return None
+    mask = empty & (blur_wrap(core.astype(np.float32), 1.5 * texel_px) > 0.02)
+    return mask if mask.mean() > 0.002 else None
+
+
+def push_pull(values, known):
+    """A 2-D array with its unknown pixels filled from the known ones, so a hole meets its edge
+    without a step (push-pull: average known values down a pyramid, then fill each level's holes
+    from the coarser level on the way back up)."""
+    weight = known.astype(np.float32)
+    pyramid = [(values * weight, weight)]
+    while pyramid[-1][1].shape[0] > 1 or pyramid[-1][1].shape[1] > 1:
+        v, w = pyramid[-1]
+        pyramid.append((halve(v[..., None])[..., 0], halve(w[..., None])[..., 0]))
+    v, w = pyramid[-1]
+    filled = np.where(w > 0, v / np.maximum(w, 1e-12), 0.0)
+    for v, w in reversed(pyramid[:-1]):
+        rows = np.minimum(np.arange(w.shape[0]) // 2, filled.shape[0] - 1)
+        cols = np.minimum(np.arange(w.shape[1]) // 2, filled.shape[1] - 1)
+        filled = v + (1.0 - w) * filled[rows][:, cols]
+    return np.where(known, values, filled).astype(np.float32)
+
+
+def make_maps(rgb, texel_px, params, alpha=None):
+    """(normal, orm) for an RGB image (H x W x 3, 0-1 as stored; `alpha` H x W or None) whose
+    original texels are `texel_px` pixels across: unit tangent-space normals (+X right, +Y up) and
+    occlusion, roughness and metal, both H x W x 3 float32."""
     lum = rgb[..., 0] * LUMA[0] + rgb[..., 1] * LUMA[1] + rgb[..., 2] * LUMA[2]
     if params["chroma"]:
         lum = lum - params["chroma"] * (rgb.max(axis=-1) - rgb.min(axis=-1))
     lum = lum.astype(np.float32)
+    if params["fill_empty"]:
+        # An atlas's pieces would otherwise rise from their black ground as plateaus, and the
+        # bevel at their edges lands on the model's seams.
+        empty = empty_space(rgb, alpha, texel_px)
+        if empty is not None:
+            lum = push_pull(lum, ~empty)
     height = blur_wrap(lum, params["blur"] * texel_px) - blur_wrap(lum, params["relief"] * texel_px)
     if params["invert"]:
         height = -height
@@ -288,7 +394,9 @@ def dds_rgba8(levels):
 
 
 def texconv_command(exe, dxgi_format, out_dir, source, quick):
-    command = [str(exe), "-nologo", "-y", "-f", dxgi_format, "-o", str(out_dir)]
+    # -dx10: always the DX10 header. Without it texconv writes BC5 with the legacy FourCC 'BC5U',
+    # which Aurora's DDS reader doesn't take (only 'ATI2', or DX10 format 83).
+    command = [str(exe), "-nologo", "-y", "-dx10", "-f", dxgi_format, "-o", str(out_dir)]
     if quick:
         command += ["-bc", "q"]  # BC7 from mode 6 alone: much faster, a little lower quality
     return command + [str(source)]
@@ -306,6 +414,43 @@ def find_texconv(explicit=None):
             if (folder / name).is_file():
                 return str(folder / name)
     return shutil.which("texconv")
+
+
+# What Aurora's DDS reader (lib/gfx/dds_io.cpp: resolve_dds_layout) takes: legacy FourCCs, and DX10
+# DXGI formats. Legacy BC5 FourCCs are rewritten as DX10 BC5_UNORM (83), the same data.
+AURORA_FOURCCS = (b"DXT1", b"DXT5", b"ATI2")
+AURORA_DXGI = {28: "R8G8B8A8_UNORM", 29: "R8G8B8A8_UNORM_SRGB", 87: "B8G8R8A8_UNORM",
+               71: "BC1_UNORM", 72: "BC1_UNORM_SRGB", 77: "BC3_UNORM", 78: "BC3_UNORM_SRGB",
+               83: "BC5_UNORM", 98: "BC7_UNORM", 99: "BC7_UNORM_SRGB"}
+DXGI_BC5_UNORM = 83
+
+
+def port_readable_dds(data):
+    """`data` with a legacy BC5 header ('BC5U' or 'ATI2') rewritten as DX10 BC5_UNORM; raises
+    ValueError if the result is a DDS the port can't read."""
+    if len(data) < 128 or data[:4] != b"DDS ":
+        raise ValueError("not a DDS file")
+    pf_flags, fourcc = struct.unpack_from("<2I", data, 80)
+    if pf_flags & 0x4:  # DDPF_FOURCC
+        code = data[84:88]
+        if code in (b"BC5U", b"ATI2"):
+            data = (data[:84] + b"DX10" + data[88:128] +
+                    struct.pack("<5I", DXGI_BC5_UNORM, 3, 0, 1, 0) + data[128:])
+            code = b"DX10"
+        if code == b"DX10":
+            if len(data) < 148:
+                raise ValueError("DX10 header cut short")
+            dxgi, dimension, _misc, array_size = struct.unpack_from("<4I", data, 128)
+            if dxgi not in AURORA_DXGI or dimension != 3 or array_size != 1:
+                raise ValueError("DXGI format %d (%s), which the port's DDS reader doesn't take"
+                                 % (dxgi, "2-D" if dimension == 3 else "dimension %d" % dimension))
+        elif code not in AURORA_FOURCCS:
+            raise ValueError("FourCC %r, which the port's DDS reader doesn't take" % code)
+        return data
+    masks = struct.unpack_from("<5I", data, 88)
+    if masks not in ((32, 0xFF, 0xFF00, 0xFF0000, 0xFF000000), (32, 0xFF0000, 0xFF00, 0xFF, 0xFF000000)):
+        raise ValueError("an uncompressed layout the port's DDS reader doesn't take")
+    return data
 
 
 def write_map(levels, dest, dxgi_format, texconv, quick):
@@ -330,8 +475,12 @@ def write_map(levels, dest, dxgi_format, texconv, quick):
         if result.returncode != 0 or not produced.is_file():
             tail = " ".join((result.stdout or "").split()[-30:])
             raise RuntimeError("texconv failed (exit %d): %s" % (result.returncode, tail))
+        try:
+            data = port_readable_dds(produced.read_bytes())
+        except ValueError as e:
+            raise RuntimeError("texconv wrote %s" % e)
         temp = dest.with_name(dest.name + ".part")
-        shutil.move(str(produced), str(temp))
+        temp.write_bytes(data)
         os.replace(str(temp), str(dest))
 
 
@@ -430,11 +579,13 @@ def process(job):
         image = Image.fromarray(np.ascontiguousarray(rgba))
         if (out_w, out_h) != (pack_w, pack_h):
             image = image.resize((out_w, out_h), getattr(Image, "Resampling", Image).LANCZOS)
-        rgb = np.asarray(image, dtype=np.float32)[..., :3] / 255.0
+        pixels = np.asarray(image, dtype=np.float32) / 255.0
+        rgb, alpha = pixels[..., :3], pixels[..., 3]
+        alpha = alpha if alpha.min() < 0.5 else None
         orig_w = job["orig"][0] or max(1, pack_w // 4)
         orig_h = job["orig"][1] or max(1, pack_h // 4)
         texel_px = 0.5 * (out_w / orig_w + out_h / orig_h)
-        normal, orm = make_maps(rgb, texel_px, job["params"])
+        normal, orm = make_maps(rgb, texel_px, job["params"], alpha)
         texconv = job["texconv"]
         write_map([encode_normal(level) for level in mip_chain(normal, renormalize=True)],
                   pathlib.Path(job["nrm"]), NORMAL_FORMAT, texconv, job["quick"])
@@ -449,12 +600,14 @@ def process(job):
         return {"ok": False, "error": "%s: %s" % (type(e).__name__, e)}
 
 
-def read_candidates(report):
+def read_report(report):
+    """(the candidate rows, {manifest name: pack file} for every row with one)."""
     with open(str(report), "r", encoding="utf-8", newline="") as f:
         rows = list(csv.DictReader(f))
     if rows and "pbr_candidate" not in rows[0]:
         raise ValueError("%s isn't a texture_report.csv (no pbr_candidate column)" % report)
-    return [r for r in rows if r.get("pbr_candidate") == "yes" and r.get("pack_file")]
+    pack_files = {r["name"]: r["pack_file"] for r in rows if r.get("name") and r.get("pack_file")}
+    return [r for r in rows if r.get("pbr_candidate") == "yes" and r.get("pack_file")], pack_files
 
 
 def rel_path(pack_file):
@@ -476,16 +629,30 @@ def job_hash(job, source_stat):
     return hashlib.sha1(json.dumps(data, sort_keys=True).encode("utf-8")).hexdigest()
 
 
-def build_jobs(rows, pack, out, settings, args, texconv, index):
-    """(jobs to run, rows already up to date, rows whose pack file is missing)."""
+def build_jobs(rows, pack, out, settings, args, texconv, index, pack_files=None):
+    """(jobs to run, rows already up to date, rows whose pack file is missing). `pack_files` maps
+    every manifest name in the report to its pack file, for the reflection masks."""
     jobs, current, missing = [], 0, []
+    pack_files = pack_files or {}
+    means = {}
+
+    def mean_of(name, channel):
+        key = (name, channel)
+        if key not in means:
+            rel = pack_files.get(name)
+            path = pack.joinpath(*rel_path(rel).parts) if rel else None
+            try:
+                means[key] = mask_mean(path, channel) if path and path.is_file() else None
+            except (OSError, ValueError):
+                means[key] = None
+        return means[key]
     for row in rows:
         rel = rel_path(row["pack_file"])
         source = pack.joinpath(*rel.parts)
         if not source.is_file():
             missing.append(str(rel))
             continue
-        preset, params = params_for(settings, rel, row.get("name", ""))
+        preset, params = params_for(settings, rel, row.get("name", ""), reflection_shine(row, mean_of))
         stem = rel.name.rsplit(".", 1)[0]
         folder = out.joinpath(*rel.parts[:-1])
         job = {
@@ -565,6 +732,13 @@ def main(argv=None):
 
     warnings = []
     settings = default_settings()
+    if args.settings is None:
+        # An existing settings file is read first, so --write-settings over it keeps its edits.
+        for candidate in (args.write_settings, pathlib.Path(SETTINGS_NAME)):
+            if candidate is not None and candidate.is_file():
+                args.settings = candidate
+                print("Using the settings in %s (--settings picks another file)" % candidate)
+                break
     if args.settings:
         try:
             with open(str(args.settings), "r", encoding="utf-8") as f:
@@ -595,7 +769,7 @@ def main(argv=None):
         print("warning: " + warning)
 
     try:
-        rows = read_candidates(args.report)
+        rows, pack_files = read_report(args.report)
     except (OSError, ValueError) as e:
         parser.error(str(e))
     rows = [r for r in rows if selected(rel_path(r["pack_file"]), args.only)]
@@ -611,7 +785,7 @@ def main(argv=None):
 
     index_path = out / INDEX_NAME
     index = load_index(index_path)
-    jobs, current, missing = build_jobs(rows, pack, out, settings, args, texconv, index)
+    jobs, current, missing = build_jobs(rows, pack, out, settings, args, texconv, index, pack_files)
     print("%d candidate textures: %d to make, %d up to date, %d missing from the pack folder. Output: %s"
           % (len(rows), len(jobs), current, len(missing), out))
     for rel in missing[:5]:

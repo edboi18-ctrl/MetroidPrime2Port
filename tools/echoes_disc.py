@@ -63,13 +63,20 @@ class CisoFile:
             n = n - take if n > 0 else n
         return bytes(out)
 
+    def close(self):
+        self.f.close()
+
 
 def open_disc(path):
     """The disc at `path` as a file object: a plain ISO/GCM, or a CISO read through CisoFile."""
     f = open(path, "rb")
     if f.read(4) == b"CISO":
         f.seek(0)
-        return CisoFile(f)
+        try:
+            return CisoFile(f)
+        except ValueError:
+            f.close()
+            raise
     f.seek(0)
     return f
 
@@ -267,7 +274,7 @@ def parse_mlvl(b):
     if ver >= 23:
         r.u32()
     r.u32()  # savw
-    r.u32()  # skybox
+    skybox = r.u32()  # the world's default sky CMDL (CWorld::Update reads it here)
     n = r.u32()
     areas = []
     for i in range(n):
@@ -288,7 +295,7 @@ def parse_mlvl(b):
         a["offs"] = [r.u32() for _ in range(r.u32())]
         a["iname"] = r.cstr()
         areas.append(a)
-    return {"version": ver, "strg": strg, "dark": dark, "areas": areas}
+    return {"version": ver, "strg": strg, "dark": dark, "skybox": skybox, "areas": areas}
 
 
 # ---------------------------------------------------------------------------- MREA

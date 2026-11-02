@@ -139,6 +139,54 @@ class Orm(unittest.TestCase):
         self.assertTrue(((orm >= 0.0) & (orm <= 1.0)).all())
 
 
+class EmptySpace(unittest.TestCase):
+    def atlas(self):
+        """A 64x64 atlas: a textured grey piece on black ground."""
+        rng = np.random.default_rng(13)
+        image = np.zeros((64, 64, 3), np.float32)
+        image[16:48, 16:48] = 0.5 + 0.05 * rng.standard_normal((32, 32, 1)).astype(np.float32)
+        return image
+
+    def test_pieces_have_no_bevel(self):
+        image = self.atlas()
+        filled, _ = mm.make_maps(image, 2.0, FLAT)
+        bare, _ = mm.make_maps(image, 2.0, dict(FLAT, fill_empty=False))
+        edge = (slice(20, 44), slice(16, 19))  # inside the piece, along its left edge
+        self.assertGreater(np.abs(bare[edge][..., 0]).mean(), 0.15)
+        self.assertLess(np.abs(filled[edge][..., 0]).mean(), 0.5 * np.abs(bare[edge][..., 0]).mean())
+        inside = (slice(24, 40), slice(24, 40))
+        self.assertTrue(np.allclose(filled[inside], bare[inside], atol=0.08))  # the piece's own detail
+
+    def test_what_counts_as_empty(self):
+        image = self.atlas()
+        mask = mm.empty_space(image, None, 2.0)
+        self.assertTrue(mask[0, 0] and mask[15, 30] and not mask[30, 30])
+        groove = np.full((64, 64, 3), 0.5, np.float32)
+        groove[:, 31:33] = 0.0  # one texel of black at 2 px a texel: a line, not ground
+        self.assertIsNone(mm.empty_space(groove, None, 2.0))
+        alpha = np.ones((64, 64), np.float32)
+        alpha[:, :20] = 0.0  # a cut-out's transparent part counts, whatever its colour
+        mask = mm.empty_space(np.full((64, 64, 3), 0.5, np.float32), alpha, 2.0)
+        self.assertTrue(mask[:, :19].all() and not mask[:, 21:].any())
+        flat = np.full((64, 64, 3), 0.5, np.float32)
+        self.assertIsNone(mm.empty_space(flat, None, 2.0))
+        white = 1.0 - self.atlas()  # a piece on white ground counts the same
+        white[16:48, 16:48] = self.atlas()[16:48, 16:48]
+        mask = mm.empty_space(white, None, 2.0)
+        self.assertTrue(mask[0, 0] and mask[15, 30] and not mask[30, 30])
+
+    def test_push_pull(self):
+        values = np.zeros((16, 16), np.float32)
+        values[:, :8] = 0.25
+        values[:, 8:] = 0.75
+        known = np.zeros((16, 16), bool)
+        known[:, :3] = known[:, 13:] = True
+        filled = mm.push_pull(values, known)
+        self.assertTrue((filled[known] == values[known]).all())
+        self.assertTrue(((filled >= 0.25 - 1e-6) & (filled <= 0.75 + 1e-6)).all())
+        self.assertLess(abs(filled[:, 3].mean() - 0.25), 0.2)  # the hole meets each side near its value
+
+
 class Preview(unittest.TestCase):
     def test_layouts(self):
         rgb = grey(16, 16)
@@ -239,6 +287,34 @@ class Settings(unittest.TestCase):
                                   "tex1_64x64_0123456789abcdef_14.dds")  # by the manifest name
         self.assertEqual(preset, "glass")
 
+    def test_reflective_lowers_roughness(self):
+        self.assertEqual([mm.reflective_fraction(x) for x in ("5/5", "1/4", "", "0/0", "x")],
+                         [1.0, 0.25, 0.0, 0.0, 0.0])
+        settings = mm.default_settings()
+        rel = mm.rel_path("Temple Grounds/tex1_8x8_m_0123456789abcdef_14.dds")
+        stone, shiny = mm.PRESETS["stone"]["roughness"], mm.PRESETS["stone"]["reflective_roughness"]
+        self.assertEqual(mm.params_for(settings, rel, "", 1.0)[1]["roughness"], shiny)
+        self.assertAlmostEqual(mm.params_for(settings, rel, "", 0.5)[1]["roughness"], (stone + shiny) / 2)
+        self.assertEqual(mm.params_for(settings, rel, "", 0.0)[1]["roughness"], stone)
+        suit = mm.rel_path("Samus/x.dds")  # already shinier than the reflective value: unchanged
+        self.assertEqual(mm.params_for(settings, suit, "", 1.0)[1]["roughness"], mm.PRESETS["suit"]["roughness"])
+        warnings = []
+        settings = mm.merge_settings(settings, {"textures": {rel.name: {"roughness": 0.7}}}, warnings)
+        self.assertEqual(mm.params_for(settings, rel, "", 1.0)[1]["roughness"], 0.7)  # a texture's own wins
+
+    def test_reflection_shine(self):
+        means = {("white", "c"): 1.0, ("black", "c"): 0.0, ("grey", "a"): 0.4}
+        mean_of = lambda name, channel: means.get((name, channel))
+        shine = lambda masks, reflective="2/2": mm.reflection_shine(
+            {"reflective": reflective, "reflection_masks": masks}, mean_of)
+        self.assertEqual(shine("white:c*2"), 1.0)
+        self.assertEqual(shine("black:c*2"), 0.0)
+        self.assertAlmostEqual(shine("grey:a*1; full*1"), 0.7)
+        self.assertAlmostEqual(shine("unknown*1", "1/2"), 0.25)
+        self.assertAlmostEqual(shine("missing:c*1", "1/1"), 0.5)  # a mask not in the pack: half
+        self.assertAlmostEqual(mm.reflection_shine({"reflective": "1/2"}, mean_of), 0.25)  # old report
+        self.assertEqual(mm.reflection_shine({}, mean_of), 0.0)
+
     def test_written_settings_read_back(self):
         with tempfile.TemporaryDirectory() as d:
             path = pathlib.Path(d, "s.json")
@@ -248,6 +324,24 @@ class Settings(unittest.TestCase):
             merged = mm.merge_settings(mm.default_settings(), json.loads(path.read_text("utf-8")), warnings)
             self.assertEqual(warnings, [])
             self.assertEqual(merged, mm.default_settings())
+
+    def test_settings_file_is_read_and_kept(self):
+        cwd = os.getcwd()
+        with tempfile.TemporaryDirectory() as d:
+            os.chdir(d)
+            try:
+                path = pathlib.Path(mm.SETTINGS_NAME)
+                path.write_text(json.dumps({"textures": {"tex1_8x8_0123456789abcdef_14": {"chroma": 1.0}},
+                                            "presets": {"stone": {"normal": 9.0}}}), "utf-8")
+                with contextlib.redirect_stdout(io.StringIO()) as out:
+                    self.assertEqual(mm.main(["--write-settings", str(path)]), 0)
+                self.assertIn("Using the settings in", out.getvalue())
+                kept = json.loads(path.read_text("utf-8"))  # the edits survive a rewrite
+                self.assertEqual(kept["textures"]["tex1_8x8_0123456789abcdef_14"], {"chroma": 1.0})
+                self.assertEqual(kept["presets"]["stone"]["normal"], 9.0)
+                self.assertIn("fill_empty", kept["presets"]["stone"])  # and new keys are added
+            finally:
+                os.chdir(cwd)
 
     def test_output_size(self):
         self.assertEqual(mm.output_size(1024, 512, 256, 128, 0.5), (512, 256))
@@ -263,16 +357,38 @@ args = sys.argv[1:]
 if os.environ.get("FAKE_TEXCONV_FAIL"):
     print("ERROR: no"); sys.exit(1)
 out = args[args.index("-o") + 1]
-with open(os.path.join(out, "..", "args.txt"), "w") as f:
-    f.write(" ".join(args))
-shutil.copy(args[-1], os.path.join(out, os.path.basename(args[-1])))
+if os.environ.get("FAKE_TEXCONV_ARGS"):
+    with open(os.environ["FAKE_TEXCONV_ARGS"], "w") as f:
+        f.write(" ".join(args))
+if os.environ.get("FAKE_TEXCONV_BC5U"):
+    with open(os.path.join(out, os.path.basename(args[-1])), "wb") as f:
+        f.write(bytes.fromhex(os.environ["FAKE_TEXCONV_BC5U"]))
+else:
+    shutil.copy(args[-1], os.path.join(out, os.path.basename(args[-1])))
 '''
+
+
+def dx10_dds(dxgi):
+    """A 4x4 one-level DDS with the DX10 header and DXGI format `dxgi` (16 bytes of data)."""
+    header = struct.pack("<7I44x", 124, 0x81007, 4, 4, 16, 0, 1)
+    pixel_format = struct.pack("<2I4s5I", 32, 0x4, b"DX10", 0, 0, 0, 0, 0)
+    tail = struct.pack("<5I", 0x1000, 0, 0, 0, 0)
+    return b"DDS " + header + pixel_format + tail + struct.pack("<5I", dxgi, 3, 0, 1, 0) + b"\0" * 16
+
+
+def bc5_dds(fourcc=b"BC5U", red=200, green=60):
+    """A 4x4 one-level BC5 DDS with a legacy FourCC header: every texel (red, green)."""
+    header = struct.pack("<7I44x", 124, 0x81007, 4, 4, 16, 0, 1)
+    pixel_format = struct.pack("<2I4s5I", 32, 0x4, fourcc, 0, 0, 0, 0, 0)
+    tail = struct.pack("<5I", 0x1000, 0, 0, 0, 0)
+    block = bytes([red, red]) + b"\0" * 6 + bytes([green, green]) + b"\0" * 6
+    return b"DDS " + header + pixel_format + tail + block
 
 
 class Texconv(unittest.TestCase):
     def test_command(self):
         self.assertEqual(mm.texconv_command("t.exe", "BC5_UNORM", "o", "in.dds", False),
-                         ["t.exe", "-nologo", "-y", "-f", "BC5_UNORM", "-o", "o", "in.dds"])
+                         ["t.exe", "-nologo", "-y", "-dx10", "-f", "BC5_UNORM", "-o", "o", "in.dds"])
         self.assertEqual(mm.texconv_command("t.exe", "BC7_UNORM", "o", "in.dds", True)[-3:],
                          ["-bc", "q", "in.dds"])
 
@@ -290,12 +406,20 @@ class Texconv(unittest.TestCase):
             real = mm.texconv_command
             mm.texconv_command = lambda exe, fmt, out, src, quick: \
                 [sys.executable, str(fake)] + real("t", fmt, out, src, quick)[1:]
+            os.environ["FAKE_TEXCONV_ARGS"] = str(pathlib.Path(d, "args.txt"))
             try:
                 dest = pathlib.Path(d, "out", "Temple Grounds", "tex1_8x8_m_0123456789abcdef_14_nrm.dds")
                 levels = [np.zeros((4, 4, 4), np.uint8), np.zeros((2, 2, 4), np.uint8),
                           np.zeros((1, 1, 4), np.uint8)]
                 mm.write_map(levels, dest, mm.NORMAL_FORMAT, "t", False)
                 self.assertEqual(dest.read_bytes(), mm.dds_rgba8(levels))
+                self.assertIn("-dx10", pathlib.Path(d, "args.txt").read_text())
+                # Run 41357701039's texconv (no -dx10) wrote BC5 as 'BC5U': it is stored as DX10 83.
+                os.environ["FAKE_TEXCONV_BC5U"] = bc5_dds().hex()
+                mm.write_map(levels, dest, mm.NORMAL_FORMAT, "t", False)
+                data = dest.read_bytes()
+                self.assertEqual((data[84:88], struct.unpack_from("<I", data, 128)[0]), (b"DX10", 83))
+                os.environ.pop("FAKE_TEXCONV_BC5U")
                 os.environ["FAKE_TEXCONV_FAIL"] = "1"
                 with self.assertRaises(RuntimeError):
                     mm.write_map(levels, dest.with_name("x_orm.dds"), mm.ORM_FORMAT, "t", False)
@@ -303,6 +427,25 @@ class Texconv(unittest.TestCase):
             finally:
                 mm.texconv_command = real
                 os.environ.pop("FAKE_TEXCONV_FAIL", None)
+                os.environ.pop("FAKE_TEXCONV_BC5U", None)
+                os.environ.pop("FAKE_TEXCONV_ARGS", None)
+
+    def test_port_readable_dds(self):
+        fixed = mm.port_readable_dds(bc5_dds())
+        self.assertEqual(len(fixed), len(bc5_dds()) + 20)
+        self.assertEqual((fixed[84:88],) + struct.unpack_from("<4I", fixed, 128), (b"DX10", 83, 3, 0, 1))
+        with Image.open(io.BytesIO(fixed)) as image:  # the same data, read as BC5
+            pixels = np.asarray(image.convert("RGB"))
+        self.assertTrue((pixels[..., 0] == 200).all() and (pixels[..., 1] == 60).all())
+        self.assertEqual(mm.port_readable_dds(bc5_dds(b"ATI2"))[84:88], b"DX10")
+        raw = mm.dds_rgba8([np.zeros((4, 4, 4), np.uint8)])
+        self.assertEqual(mm.port_readable_dds(raw), raw)
+        for good in (dx10_dds(98), dx10_dds(83), dx10_dds(28)):  # BC7, BC5, RGBA8
+            self.assertEqual(mm.port_readable_dds(good), good)
+        bgr = raw[:92] + struct.pack("<3I", 0xFF00, 0xFF0000, 0xFF) + raw[104:]  # an RGB order it lacks
+        for bad in (bc5_dds(b"BC4U"), dx10_dds(95), dx10_dds(99)[:140], bgr, b"PNG"):
+            with self.assertRaises(ValueError):
+                mm.port_readable_dds(bad)
 
 
 STONE = "tex1_16x16_m_00000000000000a1_14"
@@ -387,6 +530,25 @@ class WholeRun(unittest.TestCase):
         code, text = self.run_tool("--force", "-j", "2")  # two worker processes
         self.assertEqual(code, 0, text)
         self.assertIn("Made 2, 0 up to date, 0 failed", text)
+
+    def test_masked_reflection_from_the_pack(self):
+        # The stone texture's one material reflects through a mask; its brightness sets the shine.
+        rows = list(csv.reader(open(str(self.report), newline="", encoding="utf-8")))
+        header = rows[0] + ["reflective", "reflection_masks"]
+        mask_name = "tex1_16x16_00000000000000d4_14.dds"
+        body = [r + (["1/1", mask_name + ":c*1"] if STONE in r[3] else ["", ""]) for r in rows[1:]]
+        body.append(["no", "mask", mask_name, "Temple Grounds\\tex1_16x16_m_00000000000000d4_14.png",
+                     "Temple Grounds", 16, 16, 14, 1, "", "", "CMDL 1", "", ""])
+        with open(str(self.report), "w", newline="", encoding="utf-8") as f:
+            csv.writer(f).writerows([header] + body)
+        stone, shiny = mm.PRESETS["stone"]["roughness"], mm.PRESETS["stone"]["reflective_roughness"]
+        for value, roughness in ((255, shiny), (0, stone)):
+            Image.new("RGB", (64, 64), (value,) * 3).save(
+                str(self.pack / "Temple Grounds" / "tex1_16x16_m_00000000000000d4_14.png"))
+            code, text = self.run_tool("--force")
+            self.assertEqual(code, 0, text)
+            index = json.loads((self.out / mm.INDEX_NAME).read_text("utf-8"))
+            self.assertAlmostEqual(index["maps"]["Temple Grounds/%s.dds" % STONE]["params"]["roughness"], roughness)
 
     def test_output_inside_the_pack_is_refused(self):
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
