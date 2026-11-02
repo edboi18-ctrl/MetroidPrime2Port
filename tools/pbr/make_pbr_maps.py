@@ -159,6 +159,31 @@ def _check_values(where, values, warnings):
     return clean
 
 
+def load_settings_file(path):
+    """A settings file's JSON. A UTF-8 byte-order mark (some Windows editors write one) is allowed;
+    a syntax error raises ValueError naming the line and, for the usual slips, what to change."""
+    text = pathlib.Path(path).read_text(encoding="utf-8-sig")
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as e:
+        lines = text.splitlines()
+        shown = ["  line %d: %s" % (n, lines[n - 1].rstrip()) for n in (e.lineno - 1, e.lineno)
+                 if 1 <= n <= len(lines)]
+        hint = ""
+        if "',' delimiter" in e.msg:
+            before = lines[e.lineno - 1][:e.colno - 1] if e.lineno <= len(lines) else ""
+            if before.strip():
+                hint = "a comma is missing on line %d, before column %d" % (e.lineno, e.colno)
+            else:
+                prev = next((n for n in range(e.lineno - 1, 0, -1) if lines[n - 1].strip()), e.lineno)
+                hint = "a comma is missing at the end of line %d (entries are separated by commas)" % prev
+        elif "trailing comma" in e.msg or "property name enclosed in double quotes" in e.msg:
+            hint = ("JSON allows no comma after the last entry, and names need \"double quotes\"; "
+                    "look just before line %d" % e.lineno)
+        raise ValueError("%s (line %d, column %d)\n%s%s" % (
+            e.msg, e.lineno, e.colno, "\n".join(shown), "\n  Likely fix: " + hint if hint else ""))
+
+
 def merge_settings(base, extra, warnings):
     """`base` with a settings file's tables laid over it (a preset's keys merge into the preset)."""
     out = copy.deepcopy(base)
@@ -741,10 +766,10 @@ def main(argv=None):
                 break
     if args.settings:
         try:
-            with open(str(args.settings), "r", encoding="utf-8") as f:
-                settings = merge_settings(settings, json.load(f), warnings)
-        except (OSError, ValueError) as e:
-            parser.error("can't read %s: %s" % (args.settings, e))
+            settings = merge_settings(settings, load_settings_file(args.settings), warnings)
+        except (OSError, ValueError, AttributeError) as e:
+            print("error: can't read %s: %s" % (args.settings, e), file=sys.stderr)
+            return 2
     if args.write_settings:
         with open(str(args.write_settings), "w", encoding="utf-8", newline="\n") as f:
             json.dump(settings, f, indent=2)

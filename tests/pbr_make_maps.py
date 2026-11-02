@@ -343,6 +343,26 @@ class Settings(unittest.TestCase):
             finally:
                 os.chdir(cwd)
 
+    def test_settings_file_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = pathlib.Path(d, "s.json")
+            path.write_text('{\n  "textures": {\n    "a": {"chroma": 1.0}\n    "b": {"preset": "metal"}\n  }\n}\n',
+                            encoding="utf-8")
+            with self.assertRaises(ValueError) as caught:
+                mm.load_settings_file(path)
+            self.assertIn("line 4", str(caught.exception))
+            self.assertIn("a comma is missing at the end of line 3", str(caught.exception))
+            path.write_text('{"textures": {"a": {"chroma": 1.0},}}', encoding="utf-8")
+            with self.assertRaises(ValueError) as caught:
+                mm.load_settings_file(path)
+            self.assertIn("no comma after the last entry", str(caught.exception))
+            path.write_bytes(b"\xef\xbb\xbf" + json.dumps({"textures": {"a": {"chroma": 1.0}}}).encode())
+            self.assertEqual(mm.load_settings_file(path)["textures"]["a"]["chroma"], 1.0)  # a BOM is fine
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                path.write_text("{", encoding="utf-8")
+                self.assertEqual(mm.main(["--settings", str(path), "--write-settings", str(path) + ".out"]), 2)
+            self.assertIn("can't read", err.getvalue())
+
     def test_output_size(self):
         self.assertEqual(mm.output_size(1024, 512, 256, 128, 0.5), (512, 256))
         self.assertEqual(mm.output_size(1024, 1024, 256, 256, 0.1), (256, 256))  # not below the original
