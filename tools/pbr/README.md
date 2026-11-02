@@ -35,10 +35,10 @@ real surfaces. Python 3.8 or later. Run the commands from the folder that holds 
    it up), and a rerun only remakes what changed. To tune: `--write-settings
    pbr_settings.json`, edit the presets (or add single textures under `"textures"`), and run again
    (a `pbr_settings.json` in the folder you run it from is read without `--settings`, and writing it
-   again keeps your edits). For example, a rock whose bright lava cracks come out raised
-   (the maps take brightness as height) is fixed with, under `"textures"`:
-   `"tex1_128x128_m_042ffe03bbd4ae68_14": {"chroma": 1.0}` (the name is the preview's file name).
-   `-h` lists the rest.
+   again keeps your edits). Under `"textures"`, a texture's preview file name takes its own values:
+   `{"chroma": 1.0}` for a rock whose bright lava cracks come out raised (the maps take brightness as
+   height), or `{"preset": "metal"}` for machinery in a folder of stone. `--only "*<name>*"` remakes
+   and previews just that texture. `-h` lists the rest.
 
    The game doesn't draw these maps yet: that is step 3, the renderer.
 
