@@ -1534,6 +1534,14 @@ void handle_aurora(ByteReader& reader) noexcept {
       g_gxState.pbr = pbr;
       g_gxState.dirty |= DirtyPipeline;
     }
+  } else if (subCmd == GX_AURORA_PORT_SURFACE_PBR) {
+    const u8 stage = reader.read<u8>();
+    if (stage > MaxTevStages) {
+      Log.warn("GX_AURORA_PORT_SURFACE_PBR: invalid stage {}", stage);
+    } else if (g_gxState.surfacePbr != stage) {
+      g_gxState.surfacePbr = stage;
+      g_gxState.dirty |= DirtyPipeline;
+    }
   } else if (subCmd == GX_AURORA_SET_SDF) {
     const u8 sdf = reader.read<u8>();
     if (g_gxState.sdf != sdf) {

@@ -194,6 +194,7 @@ if (AURORA_ENABLE_GX)
     gfx_recording_test.cpp
     gx_uniform_limit_test.cpp
     gx_suit_glass_test.cpp
+    gx_surface_pbr_test.cpp
     gx_inventory_visor_test.cpp
     vfx_blend_test.cpp
     vfx_cluster_test.cpp

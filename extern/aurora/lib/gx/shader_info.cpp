@@ -213,6 +213,85 @@ u32 line_texcoord_mask() noexcept {
 }
 } // namespace
 
+int port_surface_pbr_stage(const ShaderConfig& config) noexcept {
+  if (config.pbr != 0 || config.pbrKind == 0 || config.perPixelLight == 0 ||
+      !config.colorChannels[GX_COLOR0].lightingEnabled) {
+    return -1;
+  }
+  const u32 idx = config.pbrKind - 1u;
+  if (idx >= config.tevStageCount) {
+    return -1;
+  }
+  // Maps 6 and 7 are the PBR maps': the material must not use them itself.
+  for (u32 i = 0; i < config.tevStageCount; ++i) {
+    const auto map = config.tevStages[i].texMapId;
+    if (map == GX_TEXMAP6 || map == GX_TEXMAP7) {
+      return -1;
+    }
+  }
+  for (u32 i = 0; i < config.numIndStages; ++i) {
+    const auto map = config.indStages[i].texMapId;
+    if (map == GX_TEXMAP6 || map == GX_TEXMAP7) {
+      return -1;
+    }
+  }
+  // RASC as rast0.rgb: channel 0 with the raster swap left as is (the relit stage subtracts rast0.rgb).
+  const auto is_channel0 = [&config](const TevStage& s) {
+    return (s.channelId == GX_COLOR0 || s.channelId == GX_COLOR0A0) && !config.tevSwapTable[s.tevSwapRas];
+  };
+  const auto plain_add = [](const TevOp& op) {
+    return op.op == GX_TEV_ADD && op.bias == GX_TB_ZERO && op.scale == GX_CS_SCALE_1;
+  };
+  // The stage: 0 + lerp(0, L, TEXC) (or lerp(0, TEXC, L)), plain texturing (no indirect).
+  const auto& stage = config.tevStages[idx];
+  if (stage.texMapId == GX_TEXMAP_NULL || stage.texCoordId == GX_TEXCOORD_NULL ||
+      stage.indTexMtxId != GX_ITM_OFF || stage.indTexWrapS != GX_ITW_OFF || stage.indTexWrapT != GX_ITW_OFF ||
+      stage.indTexAddPrev || !plain_add(stage.colorOp) || stage.colorPass.a != GX_CC_ZERO ||
+      stage.colorPass.d != GX_CC_ZERO) {
+    return -1;
+  }
+  GXTevColorArg light;
+  if (stage.colorPass.c == GX_CC_TEXC) {
+    light = stage.colorPass.b;
+  } else if (stage.colorPass.b == GX_CC_TEXC) {
+    light = stage.colorPass.c;
+  } else {
+    return -1;
+  }
+  // L: channel 0's lit colour, or a colour register an earlier stage set to it plus something (a
+  // room's lightmap stage: C0 = RASC + C1 x lightmap), so that L - rast0 is what isn't lit.
+  if (light == GX_CC_RASC) {
+    return is_channel0(stage) ? static_cast<int>(idx) : -1;
+  }
+  GXTevRegID reg;
+  switch (light) {
+  case GX_CC_C0:
+    reg = GX_TEVREG0;
+    break;
+  case GX_CC_C1:
+    reg = GX_TEVREG1;
+    break;
+  case GX_CC_C2:
+    reg = GX_TEVREG2;
+    break;
+  default:
+    return -1;
+  }
+  if (stage.colorOp.outReg == reg) {
+    return -1; // the relit stage reads L after the stage has written it
+  }
+  for (u32 j = idx; j-- > 0;) {
+    const auto& writer = config.tevStages[j];
+    if (writer.colorOp.outReg != reg) {
+      continue;
+    }
+    return plain_add(writer.colorOp) && writer.colorPass.d == GX_CC_RASC && is_channel0(writer)
+               ? static_cast<int>(idx)
+               : -1;
+  }
+  return -1;
+}
+
 ShaderInfo build_shader_info(const ShaderConfig& config) noexcept {
   ZoneScoped;
 
@@ -364,6 +443,11 @@ ShaderInfo build_shader_info(const ShaderConfig& config) noexcept {
       u32 postMtxIdx = (tcg.postMtx - GX_PTTEXMTX0) / 3;
       info.usesPTTexMtx.set(postMtxIdx);
     }
+  }
+  if (port_surface_pbr_stage(config) >= 0) {
+    // GXPortSetSurfacePBR's maps, sampled on the relit stage's texture coordinates.
+    info.sampledTextures.set(GX_TEXMAP6);
+    info.sampledTextures.set(GX_TEXMAP7);
   }
   if (config.pbr) {
     info.usesPbr = true;

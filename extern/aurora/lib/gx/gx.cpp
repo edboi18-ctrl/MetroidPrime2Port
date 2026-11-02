@@ -1,6 +1,7 @@
 #include "gx.hpp"
 
 #include "pipeline.hpp"
+#include "shader_info.hpp"
 #include "texture.hpp"
 #include "../dolphin/vi/vi_internal.hpp"
 #include "../webgpu/gpu.hpp"
@@ -599,6 +600,16 @@ void populate_pipeline_config(PipelineConfig& config, GXPrimitive primitive, GXV
       config.shaderConfig.colorChannels[i] = {
           .matSrc = cc.matSrc,
       };
+    }
+  }
+  if (g_gxState.surfacePbr != 0 && g_gxState.pbr == 0) {
+    // GXPortSetSurfacePBR: pbrKind is the relit stage + 1 while pbr is 0, kept only when the stage
+    // can be relit (port_surface_pbr_stage, which needs per-pixel lights), so the draws it can't
+    // relight keep the config, and the pipeline, they had.
+    config.shaderConfig.pbrKind = g_gxState.surfacePbr;
+    config.shaderConfig.perPixelLight = 1;
+    if (port_surface_pbr_stage(config.shaderConfig) < 0) {
+      config.shaderConfig.pbrKind = 0;
     }
   }
   config.shaderConfig.perPixelLight = wants_per_pixel_light(config.shaderConfig);

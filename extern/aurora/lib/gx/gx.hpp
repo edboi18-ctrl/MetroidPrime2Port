@@ -408,6 +408,7 @@ struct GXState {
   u8 numTevStages = 0;
   u8 numTexGens = 0;
   u8 pbr = 0; // GX_AURORA_SET_PBR: above 1, a cost test (GXSetPBRCostTest)
+  u8 surfacePbr = 0; // GX_AURORA_PORT_SURFACE_PBR: the relit TEV stage + 1 (GXPortSetSurfacePBR), 0 off
   u8 sdf = 0; // GX_AURORA_SET_SDF
   u8 hudSample = 0; // GX_AURORA_SET_HUD_SAMPLE
   Vec4<float> hudDyin{0.f, 0.f, 0.f, 0.f}; // its DYIN
@@ -703,7 +704,15 @@ bool blocking_pipelines() noexcept;
 // ShaderConfig::perPixelLight for a config with its other fields set: a PBR draw shades per
 // pixel already (and has no interpolators to spare).
 inline bool wants_per_pixel_light(const ShaderConfig& config) noexcept {
-  if (!per_pixel_lighting() || config.pbr != 0) {
+  if (config.pbr != 0) {
+    return false;
+  }
+  // GXPortSetSurfacePBR's draws (populate_pipeline_config keeps pbrKind only on a draw it relights,
+  // whose channel 0 is lit) sum their lights per pixel, as the relit stage needs.
+  if (config.pbrKind != 0) {
+    return true;
+  }
+  if (!per_pixel_lighting()) {
     return false;
   }
   for (const auto& cc : config.colorChannels) {
