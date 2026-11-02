@@ -40,7 +40,10 @@ real surfaces. Python 3.8 or later. Run the commands from the folder that holds 
    height), or `{"preset": "metal"}` for machinery in a folder of stone. `--only "*<name>*"` remakes
    and previews just that texture. `-h` lists the rest.
 
-   The game doesn't draw these maps yet: that is step 3, the renderer.
+   To see them in the game, put the `PBR` folder inside your texture pack folder (`user_textures` in
+   the port's user folder, beside the pack; or make the maps there with `--out`) and turn on F1 >
+   Video > PBR maps. The log says `[pbr] N PBR map pairs` when it has found them. Surfaces with maps
+   get bumps, shine and metal; their glow and reflection layers stay as they were.
 
    Is your `texture_report.csv` from a scan that didn't print a "sky models" line, or does it lack the
    `reflective` column? Run steps 2 and 3 again: the scan now marks sky models (sky textures are no

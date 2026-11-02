@@ -281,6 +281,11 @@ void DrawVideoQuality() {
   Changed(ImGui::Checkbox("Per-pixel lighting", &sPerPixelLighting));
   ImGui::SetItemTooltip("Sums the game's lights per pixel instead of per vertex, like Dolphin: smoother\n"
                         "on low-poly models, not the original look.");
+  // Applied by PortPbrMaps::Poll at the next frame.
+  Changed(ImGui::Checkbox("PBR maps", &sPbrMaps));
+  ImGui::SetItemTooltip("Draws the PBR maps made by tools/pbr/make_pbr_maps.py (the _nrm and _orm files\n"
+                        "in a texture pack folder): bumps, shine and metal on the surfaces they cover,\n"
+                        "lit per pixel. The glow and reflection layers stay as they were.");
   // Applied by ApplyRenderScale from Draw, through PortVideo::DrawScale (dynamic resolution's while
   // it has lowered the scale).
   // Dynamic resolution's mode is the two saved settings together: Auto draws up to the window's own

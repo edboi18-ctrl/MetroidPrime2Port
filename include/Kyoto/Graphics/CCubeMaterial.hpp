@@ -71,6 +71,12 @@ public:
   uint GetCompressedBlend() const;
 
   static const CVector3f& GetViewingReflection() { return sViewingFrom; }
+#ifdef TARGET_PC
+  // Port: GXPortSetSurfacePBR around a surface's display list, with the PBR maps SetCurrent chose
+  // for the material it set last (port_pbr_maps.h). Begin returns whether End must follow.
+  static bool PortBeginSurfacePbr();
+  static void PortEndSurfacePbr();
+#endif
 
 private:
   static void SetupBlendMode(uint blendFactors, const CModelFlags& flags, bool alphaTest);

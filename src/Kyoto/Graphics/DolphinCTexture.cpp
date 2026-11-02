@@ -60,6 +60,8 @@ CTexture::CTexture(ETexelFormat fmt, const short w, const short h, int mips)
 , mFrameAllocated(sCurrentFrameCount)
 #ifdef TARGET_PC
 , mPortPrompt(false)
+, mPortPbrMaps(nullptr)
+, mPortPbrGeneration(0)
 #endif
 {
   InitBitmapBuffers(fmt, w, h, mips);
@@ -84,6 +86,8 @@ CTexture::CTexture(CInputStream& in, EAutoMipmap automip, EBlackKey blackKey)
 , mFrameAllocated(sCurrentFrameCount)
 #ifdef TARGET_PC
 , mPortPrompt(false)
+, mPortPbrMaps(nullptr)
+, mPortPbrGeneration(0)
 #endif
 {
   mTexelFormat = ETexelFormat(in.Get< uint >());
@@ -172,6 +176,10 @@ void CTexture::InitTextureObjects() {
 
   mCanLoadObj = true;
   InvalidateTexmaps();
+#ifdef TARGET_PC
+  // New texels: their PBR maps are looked up again (by the new hash).
+  mPortPbrGeneration = 0;
+#endif
 }
 
 void CTexture::Load(GXTexMapID tex, EClampMode clamp) const {

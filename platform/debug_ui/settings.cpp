@@ -550,6 +550,7 @@ const SettingKey kSettingKeys[] = {
     BoolKey< &sShowMenuHint >("show_menu_hint"),
     BoolKey< &sShowCheats >("show_cheats"),
     BoolKey< &sPerPixelLighting >("per_pixel_lighting"),
+    BoolKey< &sPbrMaps >("pbr_maps"),
     BoolKey< &sDynamicRes >("dynamic_res"),
     {"dynamic_res_target",
      [](const std::string& value) { sDynamicResTarget = std::clamp(std::atoi(value.c_str()), 0, PortOverlay::kFpsCapMax); },

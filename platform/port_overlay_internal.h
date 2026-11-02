@@ -142,6 +142,7 @@ extern bool sShowShaderCompilation;
 extern bool sShowMenuHint;
 extern bool sShowCheats;          // Debug > Show cheats: only reveals the cheat rows (MP1 saves it too)
 extern bool sPerPixelLighting;
+extern bool sPbrMaps;             // Video > Quality > PBR maps (port_pbr_maps.h)
 extern PortGraphicsBackend::EGraphicsBackend sGraphicsBackend; // renderer choice (Windows, desktop Linux)
 extern PortGraphicsBackend::EGraphicsBackend sGraphicsBackendAtStart;
 extern bool sOpenGles;

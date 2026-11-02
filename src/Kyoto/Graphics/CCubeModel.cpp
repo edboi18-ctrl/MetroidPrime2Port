@@ -272,8 +272,15 @@ void CCubeModel::DrawSurface(const CCubeSurface& surface, const CModelFlags& mod
   if (PortDrawDebug::DrawMaybeOn()) {
     PortDrawDebug::OnDraw(this, &modelFlags, surface.mData);
   }
+  // The surface's PBR maps, for its display list only (other draws keep their TEV result).
+  const bool portPbr = CCubeMaterial::PortBeginSurfacePbr();
 #endif
   CGX::CallDisplayList(surface.GetDisplayList(), surface.GetDisplayListSize());
+#ifdef TARGET_PC
+  if (portPbr) {
+    CCubeMaterial::PortEndSurfacePbr();
+  }
+#endif
 }
 
 void CCubeModel::DrawSurfaceFlat(const CCubeSurface& surface) const {

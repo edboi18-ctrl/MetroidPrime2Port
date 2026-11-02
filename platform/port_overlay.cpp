@@ -1931,6 +1931,7 @@ bool sShowShaderCompilation = true;
 bool sShowMenuHint = true;
 bool sShowCheats = false;
 bool sPerPixelLighting = false;
+bool sPbrMaps = false;
 PortGraphicsBackend::EGraphicsBackend sGraphicsBackend = PortGraphicsBackend::kGraphicsBackend_Auto;
 PortGraphicsBackend::EGraphicsBackend sGraphicsBackendAtStart = PortGraphicsBackend::kGraphicsBackend_Auto;
 bool sOpenGles = false;
@@ -2015,6 +2016,11 @@ bool ShowMenuHint() {
 bool PerPixelLighting() {
   ReadEnv();
   return EnvBool("MP2_PER_PIXEL_LIGHTING", sPerPixelLighting);
+}
+
+bool PbrMaps() {
+  ReadEnv();
+  return EnvBool("MP2_PBR_MAPS", sPbrMaps);
 }
 
 bool OpenGles() {

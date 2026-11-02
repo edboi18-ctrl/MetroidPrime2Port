@@ -162,6 +162,14 @@ Things that took real effort to find out. AGENTS.md keeps a one-line index; the 
   (`PortRearmPad0`, called in both `UpdateTicks` loops); a new loop that reads the pad needs the
   same call, or its reads see `PAD_ERR_NO_CONTROLLER` and `CDolphinController` clears every button.
   Keyboard bindings live in `<user>/controls.toml`; `keybinds.cfg` is no longer read.
+- **`GXPortSetSurfacePBR` is a vendored-Aurora addition** (`GX_AURORA_PORT_SURFACE_PBR` 0x0071 in
+  `GXAurora.h`/`GXExtra.cpp`, `g_gxState.surfacePbr`, `port_surface_pbr_stage` in
+  `lib/gx/shader_info.cpp`, `port_surface_pbr` in `lib/gx/shader.cpp`, the `pbrKind` branch of
+  `wants_per_pixel_light`). It reuses `pbrKind` while `pbr` is 0 so `ShaderConfig` keeps its bytes: a
+  re-vendor must keep `pbrKind` meaningless for non-PBR configs, or move the field and bump
+  `GXPipelineConfigVersion` (and re-record the seed). The draw's maps sit in GX_TEXMAP6/7; the port
+  calls `CTexture::InvalidateTexmap` on both after loading them, or the next CTexture bound there is
+  skipped as already loaded.
 - **The game's EFB copies all land in one spare buffer, and Aurora resolves each copy into a texture
   keyed by the destination pointer** - so two consumers copying into that buffer in the same frame end
   up sharing one resolved texture, whichever copy was recorded last. The scan visor's A8 palette-index

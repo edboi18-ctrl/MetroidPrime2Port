@@ -201,6 +201,28 @@ draws; presets and per-texture overrides go in a JSON sidecar that the batch re-
   candidates have one, 397 a glow layer). The renderer has to light the base with PBR and then add
   the material's later stages (glow, masked reflection) on top, or carry them as the emissive, rather
   than replacing the whole result.
+- **Step 3, the renderer: done (2026-11-02), untested in game.** "Port surface PBR": only the TEV
+  stage that lights the base texture is relit, and the stages after it run unchanged, so the added
+  layers stay. `GXPortSetSurfacePBR(stage)` (`GX_AURORA_PORT_SURFACE_PBR` 0x0071) sets `pbrKind =
+  stage + 1` with `pbr` 0, which keeps `ShaderConfig`'s layout and so the pipeline seed's
+  (`GXPipelineConfigVersion` unchanged; the seed never holds these rows). Aurora keeps the kind only
+  when `port_surface_pbr_stage` accepts the stage: `0 + lerp(0, L, TEXC)`, plain add, no indirect, L
+  = RASC on channel 0 (unswapped) or a colour register whose last writer is a plain add with d = RASC
+  on channel 0 (the lightmap stage), maps 6 and 7 unused by the material. Such draws are lit per
+  pixel. The WGSL (`port_surface_pbr`): ORM from map 6 and the normal from map 7 on the stage's UVs,
+  the tangent frame from derivatives as `pbr_func` does, channel 0's lights summed again with the
+  mapped normal (GX's attenuation and diffuse function, ambient and material colour) giving `rast'`;
+  `L' = max(L - rast0 + rast', 0)` keeps the unlit part (lightmap); diffuse = base (1 - metal) L'
+  ao; per light a GGX lobe (alpha = max(roughness, 0.02)^2, k = alpha/2, Schlick F with F0 = mix(0.04,
+  base, metal)) times the light colour, in linear light; L' reflected as `lin(L') (F0 A + B) ao`
+  (Karis's EnvBRDFApprox); out = `gamma(lin(diffuse) + spec + env)`, clamped as the stage clamps.
+  Flat normal, occlusion 1, metal 0: the diffuse is the stage's result exactly, plus the lobe and a
+  few percent of reflected light. Checked: naga (30.0.1) validates the emitted WGSL for every
+  attenuation/diffuse function and channel source (18 variants, the real generator built against fmt
+  12.1.0); `extern/aurora/tests/gx_surface_pbr_test.cpp` checks the predicate and the emitted lines;
+  `tests/port_pbr_rules.cpp` the file names and the stage choice. Not yet seen running: the first
+  in-game look decides the presets (metal 0.5, `reflective_roughness`) and whether the lobe is too
+  strong under the game's lights.
 
 ## Risks
 
