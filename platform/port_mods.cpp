@@ -303,7 +303,9 @@ void Initialize(const std::string& userPath) {
           Message(info.name + ": " + relative + " is empty; ignored");
           continue;
         }
-        loose[{type, id}] = {type, id, PathString(file), size, info.name};
+        const fs::path folder = file.parent_path();
+        loose[{type, id}] = {type, id, PathString(file), size, info.name,
+                             folder == modDir ? std::string() : Lower(PathString(folder.filename()))};
         looseMod[{type, id}] = modIndex;
         continue;
       }
@@ -345,40 +347,66 @@ void Initialize(const std::string& userPath) {
     PortSuitColours::SetServed(served);
   }
 
-  // Which loose resources each PAK takes.
+  // Which loose resources each PAK takes: those its table holds, and those no PAK holds that sit in a
+  // folder named after it (`<mod>/Metroid3.pak/<id>.<TYPE>`), which get new entries.
   std::set<std::pair<uint32_t, uint32_t>> used;
   std::map<int32_t, std::shared_ptr<VirtualFile>> patched;
   if (!loose.empty()) {
-    for (const auto& [entry, path] : DiscPaks()) {
-      const auto whole = replaced.find(entry);
-      const std::string hostPath = whole != replaced.end() ? whole->second.hostPath : std::string();
+    struct PakInfo {
+      int32_t entry = 0;
+      std::string path;
+      std::string hostPath;
       std::vector<uint8_t> header;
       uint64_t size = 0;
       PakTable table;
-      if (!ReadPakHeader(hostPath, entry, header, size, table)) {
-        Message("cannot read the table of " + path + (hostPath.empty() ? "" : " (from a mod)"));
+    };
+    std::vector<PakInfo> paks;
+    std::set<std::pair<uint32_t, uint32_t>> held;
+    for (const auto& [entry, path] : DiscPaks()) {
+      PakInfo info;
+      info.entry = entry;
+      info.path = path;
+      const auto whole = replaced.find(entry);
+      info.hostPath = whole != replaced.end() ? whole->second.hostPath : std::string();
+      if (!ReadPakHeader(info.hostPath, entry, info.header, info.size, info.table)) {
+        Message("cannot read the table of " + path + (info.hostPath.empty() ? "" : " (from a mod)"));
         continue;
       }
+      for (const PakResource& resource : info.table.resources) {
+        held.insert({resource.type, resource.id});
+      }
+      paks.push_back(std::move(info));
+    }
+    for (const PakInfo& pak : paks) {
       std::vector<const LooseResource*> take;
       std::set<std::pair<uint32_t, uint32_t>> taken;
-      for (const PakResource& resource : table.resources) {
+      for (const PakResource& resource : pak.table.resources) {
         const auto found = loose.find({resource.type, resource.id});
         if (found != loose.end() && taken.insert(found->first).second) {
           take.push_back(&found->second);
           used.insert(found->first);
         }
       }
-      if (take.empty()) {
+      const std::string pakName = Lower(PathString(PathFromString(pak.path).filename()));
+      std::vector<const LooseResource*> add;
+      for (const auto& [key, resource] : loose) {
+        if (held.count(key) == 0 && !resource.pakFolder.empty() && resource.pakFolder == pakName &&
+            looseMod.count(key) != 0) {
+          add.push_back(&resource);
+          used.insert(key);
+        }
+      }
+      if (take.empty() && add.empty()) {
         continue;
       }
-      auto file = std::make_shared<VirtualFile>(PatchPak(header, table, size, take, hostPath));
+      auto file = std::make_shared<VirtualFile>(PatchPak(pak.header, pak.table, pak.size, take, pak.hostPath, add));
       if (file->size == 0 || file->size >= 0xFFFFFFE0u) {
-        Message("cannot patch " + path);
+        Message("cannot patch " + pak.path);
         continue;
       }
-      file->discPath = path;
-      file->sourceEntry = entry;
-      patched[entry] = std::move(file);
+      file->discPath = pak.path;
+      file->sourceEntry = pak.entry;
+      patched[pak.entry] = std::move(file);
     }
     for (const auto& [key, resource] : loose) {
       if (looseMod.count(key) == 0) {
@@ -387,7 +415,10 @@ void Initialize(const std::string& userPath) {
       if (used.count(key) != 0) {
         ++sStatus.mods[looseMod[key]].resources;
       } else {
-        Message(resource.mod + ": " + PathString(PathFromString(resource.hostPath).filename()) + " is in no PAK; ignored");
+        Message(resource.mod + ": " + PathString(PathFromString(resource.hostPath).filename()) +
+                (resource.pakFolder.empty()
+                     ? " is in no PAK; ignored (a new resource goes in a folder named after a PAK)"
+                     : " is in no PAK and its folder '" + resource.pakFolder + "' names no PAK; ignored"));
       }
     }
   }

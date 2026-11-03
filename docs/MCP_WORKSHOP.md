@@ -78,7 +78,7 @@ What it reads and writes:
 | `echoes_disc_room_geometry` | a room's world geometry walked as the game walks it: models, surfaces, materials, display-list vertex formats, surface records and groups, area surfaces, render octree; checks of the rules PWE's geometry writer follows |
 | `echoes_disc_room_collision` | a room's collision as the game reads it: counts, each material's flags by name, the octree's shape, and checks of the rules PWE's collision writer follows |
 | `echoes_mods_list` | each mod and what the port does with each file (replace, or ignored and why) |
-| `echoes_mods_install_resource` | copy a cooked file in as `<ID>.<TYPE>`; refuses an ID no PAK holds, since the port would ignore it |
+| `echoes_mods_install_resource` | copy a cooked file in as `<ID>.<TYPE>`: a replacement, or with `pak` a new resource the port adds to that PAK; refuses what the port would ignore |
 | `echoes_mods_remove_file` | delete one file inside a mod |
 | `echoes_game_launch` | start the port, booting straight into a world and area (`MP2_WORLD` + `MP2_SKIP_FRONTEND`) |
 | `echoes_game_status` | `status --json` from the running game |
@@ -119,15 +119,14 @@ retail file formats and PWE can express. What can be made today, with sources:
 | Strings, scans, tweaks | **Yes**, PWE cooks STRG, SCAN, CTWK | `CResourceCooker::CookResource` |
 | Streamed music | **Replace only**: a mod's `Audio/<name>.dsp` (same DSP format) replaces that disc track | port mods replace existing disc files; only `.thp` movies can be added, so a new track file cannot |
 | Sound effects | **No** | no AGSC/MusyX cooker in PWE |
-| Brand-new assets (new IDs) | **Only by replacing whole PAKs**: PWE's package cooker (`CPackage::Cook`) writes whole PAKs, which a mod drops in at their disc path (not yet tried with Echoes here) | the port's loose-file loader replaces only IDs a PAK holds (`port_mods.cpp`: "is in no PAK; ignored") |
+| Brand-new assets (new IDs) | **Yes**: a loose `<ID>.<TYPE>` in a folder named after a disc PAK (`<mod>/Metroid3.pak/`) is added to that PAK | `platform/port_mods.cpp`, `PatchPak`; `docs/MODS.md` |
 
 ### Roadmap
 
 1. **Console on Windows**: Winsock in `platform/port_console.cpp` (`WSAStartup`, `SOCKET`, `closesocket`,
    `WSAPoll`), checked by the Windows CI build. This makes the live tools work on Windows.
-2. **Loose resources with new IDs**: let `PortMods` append a mod's unknown `<ID>.<TYPE>` to a PAK's table
-   (the virtual PAK writer in `port_mods_pak.cpp` already appends data past the original table). New models,
-   textures and strings then need no whole-PAK replacement.
+2. **Loose resources with new IDs**: done. A resource no PAK holds, in a folder named after a PAK, gets a new
+   entry in that PAK's table (`docs/MODS.md`).
 3. **An automation socket in PWE**: a localhost JSON server in the editor (Qt's `QTcpServer`) for the open
    project, so the MCP server can list and edit script objects, links and layers through PWE's own undo
    stack (every change Claude makes shows in the editor and can be undone), and cook and export to the

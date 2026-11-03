@@ -80,15 +80,20 @@ struct LooseResource {
   std::string hostPath;
   uint64_t hostSize = 0;
   std::string mod;
+  // The folder it sits in inside the mod, lower case ("metroid3.pak"), or empty at the mod's top. A
+  // resource no PAK holds is added to the disc PAK of that name (docs/MODS.md).
+  std::string pakFolder;
 };
 
 // A PAK with `loose` swapped in: header is at least table.headerEnd bytes of
 // the original, which is originalSize long. Every table entry matching a loose
 // resource's type and id points at that resource's appended copy. The original
 // data comes from the base disc (kSource), or from sourceHost when that is set
-// (a PAK a mod replaced whole).
+// (a PAK a mod replaced whole). Each `added` resource gets a new table entry (the table grows and the
+// original data moves back by that much, rounded to 32 bytes, with every original offset).
 VirtualFile PatchPak(const std::vector<uint8_t>& header, const PakTable& table, uint64_t originalSize,
-                     const std::vector<const LooseResource*>& loose, const std::string& sourceHost = {});
+                     const std::vector<const LooseResource*>& loose, const std::string& sourceHost = {},
+                     const std::vector<const LooseResource*>& added = {});
 
 // How a Reader reaches the file being patched. Tests supply their own.
 struct SourceIo {

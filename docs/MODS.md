@@ -15,6 +15,12 @@ Inside a mod:
 - a file named `<8 hex digits>.<TYPE>` (`1A2B3C4D.TXTR`, `0552A456.STRG`), anywhere in the mod, replaces
   that resource, uncompressed, in every PAK holding it. The PAK is served as a virtual file whose table
   points past the original data, where the loose file is appended (32-byte aligned).
+- a `<8 hex digits>.<TYPE>` that no PAK holds is a **new resource**: inside a folder named after a disc
+  PAK (`<mod>/Metroid3.pak/0A1B2C3D.TXTR`, any case) it is added to that PAK, as a new table entry (the
+  virtual PAK's table grows, the original data moves back by the new entries' size rounded to 32
+  bytes, and the resource is appended like a replacement). Anywhere else it is reported and ignored. The
+  game finds resources by ID in every open PAK, so a world's own PAK (open while the player is in it)
+  suits a new room's textures; `CPakFile::InitialHeaderLoad` reads a table of any length.
 - `.txt/.md/.json/.png/...` files are ignored silently.
 
 `platform/port_mods.cpp` (scan, plan, register with Aurora's DVD overlays) runs from `main.cpp` right

@@ -245,6 +245,16 @@ class ModsTests(unittest.TestCase):
         with self.assertRaisesRegex(ws.WorkshopError, "no PAK holds"):
             ws.install_resource(self.source("DEADBEEF.TXTR"), "skin", disc=self.disc, folder=self.mods)
         forced = ws.install_resource(self.source("DEADBEEF.TXTR"), "skin", disc=self.disc, force=True, folder=self.mods)
+        # A new resource: given the PAK it joins, it goes in that PAK's folder (platform/port_mods.cpp).
+        added = ws.install_resource(self.source("DEADBEEF.TXTR"), "skin", disc=self.disc, folder=self.mods, pak="metroid1.PAK")
+        self.assertTrue(pathlib.Path(added["installed"]).match("skin/Metroid1.pak/DEADBEEF.TXTR"))
+        self.assertIn("added to Metroid1.pak as a new TXTR", added["notes"][0])
+        with self.assertRaisesRegex(ws.WorkshopError, "No PAK named"):
+            ws.install_resource(self.source("DEADBEEF.TXTR"), "skin", disc=self.disc, folder=self.mods, pak="Metroid9.pak")
+        with self.assertRaisesRegex(ws.WorkshopError, "already a TXTR"):
+            ws.install_resource(self.source("1A2B3C4D.CMDL"), "skin", disc=self.disc, folder=self.mods, pak="Metroid1.pak")
+        with self.assertRaisesRegex(ws.WorkshopError, "not a PAK file name"):
+            ws.install_resource(self.source("DEADBEEF.TXTR"), "skin", disc=self.disc, folder=self.mods, pak="../x.pak")
         self.assertIn("will ignore it", forced["notes"][0])
         with self.assertRaisesRegex(ws.WorkshopError, "empty"):
             ws.install_resource(self.source("1A2B3C4D.TXTR", b""), "skin", disc=self.disc, folder=self.mods)
@@ -256,6 +266,8 @@ class ModsTests(unittest.TestCase):
         (self.mods / "a_mod" / "sub").mkdir(parents=True)
         (self.mods / "a_mod" / "sub" / "1a2b3c4d.txtr").write_bytes(b"x")
         (self.mods / "a_mod" / "DEADBEEF.TXTR").write_bytes(b"x")
+        (self.mods / "a_mod" / "metroid1.pak").mkdir()
+        (self.mods / "a_mod" / "metroid1.pak" / "0000BEEF.TXTR").write_bytes(b"x")
         (self.mods / "a_mod" / "0BADF00D.CMDL").write_bytes(b"")
         (self.mods / "a_mod" / "metroid1.PAK").write_bytes(b"x")
         (self.mods / "a_mod" / "audio").mkdir()
@@ -270,6 +282,8 @@ class ModsTests(unittest.TestCase):
         status = {f["file"]: f["status"] for f in mods[0]["files"]}
         self.assertEqual(status["sub/1a2b3c4d.txtr"], "replaces it in 2 PAK(s)")
         self.assertTrue(status["DEADBEEF.TXTR"].startswith("ignored: no PAK"))
+        self.assertIn("folder named after a PAK", status["DEADBEEF.TXTR"])
+        self.assertEqual(status["metroid1.pak/0000BEEF.TXTR"], "added to Metroid1.pak as a new resource")
         self.assertEqual(status["0BADF00D.CMDL"], "ignored: empty")
         self.assertEqual(status["metroid1.PAK"], "replaces disc file Metroid1.pak")
         self.assertEqual(status["audio/ECHOES.dsp"], "replaces disc file Audio/echoes.dsp")

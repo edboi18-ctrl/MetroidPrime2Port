@@ -141,17 +141,30 @@ std::string FourCCString(uint32_t type) {
 }
 
 VirtualFile PatchPak(const std::vector<uint8_t>& header, const PakTable& table, uint64_t originalSize,
-                     const std::vector<const LooseResource*>& loose, const std::string& sourceHost) {
+                     const std::vector<const LooseResource*>& loose, const std::string& sourceHost,
+                     const std::vector<const LooseResource*>& added) {
   VirtualFile file;
-  if (header.size() < table.headerEnd || originalSize < table.headerEnd) {
+  if (header.size() < table.headerEnd || originalSize < table.headerEnd ||
+      table.headerEnd < 4 + table.resources.size() * 20) {
     return file;
   }
-  // memory[0] is the header, patched below.
+  // memory[0] is the header, patched below. New entries follow the table's last one, and the
+  // original data after the header moves back by `shift` (their size, rounded up to 32 so the
+  // data keeps its alignment); the gap is zeros.
+  const uint64_t shift = RoundUp32(uint64_t(added.size()) * 20);
   file.memory.emplace_back(header.begin(), header.begin() + table.headerEnd);
-  file.segments.push_back({Segment::kMemory, 0, table.headerEnd, 0});
+  file.memory[0].resize(table.headerEnd + shift, 0);
+  file.segments.push_back({Segment::kMemory, 0, table.headerEnd + shift, 0});
+  if (!added.empty()) {
+    uint8_t* countWord = file.memory[0].data() + table.headerEnd - table.resources.size() * 20 - 4;
+    WriteBE32(countWord, uint32_t(table.resources.size() + added.size()));
+    for (const PakResource& entry : table.resources) {
+      WriteBE32(file.memory[0].data() + entry.entryOffset + 16, uint32_t(entry.offset + shift));
+    }
+  }
 
   Segment original;
-  original.start = table.headerEnd;
+  original.start = table.headerEnd + shift;
   original.length = originalSize - table.headerEnd;
   original.sourceOffset = table.headerEnd;
   if (!sourceHost.empty()) {
@@ -164,10 +177,11 @@ VirtualFile PatchPak(const std::vector<uint8_t>& header, const PakTable& table, 
   if (original.length > 0) {
     file.segments.push_back(original);
   }
-  uint64_t end = RoundUp32(originalSize);
-  if (end > originalSize) {
-    file.memory.emplace_back(end - originalSize, uint8_t(0));
-    file.segments.push_back({Segment::kMemory, originalSize, end - originalSize, file.memory.size() - 1});
+  const uint64_t dataEnd = originalSize + shift;
+  uint64_t end = RoundUp32(dataEnd);
+  if (end > dataEnd) {
+    file.memory.emplace_back(end - dataEnd, uint8_t(0));
+    file.segments.push_back({Segment::kMemory, dataEnd, end - dataEnd, file.memory.size() - 1});
   }
   for (const LooseResource* resource : loose) {
     const uint64_t length = RoundUp32(resource->hostSize);
@@ -186,6 +200,27 @@ VirtualFile PatchPak(const std::vector<uint8_t>& header, const PakTable& table, 
       used = true;
     }
     if (!used) {
+      continue;
+    }
+    Segment appended;
+    appended.kind = Segment::kHost;
+    appended.start = end;
+    appended.length = length;
+    appended.hostPath = resource->hostPath;
+    appended.hostSize = resource->hostSize;
+    file.segments.push_back(appended);
+    end += length;
+  }
+  for (size_t i = 0; i < added.size(); ++i) {
+    const LooseResource* resource = added[i];
+    const uint64_t length = RoundUp32(resource->hostSize);
+    uint8_t* bytes = file.memory[0].data() + table.headerEnd + i * 20;
+    WriteBE32(bytes, 0);  // uncompressed
+    WriteBE32(bytes + 4, resource->type);
+    WriteBE32(bytes + 8, resource->id);
+    WriteBE32(bytes + 12, uint32_t(length));
+    WriteBE32(bytes + 16, uint32_t(end));
+    if (length == 0) {
       continue;
     }
     Segment appended;

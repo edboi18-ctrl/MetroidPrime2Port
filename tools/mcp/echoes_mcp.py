@@ -42,7 +42,8 @@ Tools for building on the Metroid Prime 2: Echoes native port.
   echoes_disc_describe_area -> echoes_disc_describe_object. echoes_disc_find_resource says which PAKs
   hold an asset ID.
 - The port's mods folder: a file named <8 hex>.<TYPE> replaces that resource in every PAK holding it;
-  the port cannot add new IDs. echoes_mods_list, echoes_mods_install_resource, echoes_mods_remove_file.
+  one no PAK holds, in a folder named after a PAK (<mod>/Metroid3.pak/), is added to that PAK.
+  echoes_mods_list, echoes_mods_install_resource, echoes_mods_remove_file.
 - The game: echoes_game_launch boots straight into a world and area; echoes_game_status and
   echoes_game_command talk to its debug console (Linux/macOS builds; not yet on Windows).
 Typical loop: edit in Prime World Editor -> cook the resource -> echoes_mods_install_resource ->
@@ -353,11 +354,13 @@ def mods_install_resource(
     mod: Annotated[str, Field(description="The mod folder to put it in (created if missing), e.g. 'my_first_room'.")],
     asset_id: Annotated[Optional[str], Field(description="The 8-hex-digit asset ID it replaces, when the file is not named <ID>.<TYPE>.")] = None,
     type: Annotated[Optional[str], Field(description="The resource type it replaces (TXTR, CMDL, MREA, STRG, ...), with asset_id.")] = None,
-    force: Annotated[bool, Field(description="Install even when no PAK holds that type and ID (the port will then ignore it).")] = False,
+    force: Annotated[bool, Field(description="Install even when the port would ignore it (no PAK holds it and no pak is given), or its ID is another type's on the disc.")] = False,
+    pak: Annotated[Optional[str], Field(description="For a new resource (an ID no PAK holds): the disc PAK it joins, e.g. 'Metroid3.pak'. It goes in <mod>/<pak>/.")] = None,
 ) -> str:
-    """Copy a cooked resource into the mods folder as <ID>.<TYPE>, so the port uses it in place of the
-    disc's. Refuses (unless force) when no PAK holds that resource, since the port only replaces."""
-    result = ws.install_resource(source_path, mod, asset_id, type, disc(required=False), force)
+    """Copy a cooked resource into the mods folder as <ID>.<TYPE>. A resource a PAK holds replaces the
+    disc's; a new one (no PAK holds it) is added to the PAK named by `pak`. Refuses what the port would
+    ignore, unless forced."""
+    result = ws.install_resource(source_path, mod, asset_id, type, disc(required=False), force, pak=pak)
     return ws.to_json(result) + "\nApply it with echoes_game_command(['reloadmods']) in a running game, or a restart."
 
 

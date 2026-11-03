@@ -996,11 +996,14 @@ def scan_mods(folder: pathlib.Path, disc: Optional[Disc] = None) -> list:
                     entry["status"] = "ignored: empty"
                 elif disc is not None:
                     paks = sorted(p for t, p in disc.by_id.get(rid, ()) if t == rtype)
-                    entry["status"] = (f"replaces it in {len(paks)} PAK(s)" if paks else
-                                       "ignored: no PAK holds this type and ID (the port can only replace)")
                     entry["paks"] = paks
+                    if paks:
+                        entry["status"] = f"replaces it in {len(paks)} PAK(s)"
+                    else:
+                        entry["status"] = _new_resource_status(disc, rtype, rid, path.parent, mod_dir)
                 else:
-                    entry["status"] = "replaces the resource if a PAK holds it (no disc set to check)"
+                    entry["status"] = ("replaces the resource if a PAK holds it, or adds it to the PAK its folder "
+                                       "is named after (no disc set to check)")
             elif path.name.lower().endswith(DOCUMENT_SUFFIXES) or path.name.lower() == "license":
                 entry.update(kind="document", status="ignored (documentation)")
             elif disc_files is not None:
@@ -1017,6 +1020,25 @@ def scan_mods(folder: pathlib.Path, disc: Optional[Disc] = None) -> list:
     return mods
 
 
+def disc_pak_names(disc: Disc) -> dict:
+    """The disc's PAK files by lower-case name (the port adds new resources to the one a folder names)."""
+    return {name.lower(): name for name in disc.iso.files if name.lower().endswith(".pak") and "/" not in name}
+
+
+def _new_resource_status(disc: Disc, rtype: str, rid: int, parent: pathlib.Path, mod_dir: pathlib.Path) -> str:
+    """What the port does with a loose resource no PAK holds (platform/port_mods.cpp)."""
+    folder = parent.name.lower() if parent != mod_dir else ""
+    pak = disc_pak_names(disc).get(folder)
+    if pak is None:
+        return ("ignored: no PAK holds this type and ID; to add it as a new resource, put it in a folder named "
+                "after a PAK (e.g. Metroid3.pak/)")
+    other = sorted({t for t, _ in disc.by_id.get(rid, ())})
+    if other:
+        return (f"added to {pak} as a new resource, but its ID is already a {'/'.join(other)} on the disc "
+                "(the game looks resources up by ID): give it another ID")
+    return f"added to {pak} as a new resource"
+
+
 def _check_mod_name(mod: str) -> str:
     mod = mod.strip()
     if not mod or mod.startswith(".") or any(c in mod for c in '/\\:*?"<>|') or mod in (".", ".."):
@@ -1025,8 +1047,11 @@ def _check_mod_name(mod: str) -> str:
 
 
 def install_resource(source: str, mod: str, asset_id: Optional[str] = None, rtype: Optional[str] = None,
-                     disc: Optional[Disc] = None, force: bool = False, folder: Optional[pathlib.Path] = None) -> dict:
-    """Copy a cooked resource into <mods>/<mod>/<ID>.<TYPE>, checking the port will use it."""
+                     disc: Optional[Disc] = None, force: bool = False, folder: Optional[pathlib.Path] = None,
+                     pak: Optional[str] = None) -> dict:
+    """Copy a cooked resource into <mods>/<mod>/<ID>.<TYPE> (or <mods>/<mod>/<pak>/<ID>.<TYPE>), checking
+    the port will use it: it replaces the resource in every PAK holding it, or, in a PAK's folder, is
+    added to that PAK as a new resource."""
     src = pathlib.Path(source)
     if not src.is_file():
         raise WorkshopError(f"{source!r} is not a file.")
@@ -1046,22 +1071,36 @@ def install_resource(source: str, mod: str, asset_id: Optional[str] = None, rtyp
     if parsed is None:
         raise WorkshopError("The file is not named <8 hex digits>.<TYPE>; pass asset_id and type.")
     rtype, rid = parsed
+    if pak is not None and (not re.fullmatch(r"[A-Za-z0-9_.-]+\.pak", pak, re.IGNORECASE)):
+        raise WorkshopError(f"pak {pak!r} is not a PAK file name such as Metroid3.pak.")
     notes = []
     if disc is not None:
         paks = sorted(p for t, p in disc.by_id.get(rid, ()) if t == rtype)
-        if not paks:
-            other = sorted({t for t, _ in disc.by_id.get(rid, ())})
-            why = (f"0x{rid:08X} is a {'/'.join(other)} on the disc, not a {rtype}" if other else
-                   f"no PAK holds {rtype} 0x{rid:08X}")
-            if not force:
-                raise WorkshopError(f"Not installed: {why}. The port only replaces resources a PAK already holds "
-                                    "(platform/port_mods.cpp: 'is in no PAK; ignored').")
-            notes.append(f"installed anyway (force): {why}, so the port will ignore it")
-        else:
+        if paks:
             notes.append(f"replaces {rtype} 0x{rid:08X} in {', '.join(paks)}")
+        else:
+            other = sorted({t for t, _ in disc.by_id.get(rid, ())})
+            names = disc_pak_names(disc)
+            if pak is None:
+                why = (f"0x{rid:08X} is a {'/'.join(other)} on the disc, not a {rtype}" if other else
+                       f"no PAK holds {rtype} 0x{rid:08X}")
+                if not force:
+                    raise WorkshopError(f"Not installed: {why}. To add it as a new resource, pass pak (the disc PAK "
+                                        "it joins, e.g. the room's world PAK); the port then adds it to that PAK.")
+                notes.append(f"installed anyway (force): {why}, so the port will ignore it")
+            elif pak.lower() not in names:
+                raise WorkshopError(f"No PAK named {pak!r} on the disc. PAKs: {', '.join(sorted(names.values()))}.")
+            elif other and not force:
+                raise WorkshopError(f"Not installed: 0x{rid:08X} is already a {'/'.join(other)} on the disc, and the "
+                                    "game looks resources up by ID. Give the new resource another ID.")
+            else:
+                pak = names[pak.lower()]
+                notes.append(f"added to {pak} as a new {rtype}")
     else:
-        notes.append("no disc configured, so it was not checked that a PAK holds this resource")
+        notes.append("no disc configured, so it was not checked which PAK holds this resource")
     target_dir = (folder or mods_dir()) / _check_mod_name(mod)
+    if pak is not None:
+        target_dir = target_dir / pak
     target_dir.mkdir(parents=True, exist_ok=True)
     target = target_dir / f"{rid:08X}.{rtype}"
     replaced = target.exists()
