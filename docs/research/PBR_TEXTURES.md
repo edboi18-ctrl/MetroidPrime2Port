@@ -249,6 +249,14 @@ draws; presets and per-texture overrides go in a JSON sidecar that the batch re-
   coordinates from the normal (`GX_TG_NRM`, texture matrix 0, normalised) and C2 a mask loaded by an
   earlier stage. `GXPortSetEnvProbe` makes such stages sample the probe instead (MODS.md, "Live
   reflections"); the surface PBR's reflected environment is the probe too once filled.
+- **First look at live reflections (2026-11-03): the arm cannon kept its old shine.** With PBR maps
+  on, the room showed on the cannon (through the relit base stage) beside the original environment
+  map; with PBR maps off, the cannon looked the same with Live reflections on and off. The probe
+  never applied: `populate_pipeline_config` ran the port's flags before it copied the draw's texgens,
+  and `port_env_probe_stages` finds the environment stages by their texgen (`GX_TG_NRM`), so it saw
+  none and dropped the bit on every draw. The gtests built their configs by hand and missed it. The
+  texgens are copied first now, and the flags are `apply_port_surface_flags`, with a test of a config
+  whose texgens aren't filled.
 
 ## Risks
 

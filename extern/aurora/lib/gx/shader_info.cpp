@@ -320,6 +320,28 @@ u32 port_env_probe_stages(const ShaderConfig& config) noexcept {
   return stages;
 }
 
+void apply_port_surface_flags(ShaderConfig& config, u8 surfacePbr, bool envProbe) noexcept {
+  if (config.pbr != 0 || (surfacePbr == 0 && !envProbe)) {
+    return;
+  }
+  // Both predicates need per-pixel lights; wants_per_pixel_light keeps them on for the result.
+  const u8 oldPerPixel = config.perPixelLight;
+  config.perPixelLight = 1;
+  config.pbrKind = surfacePbr & kPortSurfacePbrStageMask;
+  if (config.pbrKind != 0 && port_surface_pbr_stage(config) < 0) {
+    config.pbrKind = 0;
+  }
+  if (envProbe) {
+    config.pbrKind |= kPortEnvProbeBit;
+    if (port_env_probe_stages(config) == 0) {
+      config.pbrKind &= static_cast<u8>(~kPortEnvProbeBit);
+    }
+  }
+  if (config.pbrKind == 0) {
+    config.perPixelLight = oldPerPixel;
+  }
+}
+
 ShaderInfo build_shader_info(const ShaderConfig& config) noexcept {
   ZoneScoped;
 

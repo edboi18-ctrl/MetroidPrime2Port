@@ -93,6 +93,48 @@ TEST(GxSurfacePbr, EnvironmentStageReadsTheProbe) {
   EXPECT_EQ(source.find("pbrs_"), std::string::npos);
 }
 
+// populate_pipeline_config's step: the flags as a draw sets them (GXPortSetEnvProbe on), on a
+// config filled as populate fills it. The probe finds its stages by their texgen, so a config
+// whose texgens aren't filled yet gets no probe (populate once ran it before copying them, and
+// the arm cannon kept its own environment map).
+TEST(GxSurfacePbr, ApplyFlagsAsADrawSetsThem) {
+  {
+    auto config = gun_config();
+    config.pbrKind = 0;
+    config.perPixelLight = 0;
+    apply_port_surface_flags(config, 0, true);
+    EXPECT_EQ(config.pbrKind, kPortEnvProbeBit);
+    EXPECT_EQ(config.perPixelLight, 1);
+    EXPECT_EQ(port_env_probe_stages(config), 1u << 2);
+  }
+  {
+    auto config = gun_config();
+    config.pbrKind = 0;
+    config.perPixelLight = 0;
+    apply_port_surface_flags(config, 1, true);
+    EXPECT_EQ(config.pbrKind, kPortEnvProbeBit | 1);
+    EXPECT_EQ(port_surface_pbr_stage(config), 0);
+  }
+  {
+    // Texgens not filled: nothing to probe, and the config is left as it was.
+    auto config = gun_config();
+    config.pbrKind = 0;
+    config.perPixelLight = 0;
+    config.tcgs = {};
+    apply_port_surface_flags(config, 0, true);
+    EXPECT_EQ(config.pbrKind, 0);
+    EXPECT_EQ(config.perPixelLight, 0);
+  }
+  {
+    // GXSetPBR's draws are left alone.
+    auto config = gun_config();
+    config.pbr = 1;
+    config.pbrKind = 7;
+    apply_port_surface_flags(config, 0, true);
+    EXPECT_EQ(config.pbrKind, 7);
+  }
+}
+
 TEST(GxSurfacePbr, EnvironmentProbeAndRelitStageTogether) {
   auto config = gun_config();
   config.pbrKind = kPortEnvProbeBit | 1;

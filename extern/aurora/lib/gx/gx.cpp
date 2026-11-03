@@ -609,28 +609,15 @@ void populate_pipeline_config(PipelineConfig& config, GXPrimitive primitive, GXV
       };
     }
   }
-  if (g_gxState.pbr == 0 && (g_gxState.surfacePbr != 0 || g_gxState.envProbe)) {
-    // GXPortSetSurfacePBR and GXPortSetEnvProbe: pbrKind holds the relit stage + 1 and the probe
-    // bit while pbr is 0, each kept only when it applies (port_surface_pbr_stage,
-    // port_env_probe_stages, which need per-pixel lights), so the draws they can't change keep
-    // the config, and the pipeline, they had.
-    auto& sc = config.shaderConfig;
-    sc.perPixelLight = 1;
-    sc.pbrKind = g_gxState.surfacePbr & kPortSurfacePbrStageMask;
-    if (sc.pbrKind != 0 && port_surface_pbr_stage(sc) < 0) {
-      sc.pbrKind = 0;
-    }
-    if (g_gxState.envProbe) {
-      sc.pbrKind |= kPortEnvProbeBit;
-      if (port_env_probe_stages(sc) == 0) {
-        sc.pbrKind &= static_cast<u8>(~kPortEnvProbeBit);
-      }
-    }
-  }
-  config.shaderConfig.perPixelLight = wants_per_pixel_light(config.shaderConfig);
   for (u8 i = 0; i < g_gxState.numTexGens; ++i) {
     config.shaderConfig.tcgs[i] = g_gxState.tcgs[i];
   }
+  // After the stages, swap table, channels and texgens it reads (the probe finds its stages by
+  // their texgen: copied after this, it saw none and never applied).
+  if (g_gxState.pbr == 0) {
+    apply_port_surface_flags(config.shaderConfig, g_gxState.surfacePbr, g_gxState.envProbe);
+  }
+  config.shaderConfig.perPixelLight = wants_per_pixel_light(config.shaderConfig);
   if (g_gxState.alphaCompare) {
     config.shaderConfig.alphaCompare = g_gxState.alphaCompare;
   }
