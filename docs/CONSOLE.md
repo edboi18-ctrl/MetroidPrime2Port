@@ -31,6 +31,19 @@ hp, hp_max, visor, beam, freecam) for scripts.
 - `combocost [0..30]`, `combomissiles [0..5]`, `beamammo [50..100]` — combo beam ammo cost, combo missile cost, Dark/Light ammo per capacity pickup (F1 Cheats, each with a Reset); no argument prints it
 - `infammo [all|missile|powerbomb|dark|light] [0|1]` — infinite ammo per counter (fire at zero, HUD shows ∞, real counts and pickups kept; F1 Cheats); no 0|1 flips
 - `mpforce <0|1>` — IsMultiplayer reports true (multiplayer-only arms)
+- `mpend` — ends the running multiplayer match now, as its time or kill limit would (fade, results screen, back to the front end)
+- `tracker [off|rooms|all] [kinds 0|1] [reveal 0|1]` — reveal 1: every room of every world on the map as a map station shows it (`reveal_map`); map pickups (F1 Tracker, `map_pickups`/`map_pickup_kinds`): off; rooms tints rooms that still hold a pickup; all draws a white dot per pickup not collected; kinds 1: an expansion or energy tank is a ring, a major item a solid dot, a collected pickup a grey cross. Prints the current mode
+- `visited [all]` — rooms visited in this world and its rooms not yet visited (map index, MLVL name); all: also the counts per world (the ending's areas are not counted)
+- `pickups [all]` — this world's pickups not yet collected (location, kind, area, position); all: every world, each with its collected state and the totals
+- `pads` — the controller on each pad port 0-3 (players 1-4: `port N: <index> <name>` or `port N: none`) and the controller count; the F1 page's Player rows set it
+- `padport <index> <port>` / `padport clear <port>` — give controller `<index>` (see `pads`) pad port 0-3, or free a port (what the F1 Player combos call)
+- `padpreset <name> [port]` — apply a pad preset (`gamecube`, `remastered`, `modern`, `southpaw`) to the controller on pad port 0-3 (default 0; what the F1 remap page's Presets button does for its Player selector). Reports `no controller` for an empty port and a no-op for a virtual pad (Aurora ignores their mappings); only port 0 gets the keyboard/mouse overlay
+- `remapport [port]` — the player (port 0-3) the F1 remap page's Player selector points at, which `padpreset` ignores (it takes its own port); no argument prints it
+- `padmap <port> [<btn> <in>]` — a port's GameCube buttons on its controller's Aurora mapping; with a button (`a`..`z`, `start`, `up`..`right`) and an input (`a`, `lb`, `lt`, `none`, an SDL number) binds it, swapping with the button that had it
+- `players` — each player's position, yaw, aim, twin stick, direct aim, orbit and beam
+- `padread` — what `PADRead` returns for ports 0-3 right now (err, buttons, sticks, triggers)
+- `touchctl <touch name|code> 0|1` — hold or release a touch overlay control as its button would, code only: a stock one (face buttons, pills, Start) presses its fixed GameCube action past any pad preset; `turbo`/`tturbo` hold Turbo
+- `vpad list|attach [n]|detach <i>|<i> <button|axis> <value>` — SDL virtual gamepads for controller-to-port tests (`MP2_VPADS=<n>`, 1-4, attaches them at start); buttons `a b x y back guide start ls rs lb rb up down left right` (0/1), axes `lx ly rx ry lt rt` (-1..1, triggers 0..1)
 - `overlay <page>[/<sub>]|off` — open the F1 window on a page (name prefixes: `overlay video/qual`)
 - `gpuselftest` — run the GPU self-test next frame; PASS/FAIL lines go to the log
 - `state save|load <slot> [hold]` — the F5/F9 save states (load 0 = undo the last load); `load ... hold` stops the simulation on the tick the room state is restored
@@ -39,6 +52,7 @@ hp, hp_max, visor, beam, freecam) for scripts.
 - `reloadroom` — rebuild the room from the disc, as leaving and coming back does, with Samus kept where she stands (the F1 Cheats page's Reload button)
 - `resume [status|save|load|clear]` — quick resume (savestates/resume.mp2ss): show, snapshot now, load, delete
 - `skipcine <0|1>` — skip cutscenes the player has not seen (the F1 setting)
+- `seamlesspickups [0|1]` — item pickups without control lock, message box or cutscene (the F1 setting)
 - `sfx` — CSfxManager state (channel, mMuted, mDoUpdate, live sounds per channel, free wrapper-pool slots) and the active MusyX voice count, for lost-sound bugs
 - `skipprompt` — show the cutscene skip prompt for a few seconds
 - `hudopacity <echo|dark|scan> <visor|0..100>` — HUD opacity for that visor; `visor` follows the HUD opacity setting
@@ -63,7 +77,7 @@ hp, hp_max, visor, beam, freecam) for scripts.
 - `scanspeed [50..400]`, `elevator [original|fast|skip]`, `portal [original|fast|skip]`, `rooms [original|fast]`, `original [0|1]`, `igt [0|1]`, `language [0..6]` — the Game page's
   scan speed, elevator ride, Original experience and on-screen time (`scan_speed`, `elevator_ride`,
   `original_experience`, `igt_timer` in SETTINGS.md); no argument prints the value
-- `walkspeed [50..200]` — walk speed in percent (shows the value with no argument); `walk_speed` in SETTINGS.md
+- `walkspeed [50..200|on|off]` — walk speed in percent, or `on`/`off` for the Custom walk speed switch (off is retail speed; shows the speed in effect with no argument); `walk_speed` and `walk_speed_enabled` in SETTINGS.md
 - `pointer <x> <y> move|click|dclick|tap|dtap|down|up [l|r|touch]|drag <x1> <y1> [l|r|touch]|wheel <n>|pinch <ratio>`, `pointer back|where|hits` — scripted mouse/touch input for the pointer menus, in GUI (EFB) pixels as screenshots show them; `where` prints the position and the widget rects under it, `hits` lists the recorded rects
 - `hintshow` — show the hint the game would show next (F1 > Game > Show current hint)
 - `memo <0|1> <text...>` — show a HUD memo; `1` makes it a hint memo (framed box with the button ring); `memo pause <strg>` (asset id or `STRG_...` name) shows that string table as the boxed memo a paused HUDMemo opens (map stations, "Active transport located.")
@@ -79,6 +93,7 @@ hp, hp_max, visor, beam, freecam) for scripts.
 - `sticky <0|1>` — sticky charge: a long A hold keeps charging after the release
 - `pointeraim [on|off|<x> <y>] pointer aim (the F1 row), or place its pointer (-1..1)`
 - `minimap` prints the HUD minimap tap rect (GUI pixels) and whether tap-to-open is on; `maptap` opens the map screen as a tap on the minimap does
+- `maprooms` prints the map screen's selected room and each clickable room's centre in GUI pixels, as the last map draw projected them (a `pointer <x> <y> click` there selects the room); `maprooms reveal` marks the current world's map station used, so its rooms show
 - `save [info] [<file>]` — the card's save slots, or one .gci on disk: world, items, time
 - `cardbackup <0|1>` — back the card up before each write (the F1 Saves row)
 - `settings [<key> <value>|self-test]` — settings.cfg's entries; set one (and save), or check every key round-trips

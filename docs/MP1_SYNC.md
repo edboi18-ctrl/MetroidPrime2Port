@@ -151,6 +151,30 @@ Each needs MP2 game-side hooks found fresh; a row with no possible MP2 backend i
     - Skipped: Remastered/PBR/effects, third person, Dread suits, Archipelago/rando, `34899e497`
       (Remastered particles), `005ae8a6e` (we have infinite ammo), artifact cheats `904552326
       0dadb6af9`, `881e1e899` (Frigate), `09ea6ad2d` (Trilogy corner layout; check ours if seen).
+28. **Range `7eda62884..96529013d`** (2026-11-01). Taken: `8f353245d` world pipeline prefetch (Aurora
+    `AURORA_PIPELINE_CONTEXT_WORLD`, an area's rows promoted ahead of its world's backlog; CGameArea
+    prefetches the world once per mlvl; seen with `MP2_PIPELINE_LAZY=1`: world context 330 rows).
+    Not taken: `e4a0af0bd` + `4ab18ced5` (60 Hz movement at any sim rate): MP2's Sim Hz has none of
+    MP1's step-scaling base (`68fd1fb4c` friction, `bcf3065a2` counters, `fa3dfa649` jumps,
+    `1b51e5efd`, `733b09e03` clocks/aim), so the force-law fix alone would be wrong; port that chain
+    as one package if Sim Hz is to work off 60. Skipped: `22bff9633` (Remastered rider), third person
+    `a74355f2f 5047a0b01 559301f5c`, from-MP2 `8a58764bf 112ae170d e971467ac`, `951a93f5a` (we have
+    the boosts), `6fb5e0871` (done in `703cf3c85`), `67d13d552` (MP1 seed; ours has pipeline_use),
+    `96529013d` release.
+29. **Range `96529013d..b6b6f60e8`** (2026-11-01). Taken: `b6b6f60e8` stock touch buttons press fixed
+    GameCube actions (`kTouchStockControls`, bound after the user overlay; their Remap rows are gone):
+    they pressed the virtual pad, which port 0's preset remaps (Remastered: touch B dead, START = map).
+    Turbo's pulse is touch code 33 (A) for the same reason. Console `touchctl` holds a touch code;
+    `touchctl b 1` jumps on a new game. Skipped: `c3d086188` (third-person shoulder).
+30. **Range `b6b6f60e8..5e1a88514`** (2026-11-02). Taken: flick stick `81cd66195 48c19cffc 4511169d0
+    9d0024ae9` (#251; `402f95cef`), `e0808c4d5` pad preset sticks to later controllers (`d39145329`,
+    uinput fake pad checked), `5e1a88514` mouse aim leaves an in-use pad its classic controls
+    (`3988a982b`, build only), `5ef1edfe1` Visor/Beam wheels are addable touch buttons, F1 checkbox
+    retired, touch.cfg `wheels=1` migrated once (`965341707`; C++ built, Java javac-checked, not run
+    on a device), `2183f90b2` empty-lock marker on the view ray (`72ef472b7`, build only).
+    `bf49ed7d2` is our #44 work (42fea9ab1/472b1cf1a) ported to MP1: nothing differs, nothing taken.
+    Skipped: `4512ddbf8` (R-jump), every remastered/roomfx/roomenv commit,
+    third person `8b42ffa6c 35de50d42`, `cfa7a69eb` FUNDING.yml.
 
 28. **MP1 `dead-space-prime` branch: aim and movement** (user 2026-11-01). Not on MP1's `port`
     branch; taken from `origin/dead-space-prime` (`a9eb1db19`). Manual aim (`a10ee2274`, homing
@@ -180,9 +204,9 @@ set differs; the approach can be reused), Archipelago, MP1 randomizer logic.
 
 ## Status
 
-Packages 1-27 are merged; the dated per-merge log moved verbatim to
+Packages 1-30 are merged; the dated per-merge log moved verbatim to
 `docs/history/MP1_SYNC-to-2026-10-29.md`. MP1 was last reviewed through `e3d8c8940`
-(2026-10-29), then through `7eda62884` (2026-11-01, package 27); take later commits by `git -C ../MetroidPrimePort log --no-merges 7eda62884..HEAD`.
+(2026-10-29), then through `5e1a88514` (2026-11-02, package 30); take later commits by `git -C ../MetroidPrimePort log --no-merges 5e1a88514..HEAD`.
 
 Still unrun/unverified per that log (no device or hardware available then):
 

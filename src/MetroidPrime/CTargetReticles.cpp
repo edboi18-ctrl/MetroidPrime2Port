@@ -218,10 +218,10 @@ const CColor kPortTriScanLockedColor(uchar(0x49), uchar(0xC3), uchar(0xF6), ucha
 uchar PortTriAlphaU8(float a) { return static_cast< uchar >(CMath::Clamp(0.f, a, 255.f)); }
 
 // The pointer ray (screen centre without a pointer) in world space.
-CVector3f PortTriPointerDir(const CTransform4f& camXf, const CGameCamera& cam) {
+CVector3f PortTriPointerDir(const CTransform4f& camXf, const CGameCamera& cam, int playerIndex) {
   float x = 0.f;
   float y = 0.f;
-  if (!PortMouse::PointerAimPosition(x, y) || (x == 0.f && y == 0.f)) {
+  if (!PortMouse::PointerAimPosition(x, y, playerIndex) || (x == 0.f && y == 0.f)) {
     return camXf.GetForward();
   }
   float yaw = 0.f, pitch = 0.f, rx = 0.f, ry = 1.f, rz = 0.f;
@@ -235,7 +235,7 @@ void CCompoundTargetReticle::PortTriUpdateScanPointer(const CStateManager& mgr) 
   const CCameraManager* camMgr = mgr.GetCameraManager(mPlayerIndex);
   const CTransform4f camXf = camMgr->GetCurrentCameraTransform(mgr, true);
   const CVector3f start = camXf.GetTranslation();
-  CVector3f dir = PortTriPointerDir(camXf, *camMgr->GetCurrentCamera(mgr, true));
+  CVector3f dir = PortTriPointerDir(camXf, *camMgr->GetCurrentCamera(mgr, true), mPlayerIndex);
   if (!dir.CanBeNormalized()) {
     return;
   }
@@ -419,7 +419,7 @@ void CCompoundTargetReticle::PortTriDrawScan(const CMatrix3f& rotation,
   const CGameCamera& cam = *camMgr->GetCurrentCamera(mgr, true);
   float ringDist = 224.f / static_cast< float >(player->GetTweakPlayer()->PortTriTargetingHalfHeight());
   ringDist /= static_cast< float >(tan(cam.GetRenderFov() * 0.5f * (1.f / 360.f) * (2.f * M_PIF)));
-  const CVector3f ringPos = camXf.GetTranslation() + ringDist * PortTriPointerDir(camXf, cam);
+  const CVector3f ringPos = camXf.GetTranslation() + ringDist * PortTriPointerDir(camXf, cam, mPlayerIndex);
 
   CColor ringColor =
       CColor::Lerp(kPortTriScanRingColor, kPortTriScanLockedColor, mPortTriScanFade);
@@ -528,10 +528,11 @@ CColor PortTriXhairColor(const CColor& color) {
   return PortOverlay::CrosshairColor(rgb) ? CColor(rgb[0], rgb[1], rgb[2], color.GetAlpha()) : color;
 }
 float PortTriXhairAlpha(float alpha) {
-  return alpha * static_cast< float >(PortOverlay::CrosshairOpacity()) / 100.f;
+  return std::min(alpha * static_cast< float >(PortOverlay::CrosshairOpacity()) / 100.f, 1.f);
 }
-float PortTriXhairSize() {
-  return PortMouse::Aiming() ? static_cast< float >(PortOverlay::CrosshairSize()) / 100.f : 1.f;
+float PortTriXhairSize(int playerIndex) {
+  return PortMouse::Aiming(playerIndex) || PortMouse::LockFreeAimActive(playerIndex)
+             ? static_cast< float >(PortOverlay::CrosshairSize()) / 100.f : 1.f;
 }
 } // namespace
 
@@ -751,9 +752,9 @@ void CCompoundTargetReticle::PortTriDrawAiming(const CMatrix3f& rotation,
   }
   const CCameraManager* camMgr = mgr.GetCameraManager(mPlayerIndex);
   const CTransform4f cam = camMgr->GetCurrentCameraTransform(mgr, true);
-  const CVector3f dir = PortTriPointerDir(cam, *camMgr->GetCurrentCamera(mgr, true));
+  const CVector3f dir = PortTriPointerDir(cam, *camMgr->GetCurrentCamera(mgr, true), mPlayerIndex);
   const CVector3f pos = cam.GetTranslation() + dir * (1.25f / CVector3f::Dot(dir, cam.GetForward()));
-  const CTransform4f base = CTransform4f(rotation, pos) * CTransform4f::Scale(PortTriXhairSize());
+  const CTransform4f base = CTransform4f(rotation, pos) * CTransform4f::Scale(PortTriXhairSize(mPlayerIndex));
   PortTriDrawModel(mPortTriAimCenter, base * CTransform4f::Scale(.45f * mPortTriAimCenterScale),
                    PortTriXhairColor(mPortTriAimCenterColor),
                    PortTriXhairAlpha(mPortTriAimCenterAlpha));
@@ -2034,7 +2035,7 @@ void CCompoundTargetReticle::DrawCrosshairs(const CMatrix3f& rotation,
     return;
   }
   float scale = mCrosshairsDrawScale;
-  if (PortMouse::Aiming()) {
+  if (PortMouse::Aiming(mPlayerIndex) || PortMouse::LockFreeAimActive(mPlayerIndex)) {
     scale *= static_cast< float >(PortOverlay::CrosshairSize()) / 100.f;
   }
   CColor color = gpTweakTargeting->GetCrosshairsColor();
@@ -2045,9 +2046,9 @@ void CCompoundTargetReticle::DrawCrosshairs(const CMatrix3f& rotation,
     }
     const float opacity = static_cast< float >(PortOverlay::CrosshairOpacity()) / 100.f;
     // Retail's tweak alpha, faded by the draw scale as retail's Additive flags do; the option
-    // scales it (100% = retail). Remastered builds its own colour below.
+    // scales it (100% = retail, up to 500%, #56). Remastered builds its own colour below.
     color = CColor(color.GetRed(), color.GetGreen(), color.GetBlue(),
-                   color.GetAlpha() * opacity * mCrosshairsDrawScale);
+                   std::min(color.GetAlpha() * opacity * mCrosshairsDrawScale, 1.f));
   }
   if (PortOverlay::CrosshairStyle() == PortOverlay::kCrosshairStyle_Remastered) {
     const CCameraManager* camMgr = mgr.GetCameraManager(mPlayerIndex);
@@ -2066,7 +2067,7 @@ void CCompoundTargetReticle::DrawCrosshairs(const CMatrix3f& rotation,
     // Pointer aim: the cursor is the pointer, on the same plane where the ray through it meets.
     float pointerX = 0.f;
     float pointerY = 0.f;
-    if (PortMouse::PointerAimPosition(pointerX, pointerY) && (pointerX != 0.f || pointerY != 0.f)) {
+    if (PortMouse::PointerAimPosition(pointerX, pointerY, mPlayerIndex) && (pointerX != 0.f || pointerY != 0.f)) {
       float yaw = 0.f, pitch = 0.f, rayX = 0.f, rayY = 1.f, rayZ = 0.f;
       PortMouse::PointerAim::RayAngles(pointerX, pointerY, cam->GetFov(), cam->GetAspectRatio(),
                                        yaw, pitch);
@@ -2083,7 +2084,8 @@ void CCompoundTargetReticle::DrawCrosshairs(const CMatrix3f& rotation,
         mgr.GetPlayer(mPlayerIndex)->PortGunLean(camXf).Rotate(camXf.Rotate(cursorLocal));
     CColor rc = PortRemasteredCrosshairColor(mPreviousState, mPortXhairTargetT);
     rc = CColor(rc.GetRed(), rc.GetGreen(), rc.GetBlue(),
-                mCrosshairsDrawScale * static_cast< float >(PortOverlay::CrosshairOpacity()) / 100.f);
+                std::min(mCrosshairsDrawScale *
+                             static_cast< float >(PortOverlay::CrosshairOpacity()) / 100.f, 1.f));
     CGraphics::SetDepthWriteMode(false, kE_Always, false);
     PortDrawRemasteredCrosshair(rotation, cursor, units * kCursorPlane, mPortXhairArmScale,
                                 mPortXhairCentreScale, rc);
@@ -2105,7 +2107,7 @@ void CCompoundTargetReticle::DrawCrosshairs(const CMatrix3f& rotation,
     const CTransform4f cam = camMgr->GetCurrentCameraTransform(mgr, true);
     const CVector3f eye = cam.GetTranslation();
     xf = CTransform4f::LookAt(
-        eye, eye + PortTriPointerDir(cam, *camMgr->GetCurrentCamera(mgr, true)), cam.GetUp());
+        eye, eye + PortTriPointerDir(cam, *camMgr->GetCurrentCamera(mgr, true), mPlayerIndex), cam.GetUp());
   }
   gpRender->SetModelMatrix(xf * CTransform4f::Scale(scale));
   model->Draw(CModelFlags::Additive(color).DepthCompareUpdate(false, false));
@@ -2129,7 +2131,7 @@ void CCompoundTargetReticle::PortUpdateRemasteredCrosshair(float dt, const CStat
   // Pointer aim: what is under the pointer, not under the screen centre.
   float pointerX = 0.f;
   float pointerY = 0.f;
-  if (PortMouse::PointerAimPosition(pointerX, pointerY) && (pointerX != 0.f || pointerY != 0.f)) {
+  if (PortMouse::PointerAimPosition(pointerX, pointerY, mPlayerIndex) && (pointerX != 0.f || pointerY != 0.f)) {
     const CGameCamera* cam = camMgr->GetCurrentCamera(mgr, true);
     float yaw = 0.f, pitch = 0.f, rayX = 0.f, rayY = 1.f, rayZ = 0.f;
     PortMouse::PointerAim::RayAngles(pointerX, pointerY, cam->GetFov(), cam->GetAspectRatio(), yaw,
@@ -2732,21 +2734,54 @@ COrbitPointMarker::COrbitPointMarker(int playerIndex)
 
 bool COrbitPointMarker::CheckLoadComplete() { return mOrbitPointModel.TryCache(); }
 
+#ifdef TARGET_PC
+// port (MP1 2183f90b2, #250): an empty lock that keeps the camera pitch (mouse aim, twin stick)
+// holds the orbit point level at eye height, so the marker sat above or below the screen centre by
+// the pitch. Lift it onto the view ray at the point's horizontal distance, where retail's
+// SetOrbitPosition puts it.
+static CVector3f PortOrbitMarkerTargetPos(const CPlayer& player, const CGameCamera& camera) {
+  const CVector3f pos = player.GetHUDOrbitTargetPosition();
+  if (!player.PortEmptyLockKeepsPitch()) {
+    return pos;
+  }
+  const CVector3f camPos = camera.GetTranslation();
+  const CVector3f fwd = camera.GetTransform().GetForward();
+  const float flatLen = CMath::SqrtF(fwd.GetX() * fwd.GetX() + fwd.GetY() * fwd.GetY());
+  if (flatLen < 0.01f) {
+    return pos;
+  }
+  const float dx = pos.GetX() - camPos.GetX();
+  const float dy = pos.GetY() - camPos.GetY();
+  const float dist = CMath::SqrtF(dx * dx + dy * dy);
+  return CVector3f(pos.GetX(), pos.GetY(), camPos.GetZ() + fwd.GetZ() * dist / flatLen);
+}
+#endif
+
 void COrbitPointMarker::Update(float dt, const CStateManager& mgr) {
   mCurrentTime += dt;
   const CPlayer* player = mgr.GetPlayer(mPlayerIndex);
   CPlayer::EPlayerOrbitState orbitState = player->GetOrbitState();
   const CGameCamera& camera = *mgr.GetCameraManager(mPlayerIndex)->GetCurrentCamera(mgr, true);
   bool freeOrbit = orbitState == CPlayer::kOS_OrbitPoint || orbitState == CPlayer::kOS_OrbitCarcass;
+#ifdef TARGET_PC
+  const CVector3f hudOrbitPos = PortOrbitMarkerTargetPos(*player, camera);
+#endif
 
   if (mLastFreeOrbit != freeOrbit) {
     if (orbitState == CPlayer::kOS_OrbitPoint || orbitState == CPlayer::kOS_OrbitCarcass) {
       ResetInterpolationTimer(gpTweakTargeting->GetOrbitPointInterpolateInTime());
+#ifdef TARGET_PC
+      mLagTargetPosition = !mCameraRelativeZ
+                               ? hudOrbitPos + CVector3f(0.f, 0.f, mZOffset)
+                               : CVector3f(hudOrbitPos.GetX(), hudOrbitPos.GetY(),
+                                           mZOffset + camera.GetTranslation().GetZ());
+#else
       mLagTargetPosition = !mCameraRelativeZ
                                ? player->GetHUDOrbitTargetPosition() + CVector3f(0.f, 0.f, mZOffset)
                                : CVector3f(player->GetHUDOrbitTargetPosition().GetX(),
                                            player->GetHUDOrbitTargetPosition().GetY(),
                                            mZOffset + camera.GetTranslation().GetZ());
+#endif
       CEulerAngles euler =
           CEulerAngles::FromQuaternion(CQuaternion::FromMatrix(camera.GetTransform()));
       mLagAzimuth = CMath::Deg2Rad(45.f) + euler.GetZ();
@@ -2763,7 +2798,11 @@ void COrbitPointMarker::Update(float dt, const CStateManager& mgr) {
   }
 
   if (!mCameraRelativeZ) {
+#ifdef TARGET_PC
+    CVector3f orbitPosition = hudOrbitPos;
+#else
     CVector3f orbitPosition = player->GetHUDOrbitTargetPosition();
+#endif
     float targetZ = mZOffset + orbitPosition.GetZ();
     float delta = targetZ - mLagTargetPosition.GetZ();
     if (delta < 0.1f) {
@@ -2776,9 +2815,14 @@ void COrbitPointMarker::Update(float dt, const CStateManager& mgr) {
           CVector3f(orbitPosition.GetX(), orbitPosition.GetY(), mLagTargetPosition.GetZ() + 0.1f);
     }
   } else {
+#ifdef TARGET_PC
+    mLagTargetPosition =
+        CVector3f(hudOrbitPos.GetX(), hudOrbitPos.GetY(), mZOffset + hudOrbitPos.GetZ());
+#else
     mLagTargetPosition = CVector3f(player->GetHUDOrbitTargetPosition().GetX(),
                                    player->GetHUDOrbitTargetPosition().GetY(),
                                    mZOffset + player->GetHUDOrbitTargetPosition().GetZ());
+#endif
   }
 
   if (mLastFreeOrbit) {

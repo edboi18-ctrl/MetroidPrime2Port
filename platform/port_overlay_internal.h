@@ -10,16 +10,21 @@
 #include <string>
 
 #include "port_graphics_backend.h"
+#include "port_overlay.h"
 
 namespace PortOverlayState {
 
 extern bool sSkipCinematics;
+extern bool sSeamlessPickups;
 extern bool sLogFile;
 extern bool sFastMorph;
 extern bool sPointerMenus;
 extern bool sMapSwapFingers;
 extern bool sMapInvertX;
 extern bool sMapInvertY;
+extern bool sBallCam;
+extern int sBallCamSpeed;
+extern bool sWalkSpeedEnabled;
 extern int sWalkSpeed;
 extern int sPowerBeamSpeed;
 extern int sScanSpeed;
@@ -33,6 +38,9 @@ extern int sComboBeamCost;
 extern int sComboMissileCost;
 extern int sBeamAmmoPerExpansion;
 extern bool sMinimapTap;
+extern int sMapPickups;
+extern bool sMapPickupKinds;
+extern bool sRevealMap;
 extern int sPromptGlyphs;
 extern bool sIgtTimer;
 extern bool sOriginalExperience;
@@ -75,6 +83,13 @@ extern float sGyroSensitivityY;
 extern bool sResetAimBoth;
 extern bool sLockOnFreeAim;
 extern bool sHandOnCannon;
+// PortOverlay::PlayerSetting overrides of players 1-3 ([0] unused); settings.cpp reads and
+// writes them as `p<N>.<key>`.
+struct PlayerOverride {
+  float value = 0.f;
+  bool set = false;
+};
+extern PlayerOverride sPlayerSettings[PortOverlay::kSettingPlayers][PortOverlay::kPlayerSettingCount];
 extern bool sMenuStandardButtons;
 extern bool sCardBackup;
 extern float sFirstPersonFov;
@@ -88,6 +103,7 @@ extern bool sBallBars;
 extern bool sDarkVisorFull;
 extern int sDarkVisorStatic;
 extern bool sInfiniteBeamAmmo;
+extern bool sDarkWorldLightMusic;
 extern int sHudOpacityEcho;
 extern int sHudOpacityDark;
 extern int sHudOpacityScan;

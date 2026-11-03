@@ -103,7 +103,6 @@
 #ifdef TARGET_PC
 #include "port_entry.h"
 #include "port_mouse.h"
-#include "port_radial.h"
 #include "MetroidPrime/PortScanTarget.hpp"
 #include "port_freecam.h"
 #include "port_overlay.h"
@@ -838,12 +837,24 @@ void CPlayer::ResetPlayerState(CStateManager& mgr, int state) {
       cameraId = mCameraManager->GetBallCamera()->GetUniqueId();
     }
     mCameraManager->Reset(cameraId, mgr);
+#ifdef TARGET_PC
+    // Retail 0x8001A038 / 0x8001A054 lwz r12,0x10(r12): vtable slot 0x10 of __vt__12CHintManager
+    // is Reset (0xC is RefreshHint).
+    GetPlayerHintManager()->Reset(mgr);
+    GetControlHintManager()->Reset(mgr);
+#else
     GetPlayerHintManager()->RefreshHint(mgr);
     GetControlHintManager()->RefreshHint(mgr);
+#endif
     ResetPlayerHintState(mgr);
     mMorphBall->SetBallState(CMorphBall::kBS_Normal);
     if (mgr.IsMultiplayer()) {
+#ifdef TARGET_PC
+      // Retail 0x8001A088 lfs f0,lbl_8041A4B4 = 3.0, stored by stfs f0,0x12f4(r30).
+      mInvulnerabilityTimer = 3.f;
+#else
       mInvulnerabilityTimer = 2.f;
+#endif
     }
     mControlMapper.ResetCommandOverrides();
     ClearFluidList(mgr);
@@ -1074,7 +1085,7 @@ void CPlayer::UpdateGunTransform(const CVector3f& position, CStateManager& mgr) 
   float pointerY = 0.f;
   mGun->PortSetPointerAimPoint(false, CVector3f::Zero());
   if (mGun->GetGunHolsterState() == CPlayerGunBase::kGHS_Drawn &&
-      PortMouse::PointerAimPosition(pointerX, pointerY) && (pointerX != 0.f || pointerY != 0.f) &&
+      PortMouse::PointerAimPosition(pointerX, pointerY, mPlayerIndex) && (pointerX != 0.f || pointerY != 0.f) &&
       (MouseAimAllowed(mgr) || PortLockFreeAim(mgr))) {
     const CFirstPersonCamera* cam = mCameraManager->GetFirstPersonCamera();
     // The view's own transform: the crosshair is drawn from it.
@@ -1193,13 +1204,15 @@ void CPlayer::UpdateDebugCamera(CStateManager& mgr) {}
 
 void CPlayer::Update(float dt, CStateManager& mgr) {
 #ifdef TARGET_PC
-  // port: the touch overlay's Ball page follows player 0's morph state (MP1's PublishWheelState).
+  // port: the touch overlay's Ball page follows player 0's morph state (MP1's PublishWheelState);
+  // Players 2-4's pads pick their Morph Ball rows from theirs.
   // A screw attack runs as a ball state (spawned state kMS_Morphed while it morphs in, spins and
   // unmorphs out) but plays as the suit: it keeps the gameplay bindings, so a remapped jump chains it.
-  if (mgr.GetPlayer(0) == this) {
+  if (GetPlayerIndex() < 4 && mgr.GetPlayer(GetPlayerIndex()) == this) {
     const bool screwAttack =
         mSpawnedMorphBallState == kMS_Morphed || mMorphBall->InScrewAttackMode();
-    PortTouch::SetMorphed(GetMorphballTransitionState() != kMS_Unmorphed && !screwAttack);
+    PortTouch::SetMorphed(GetMorphballTransitionState() != kMS_Unmorphed && !screwAttack,
+                          GetPlayerIndex());
   }
 #endif
   if (!mBeamParticleDescriptionsInitialized && NWeaponTypes::are_tokens_ready(mBeamEffectTokens)) {
@@ -1398,7 +1411,12 @@ void CPlayer::UpdatePlayerDrawFlags(CStateManager& mgr) {
       mPlayerDrawFlags = CModelFlags::AlphaBlended(alpha);
     }
   } else if (playerState.GetItemAmount(CPlayerState::kIT_DoubleDamage, true) != 0) {
+#ifdef TARGET_PC
+    // Retail 0x80017F50 lfs f3,lbl_8041A4B4 = 3.0; 0x80017F60 fdivs f29,f1,f3.
+    const float pulse = (1.f + CMath::FastSinR(M_PIF * CGraphics::GetSecondsMod900())) / 3.f;
+#else
     const float pulse = (1.f + CMath::FastSinR(M_PIF * CGraphics::GetSecondsMod900())) / 2.f;
+#endif
     const float timeLeft = playerState.GetTimeLeft(CPlayerState::kIT_DoubleDamage);
     if (!(timeLeft < 2.f) || (static_cast< int >(20.f * timeLeft) & 1) == 0) {
       mPlayerDrawFlags = CModelFlags(CModelFlags::kT_Two,
@@ -1564,7 +1582,8 @@ void CPlayer::UpdateCrosshairsState(const CFinalInput& input) {
   // pressed with the look control, and the port never presses it - the mouse, the twin stick and
   // the touch drag own the view instead - so the reticle would stay faded out for the whole game
   // (on the phone it is the only way to play). PortMouse::Aiming is true on exactly the ticks the
-  // port turned the body to the aim, so a lock-on, the morph ball or a cinematic still hide it.
+  // port turned the body to the aim, so a lock-on, the morph ball or a cinematic still hide it
+  // (except a lock under lock-on free aim, whose pointer it is).
   if (PortAimCrosshairsOpen()) {
     mDrawCrosshairs = true;
   }
@@ -2610,7 +2629,7 @@ void CPlayer::ProcessInput(const CFinalInput& input, CStateManager& mgr) {
 #ifdef TARGET_PC
   // Twin-stick aim reads the C-stick here and applies it in Think (see UpdateMouseAim), unless a
   // key on it is picking a beam (PortMouse::StickOwnsCStick).
-  const bool stickAims = PortMouse::StickOwnsCStick();
+  const bool stickAims = PortMouse::StickOwnsCStick(mPlayerIndex);
   mPortLookX = stickAims ? input.GetAnalogRightX() : 0.f;
   mPortLookY = stickAims ? input.GetAnalogRightY() : 0.f;
 #endif
@@ -3011,7 +3030,10 @@ bool CPlayer::PortAimCrosshairsOpen() const {
       PortOverlay::CrosshairStyle() == PortOverlay::kCrosshairStyle_Classic) {
     return false;
   }
-  return PortMouse::Aiming() && PortOverlay::AimCrosshair();
+  // Lock-on free aim: the lock owns the view, so Aiming is false, but the crosshair is what the
+  // pointer moves over it (#66).
+  return (PortMouse::Aiming(mPlayerIndex) || PortMouse::LockFreeAimActive(mPlayerIndex)) &&
+         PortOverlay::AimCrosshair();
 }
 
 bool CPlayer::PortLockFreeAim(const CStateManager& mgr) const {
@@ -3024,13 +3046,13 @@ bool CPlayer::PortLockFreeAim(const CStateManager& mgr) const {
   if (mOrbitState == kOS_OrbitPoint && PortOverlay::PointerAim()) {
     return true;
   }
-  return PortOverlay::LockOnFreeAim() &&
+  return PortOverlay::LockOnFreeAim(mPlayerIndex) &&
          (mOrbitState == kOS_OrbitObject || mOrbitState == kOS_OrbitPoint ||
           mOrbitState == kOS_OrbitCarcass || mOrbitState == kOS_ForcedOrbitObject);
 }
 
 bool CPlayer::PortDirectAimControls() const {
-  if (!PortMouse::Enabled() && !PortMouse::StickEnabled() && !PortMouse::TouchEnabled()) {
+  if (!PortMouse::DirectAim(mPlayerIndex)) {
     return false;
   }
   const CCameraManager* cameras = mCameraManager;
@@ -3041,19 +3063,19 @@ bool CPlayer::PortDirectAimControls() const {
 }
 
 void CPlayer::UpdateMouseAim(CStateManager& mgr, float dt) {
-  const bool direct =
-      PortMouse::Enabled() || PortMouse::StickEnabled() || PortMouse::TouchEnabled();
+  const bool direct = PortMouse::DirectAim(mPlayerIndex);
   // Pointer aim's settings live in the overlay, which PortMouse is built without.
   PortMouse::SetPointerAim(direct && PortOverlay::PointerAim(),
                            PortOverlay::PointerAimBox() / 100.f,
-                           PortOverlay::PointerAimTurn() * (PortMouse::kPi / 180.f));
+                           PortOverlay::PointerAimTurn() * (PortMouse::kPi / 180.f), mPlayerIndex);
   // Photo mode owns the pointer grab (PortPhoto::Frame), and the free camera owns the view.
   if (!direct || PortPhoto::Active()) {
     return;
   }
   const bool allowed = MouseAimAllowed(mgr);
-  if (PortMouse::StickEnabled() && !PortRadial::Capturing()) {
-    PortMouse::AddStickAim(mPortLookX, mPortLookY, dt);
+  // The radial menu's capture is checked inside, so flick stick sees it end.
+  if (PortMouse::StickEnabled(mPlayerIndex)) {
+    PortMouse::AddStickAim(mPortLookX, mPortLookY, dt, mPlayerIndex);
   }
   // While something else owns the view - a lock-on, the morph ball, a cinematic - track the
   // camera direction instead, so engaging the mouse again does not snap the aim.
@@ -3070,11 +3092,11 @@ void CPlayer::UpdateMouseAim(CStateManager& mgr, float dt) {
   const bool lockFree = PortLockFreeAim(mgr);
   const bool emptyLock = lockFree && mOrbitState == kOS_OrbitPoint && PortOverlay::PointerAim();
   if (!PortMouse::UpdateAim(true, !allowed, forward.GetX(), forward.GetY(), forward.GetZ(), dt,
-                            lockFree, scanPointHold, emptyLock)) {
+                            lockFree, scanPointHold, emptyLock, mPlayerIndex)) {
     return;
   }
 
-  CTransform4f xf = CTransform4f::RotateZ(CRelAngle::FromRadians(PortMouse::Yaw()));
+  CTransform4f xf = CTransform4f::RotateZ(CRelAngle::FromRadians(PortMouse::Yaw(mPlayerIndex)));
   xf.SetTranslation(GetTransform().GetTranslation());
   SetTransform(xf);
 }
@@ -3088,7 +3110,7 @@ void CPlayer::ComputeFreeLook(const CFinalInput& input, CStateManager& mgr) {
 #ifdef TARGET_PC
   // Twin-stick consumes the C-stick: it aims through PortMouse, so letting the game's free
   // look read it too would turn the view twice.
-  if (PortMouse::StickEnabled()) {
+  if (PortMouse::StickEnabled(mPlayerIndex)) {
     lookLeft = lookRight = lookUp = lookDown = 0.f;
   }
 #endif
@@ -4010,7 +4032,12 @@ void CPlayer::TakeDamage(bool significant, const CVector3f& location, float dama
       if (type != kWT_AreaDark || mDamageWeaponType == uint(kWT_None)) {
         mDamageWeaponType = type;
       }
+#ifdef TARGET_PC
+      // Retail 0x8000F85C lfs f0,lbl_8041A50C = 0.333f (0x3EAA7EFA), stored to 0x12e4.
+      mDamageColorTimer = 0.333f;
+#else
       mDamageColorTimer = 0.33333334f;
+#endif
 
       ushort suitDamageSfx = damageInfo.GetDamageSfxId();
       ushort damageLoopSfx = damageInfo.GetDamageLoopSfxId();
@@ -4633,7 +4660,12 @@ void CPlayer::StartTurret(TUniqueId turret, CStateManager& mgr) {
       CPlayer* player = mgr.GetPlayer(i);
       CVector3f displacement = player->GetTranslation() - GetTranslation();
       displacement.SetZ(0.f);
+#ifdef TARGET_PC
+      // Retail 0x8000D838 lfs f0,lbl_8041A4BC = 5.0; fcmpo; bge skips the kill.
+      if (displacement.Magnitude() < 5.f) {
+#else
       if (displacement.Magnitude() < 2.f) {
+#endif
         mgr.KillPlayer(player->mPlayerState->GetHealthInfo().GetHP(), player->GetUniqueId(),
                        GetUniqueId());
       }

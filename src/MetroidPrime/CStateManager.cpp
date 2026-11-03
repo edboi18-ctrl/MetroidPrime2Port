@@ -823,6 +823,13 @@ float PortPresentedWorldTime(float time) {
   time -= (1.f - t) * sPortWorldTimeDt;
   return time < 0.f ? time + 900.f : time;
 }
+
+// The field of view SetupViewForDraw draws with: photo mode's, else the camera's widened for a
+// view narrower than 4:3. The frusta PreRender and ResetViewAfterDraw cull by take it too, or an
+// actor in view at the edge would be flagged out of frustum (no lights, swarms not drawn).
+float PortDrawFov(const CGameCamera& camera) {
+  return PortFreeCam::FovOverride() > 0.f ? PortFreeCam::FovOverride() : camera.GetRenderFov();
+}
 } // namespace
 #endif
 
@@ -866,9 +873,17 @@ void CStateManager::PreRender(uint playerIndex) {
   mWorld->PreRender();
   BuildDynamicLightListForWorld();
   const CGameCamera* camera = mCameraManager->GetCurrentCamera(*this, true);
+#ifdef TARGET_PC
+  // Port: cull from where SetupViewForDraw draws (the free camera) with its field of view.
+  const CTransform4f cameraTransform =
+      PortFreeCam::View(mCameraManager->GetCurrentCameraTransform(*this, true));
+  CFrustumPlanes frustum(cameraTransform, CRelAngle::FromDegrees(PortDrawFov(*camera)).AsRadians(),
+                         camera->GetAspectRatio(), camera->GetNearClipDistance(), false, 100.f);
+#else
   const CTransform4f cameraTransform = mCameraManager->GetCurrentCameraTransform(*this, true);
   CFrustumPlanes frustum(cameraTransform, CRelAngle::FromDegrees(camera->GetFov()).AsRadians(),
                          camera->GetAspectRatio(), camera->GetNearClipDistance(), false, 100.f);
+#endif
   mPlanes = frustum;
   SetupAreaFrusta();
 
@@ -895,9 +910,13 @@ void CStateManager::PreRender(uint playerIndex) {
     {
       CScopedProfiler profile(rstl::string_l("*PreRender:Portals"), true);
       if (CPortalArea* portal = area.GetPostConstructed()->mPortalArea.get()) {
+#ifdef TARGET_PC
+        portal->PreRender(*this, *camera, cameraTransform, PortDrawFov(*camera));
+#else
         const CCameraManager* cameraManager = mCameraManager;
         portal->PreRender(*this, *cameraManager->GetCurrentCamera(*this, true),
                           cameraManager->GetCurrentCameraTransform(*this, true));
+#endif
       }
     }
     {
@@ -1230,6 +1249,30 @@ void CStateManager::DrawDarkVisor(const CInGameGuiManagerSet& gui) {
     x = 0;
   } else {
     gpTweakGui->GetDarkVisorFrame(&x, &y, &width, &height);
+#ifdef TARGET_PC
+    // Port: the frame is authored for the 4:3 framebuffer; the widescreen HUD centers the lens in
+    // the wider one, so shift the frame with it (#60: otherwise it stays at the left).
+    const int viewportWidth = CGraphics::GetViewport().mWidth;
+    const int baseWidth = int(float(viewportWidth) / PortOverlay::AspectWiden() + 0.5f);
+    x += (viewportWidth - baseWidth) / 2;
+    // The HUD scale, and a framebuffer narrower than the authored one (whose HUD fits the width,
+    // CGuiCamera::Draw), shrink the lens and its outer mask about the viewport's centre
+    // (CInGameGuiManager::DrawDarkVisorMask); shrink the frame with them, or the highlight shows
+    // between the mask's edge and the frame's (#60).
+    const float widen = PortOverlay::AspectWiden();
+    const float scale = float(PortOverlay::HudScale()) / float(PortOverlay::kHudScaleMax) *
+                        (widen < 1.f ? widen : 1.f);
+    if (scale != 1.f) {
+      const float centerX = 0.5f * float(viewportWidth);
+      const float centerY = 0.5f * float(CGraphics::GetViewport().mHeight);
+      const int right = int(centerX + (float(x + width) - centerX) * scale + 0.5f);
+      const int bottom = int(centerY + (float(y + height) - centerY) * scale + 0.5f);
+      x = int(centerX + (float(x) - centerX) * scale + 0.5f);
+      y = int(centerY + (float(y) - centerY) * scale + 0.5f);
+      width = right - x;
+      height = bottom - y;
+    }
+#endif
   }
 #ifdef TARGET_PC
   if (!fullScreen)
@@ -1309,8 +1352,7 @@ void CStateManager::SetupViewForDraw(const CViewport& viewport) {
   const float aspect = (widthScale * camera->GetAspectRatio()) / heightScale;
 #ifdef TARGET_PC
   // Port: photo mode's field of view (0 keeps the camera's own).
-  const float fovDegrees =
-      PortFreeCam::FovOverride() > 0.f ? PortFreeCam::FovOverride() : camera->GetRenderFov();
+  const float fovDegrees = PortDrawFov(*camera);
 #endif
 #ifdef TARGET_PC
   const float tangent = static_cast< float >(tan(CMath::Deg2Rad(0.5f * fovDegrees)));
@@ -1707,14 +1749,19 @@ void CStateManager::DrawWorld(const CInGameGuiManagerSet& gui) {
 void CStateManager::ResetViewAfterDraw(const CViewport& viewport, const CTransform4f& viewMatrix) {
   gpRender->SetViewport(viewport.mLeft, viewport.mTop, viewport.mWidth, viewport.mHeight);
   const CGameCamera* camera = mCameraManager->GetCurrentCamera(*this, true);
+#ifdef TARGET_PC
+  CFrustumPlanes frustum(viewMatrix, CRelAngle::FromDegrees(PortDrawFov(*camera)).AsRadians(),
+                         camera->GetAspectRatio(), camera->GetNearClipDistance(), false, 100.f);
+#else
   CFrustumPlanes frustum(viewMatrix, CRelAngle::FromDegrees(camera->GetFov()).AsRadians(),
                          camera->GetAspectRatio(), camera->GetNearClipDistance(), false, 100.f);
+#endif
   mPlanes = frustum;
 
   const float height = CGraphics::GetViewport().mHeight;
   const float width = CGraphics::GetViewport().mWidth;
 #ifdef TARGET_PC
-  gpRender->SetPerspective(camera->GetRenderFov(), width, height, camera->GetNearClipDistance(),
+  gpRender->SetPerspective(PortDrawFov(*camera), width, height, camera->GetNearClipDistance(),
                            camera->GetFarClipDistance());
 #else
   gpRender->SetPerspective(camera->GetFov(), width, height, camera->GetNearClipDistance(),
@@ -2370,7 +2417,7 @@ void CStateManager::CapturePlayerTextures() {
       const bool scanVisor = mPlayerState->GetCurrentVisor() == CPlayerState::kPV_Scan;
       {
         float px = 0.f, py = 0.f;
-        if (scanVisor && PortMouse::PointerAimPosition(px, py)) {
+        if (scanVisor && PortMouse::PointerAimPosition(px, py, static_cast< int >(i))) {
           lensX = static_cast< int >(px * 0.5f * width);
           lensY = static_cast< int >(py * 0.5f * height);
         }
@@ -4266,15 +4313,24 @@ void CStateManager::ProcessPlayerInput() {
 #ifdef TARGET_PC
 // Toggle lock-on and sticky charge (F1 > Gameplay). Edges come from the combined digital/analog
 // state, since a GameCube L passes the analog threshold and clicks on different ticks and would
-// toggle twice. There is one local player's pad, so the state machines are file statics; a second
+// toggle twice. Each pad keeps its own state machines (file statics indexed by controller); a second
 // controller that owns no player is ignored rather than allowed to reset them.
 static void ApplyHoldToggle(CFinalInput& input, CStateManager& mgr, uint controller, bool enabled) {
-  static PortHoldToggle::Toggle sLockOn;
-  static PortHoldToggle::Sticky sCharge;
-  static PortHoldToggle::Toggle sSpider;
-  static PortHoldToggle::Grace sSpiderOn;
-  static bool sPrevL = false;
-  static bool sPrevR = false;
+  static PortHoldToggle::Toggle sLockOnAll[4];
+  static PortHoldToggle::Sticky sChargeAll[4];
+  static PortHoldToggle::Toggle sSpiderAll[4];
+  static PortHoldToggle::Grace sSpiderOnAll[4];
+  static bool sPrevLAll[4] = {false, false, false, false};
+  static bool sPrevRAll[4] = {false, false, false, false};
+  if (controller >= 4) {
+    return;
+  }
+  PortHoldToggle::Toggle& sLockOn = sLockOnAll[controller];
+  PortHoldToggle::Sticky& sCharge = sChargeAll[controller];
+  PortHoldToggle::Toggle& sSpider = sSpiderAll[controller];
+  PortHoldToggle::Grace& sSpiderOn = sSpiderOnAll[controller];
+  bool& sPrevL = sPrevLAll[controller];
+  bool& sPrevR = sPrevRAll[controller];
 
   // A controller index is not a player slot: ProcessPlayerInput maps a slot's selection the other
   // way round, so it is the selection that finds the player this pad belongs to.
@@ -4304,8 +4360,9 @@ static void ApplyHoldToggle(CFinalInput& input, CStateManager& mgr, uint control
   const CPlayer::EPlayerOrbitState orbit = player->GetOrbitState();
   const bool locked = orbit == CPlayer::kOS_OrbitObject ||
                       orbit == CPlayer::kOS_ForcedOrbitObject || orbit == CPlayer::kOS_Grapple;
+  const int index = player->GetPlayerIndex();
   const PortHoldToggle::Output outL = sLockOn.Update(
-      unmorphed && PortOverlay::LockOnToggle(), heldL, pressL, locked, input.DeltaTime());
+      unmorphed && PortOverlay::LockOnToggle(index), heldL, pressL, locked, input.DeltaTime());
   if (sLockOn.Latched() || outL.held != heldL) {
     input.PortSetL(outL.held, outL.pressed);
   }
@@ -4313,7 +4370,7 @@ static void ApplyHoldToggle(CFinalInput& input, CStateManager& mgr, uint control
   const bool heldA = input.DA();
   const bool pressA = input.PA();
   const CPlayerState* const state = player->GetPlayerState();
-  const bool charge = unmorphed && PortOverlay::StickyCharge() && state != nullptr &&
+  const bool charge = unmorphed && PortOverlay::StickyCharge(index) && state != nullptr &&
                       state->GetItemAmount(CPlayerState::kIT_ChargeBeam, true) != 0;
   const PortHoldToggle::Output outA = sCharge.Update(charge, heldA, pressA, input.DeltaTime());
   if (outA.held != heldA || outA.pressed != pressA) {
@@ -5424,6 +5481,22 @@ void CStateManager::PortDarkWorldTick() {
 // once it is done: CMFGame clears mPendingDockArea when its transition finishes, and it never spawns
 // the player itself (a dock crossing keeps the player where they were standing), so a warp has to do
 // it - the area the player came from is unloaded, so their position means nothing here.
+bool CStateManager::PortSpawnEnclosed(const CScriptSpawnPoint& spawn) const {
+  const CVector3f origin = spawn.GetTransform().GetTranslation() + CVector3f(0.f, 0.f, 1.f);
+  if (!RayStaticIntersection(origin, CVector3f::Up(), 6.f, CMaterialFilter()).IsValid()) {
+    return false;
+  }
+  static const float kDirs[4][2] = {{1.f, 0.f}, {-1.f, 0.f}, {0.f, 1.f}, {0.f, -1.f}};
+  for (int i = 0; i < 4; ++i) {
+    if (!RayStaticIntersection(origin, CVector3f(kDirs[i][0], kDirs[i][1], 0.f), 6.f,
+                               CMaterialFilter())
+             .IsValid()) {
+      return false;
+    }
+  }
+  return true;
+}
+
 // A warp's arrival (the debug menu's area list, the console's `area`, the sweep's NEXTAREA): put
 // the player inside `target`. The old scan took the first active first-spawn point of *any* loaded
 // area, and a room without one left the player at the old coordinates, outside the new room. Order:
@@ -5451,7 +5524,9 @@ void CStateManager::PortPlaceAtArrival(TAreaId target) {
       if (spawn->GetActive() && spawn->IsFirstSpawn() && firstSpawn == nullptr) {
         firstSpawn = spawn;
       }
-      if (spawn->GetActive() && activeSpawn == nullptr) {
+      if (spawn->GetActive() && spawn != firstSpawn &&
+          (activeSpawn == nullptr ||
+           (PortSpawnEnclosed(*activeSpawn) && !PortSpawnEnclosed(*spawn)))) {
         activeSpawn = spawn;
       }
       if (anySpawn == nullptr) {
@@ -5464,6 +5539,15 @@ void CStateManager::PortPlaceAtArrival(TAreaId target) {
     }
   }
   const char* kind = "first spawn";
+  // Battleground's (Dark Agon) first spawn sits in a closed pocket under the arena floor; the game
+  // never uses it (no save station there). Take an open active spawn over a boxed-in first one.
+  if (firstSpawn != nullptr && activeSpawn != nullptr && PortSpawnEnclosed(*firstSpawn) &&
+      !PortSpawnEnclosed(*activeSpawn)) {
+    std::fprintf(stderr, "[warp] first spawn e%08x is boxed in; using e%08x\n",
+                 static_cast< unsigned >(firstSpawn->GetEditorId().Value()),
+                 static_cast< unsigned >(activeSpawn->GetEditorId().Value()));
+    firstSpawn = nullptr;
+  }
   CScriptSpawnPoint* plain = activeSpawn != nullptr ? activeSpawn : anySpawn;
   if (firstSpawn != nullptr) {
     SpawnPlayer(*firstSpawn, 0);
@@ -5734,7 +5818,11 @@ void CStateManager::PortWarpSettle() {
                      keep.Value(), mPortPendingWarpArea.Value(), PortFreeObjectIds());
       }
     }
-    return;
+    // An area that finished loading just now settles in this frame, before its new objects first
+    // Think: see the spawn below.
+    if (!area->IsLoaded()) {
+      return;
+    }
   }
   mPortWarpWaitingForIds = false;
   mPortWarpStreamStarted = false;
@@ -5745,6 +5833,15 @@ void CStateManager::PortWarpSettle() {
   const TAreaId target = mPortPendingWarpArea;
   mPortPendingWarpArea = kInvalidAreaId;
   mPortWarpDroppedAreas = false;
+  // The world's per-frame travel to the old area moved the streaming one from Loading to
+  // ToDeallocate, so the next TravelToArea(target) would invalidate it and load it again: every
+  // script object of the arrival room deleted and rebuilt right after the spawn below. A script the
+  // spawn had started is lost with it - Dark Falls' save-station "From Load" relay holds the screen
+  // black until Samus's player actor arrives, and the rebuilt room never sends it (the world and
+  // the arm cannon stayed black). Keep the area alive instead.
+  if (area->GetCurChain() != CWorld::kC_Alive) {
+    world->MoveToChain(area, CWorld::kC_Alive);
+  }
 
   // Loaded now, so the move is safe. This is also what makes the world update travel here
   // instead of back to the old area.
@@ -5760,6 +5857,16 @@ void CStateManager::PortWarpSettle() {
 
   if (!PortPlaceKeptTransform()) {
     PortPlaceAtArrival(target);
+  }
+  // A save load spawns in InitializeState and runs the spawn point's script chain before any object
+  // of the room thinks. Do the same here: Dark Falls' "From Load" relay activates the relay that waits
+  // for Samus's player actor, whose suit is already resident on PC, so it arrives in its first Think.
+  // Left queued, that arrival is dispatched ahead of the activation, hits the inactive relay and is
+  // lost, and the "Hold Black" filter and black cinematic camera stay on (world and arm cannon black).
+  if (!mDispatchingScriptMessages) {
+    mDispatchingScriptMessages = true;
+    DispatchScriptMessages();
+    mDispatchingScriptMessages = false;
   }
   for (uint i = 0; i < mNumPlayers; ++i) {
     mCameraManagers[i]->ResetCameras(*this);

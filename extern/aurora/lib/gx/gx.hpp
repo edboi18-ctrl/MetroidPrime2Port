@@ -306,10 +306,10 @@ struct Fog {
   float a = 0.f;
   float b = 0.5f;
   float c = 0.f;
-  float rangeCenter = 0.f;
-  std::array<Vec4<float>, 3> rangeK;
+  // The GXFogType: the curve is chosen in the shader, not by the pipeline (ShaderConfig::fogType).
+  u32 type = GX_FOG_NONE;
 };
-static_assert(sizeof(Fog) == 80);
+static_assert(sizeof(Fog) == 32);
 struct AttrArray {
   const void* data;
   u32 size;
@@ -612,6 +612,8 @@ enum : u8 {
   VolFogPremultiplied = 4, // ONE, INVSRCALPHA, per vertex: colour T + in-scatter alpha
 };
 struct ShaderConfig {
+  // GX_FOG_NONE or, for every other type, GX_FOG_PERSP_LIN (pipeline_fog_type): the curve is the Fog
+  // uniform's, so a fog change (entering water) needs no new pipeline.
   u8 fogType = GX_FOG_NONE;
   u8 vtxStride = 0;
   u8 lineMode : 2 = 0; // 1 = GX_LINES, 2 = GX_LINESTRIP, 3 = GX_POINTS
@@ -661,6 +663,41 @@ struct ShaderConfig {
   bool operator==(const ShaderConfig& rhs) const { return memcmp(this, &rhs, sizeof(*this)) == 0; }
 };
 static_assert(std::has_unique_object_representations_v<ShaderConfig>);
+constexpr u8 pipeline_fog_type(u32 fogType) noexcept {
+  return fogType == GX_FOG_NONE ? GX_FOG_NONE : GX_FOG_PERSP_LIN;
+}
+// An alpha compare reference the shader reads from the alpha_ref uniform (ShaderInfo::usesAlphaRef).
+constexpr u32 AlphaRefUniform = 0x100;
+// The reference as the pipeline sees it: only the values that make the compare constant (0 for
+// LESS/GEQUAL, 255 for LEQUAL/GREATER) stay, any other is the uniform's, so a fading cut-out
+// needs no new pipeline per reference.
+constexpr u32 pipeline_alpha_ref(GXCompare comp, u32 ref) noexcept {
+  switch (comp) {
+  case GX_LESS:
+  case GX_GEQUAL:
+    return ref == 0 ? 0 : AlphaRefUniform;
+  case GX_LEQUAL:
+  case GX_GREATER:
+    return ref == 255 ? 255 : AlphaRefUniform;
+  case GX_EQUAL:
+  case GX_NEQUAL:
+    return AlphaRefUniform;
+  default:
+    return 0;
+  }
+}
+constexpr AlphaCompare pipeline_alpha_compare(AlphaCompare ac) noexcept {
+  ac.ref0 = pipeline_alpha_ref(ac.comp0, ac.ref0);
+  ac.ref1 = pipeline_alpha_ref(ac.comp1, ac.ref1);
+  return ac;
+}
+// The konst selections are the tev_konst uniform's (ShaderInfo::usesTevKonst), not the pipeline's.
+constexpr void pipeline_tev_konst(ShaderConfig& config) noexcept {
+  for (auto& stage : config.tevStages) {
+    stage.kcSel = GX_TEV_KCSEL_1;
+    stage.kaSel = GX_TEV_KASEL_1;
+  }
+}
 // Whether a draw samples the sun's shadow map: a lit PBR surface drawn in colour without per-pixel fog.
 inline bool shadow_receives(const ShaderConfig& sc) noexcept {
   return sc.shadow && (sc.pbr != 0 || sc.actorDecal != 0) && sc.volFog == VolFogNone && sc.depthOnly == 0 && sc.lineMode == 0 && !sc.drawId;
@@ -677,7 +714,7 @@ struct GXBindGroups {
 struct ShaderInfo {
   std::bitset<MaxTexCoord> sampledTexCoords;
   std::bitset<MaxTextures> sampledTextures;
-  std::bitset<MaxKColors> sampledKColors;
+  u8 tevStageCount = 0; // the tev_konst uniform's length (usesTevKonst)
   std::bitset<MaxColorChannels / 2> sampledColorChannels;
   std::bitset<MaxTevRegs> loadsTevReg;
   std::bitset<MaxTevRegs> writesTevReg;
@@ -699,6 +736,8 @@ struct ShaderInfo {
   bool actorDecal : 1 = false;    // actor_decal: group 2 uses the shadow layout with the actor maps
   bool usesHdrTone : 1 = false;   // sceneHdr without pbr: hdr_tone (pbrTone) and hdr_tev_blend
   bool usesSurfacePbr : 1 = false; // port_surface_pbr_stage or port_env_probe_stages: surface_pbr, surface_probe
+  bool usesTevKonst : 1 = false; // a stage reads a konst input: the tev_konst uniform
+  bool usesAlphaRef : 1 = false;  // an alpha compare reference is AlphaRefUniform: the alpha_ref uniform
 };
 struct BindGroupRanges {
   std::array<gfx::Range, MaxIndexAttr> vaRanges{};

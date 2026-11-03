@@ -95,6 +95,8 @@ static_assert(std::size(kPresets) == size_t(PresetId::Count));
 constexpr BoolSetting kBoolSettings[] = {
     {"skip_cinematics", "Skip cinematics", "Game", &PortOverlay::SkipCinematics,
      &PortOverlay::SetSkipCinematics},
+    {"walk_speed_enabled", "Custom walk speed", "Game", &PortOverlay::WalkSpeedEnabled,
+     &PortOverlay::SetWalkSpeedEnabled},
     {"unlock_beam_doors", "Unlock beam doors", "Debug", &PortOverlay::UnlockBeamDoors,
      &PortOverlay::SetUnlockBeamDoors},
     {"stack_beams", "Stack beams", "Game", &PortOverlay::StackBeams,
@@ -159,7 +161,8 @@ constexpr BoolSetting kBoolSettings[] = {
      &PortOverlay::SetLogFile},
 };
 
-// "on", "off", or the other way when the def says neither.
+// "on", "off", or the other way when the def says neither ("hold" too: it flips on the
+// press and the caller runs it again on the release to flip it back).
 enum class Mode { Toggle, On, Off };
 
 Mode ModeOf(std::string_view mode) {
@@ -474,6 +477,9 @@ std::string ModalName(std::string name, std::string_view mode) {
   }
   if (mode == "off") {
     return name + ": off";
+  }
+  if (mode == "hold") {
+    return name + " (while held)";
   }
   return name + " (on/off)";
 }
