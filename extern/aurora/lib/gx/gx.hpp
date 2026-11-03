@@ -707,6 +707,10 @@ bool per_pixel_lighting() noexcept;
 // aurora_set_pbr_highlight: GXPortSetSurfacePBR's highlight strength (1 as computed); any thread.
 void set_surface_pbr_highlight(float strength) noexcept;
 float surface_pbr_highlight() noexcept;
+// aurora_set_env_probe_look: GXPortSetEnvProbe's probe level (blur, 0..probe MipCount-1) and
+// reflection strength; any thread.
+void set_env_probe_look(float level, float strength) noexcept;
+void env_probe_look(float& level, float& strength) noexcept;
 // While set, every draw's pipeline lookup joins the front of the compile queue and waits for it
 // (see gfx::PipelinePriority::Blocking): the draws of the passes that set it are never skipped for a
 // pipeline that is still compiling. The GPU self-test sets it for its own passes; off by default.

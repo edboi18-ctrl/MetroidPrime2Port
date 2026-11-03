@@ -1934,6 +1934,10 @@ bool sPerPixelLighting = false;
 bool sPbrMaps = false;
 int sPbrHighlight = 100;
 bool sLiveReflections = false;
+int sCannonReflectionBlur = 70;
+int sCannonReflectionStrength = 60;
+int sReflectionRefresh = 3;
+int sReflectionResolution = 64;
 PortGraphicsBackend::EGraphicsBackend sGraphicsBackend = PortGraphicsBackend::kGraphicsBackend_Auto;
 PortGraphicsBackend::EGraphicsBackend sGraphicsBackendAtStart = PortGraphicsBackend::kGraphicsBackend_Auto;
 bool sOpenGles = false;
@@ -2033,6 +2037,29 @@ int PbrHighlight() {
 bool LiveReflections() {
   ReadEnv();
   return EnvBool("MP2_LIVE_REFLECTIONS", sLiveReflections);
+}
+
+int CannonReflectionBlur() {
+  ReadEnv();
+  return EnvIntIn("MP2_CANNON_REFLECTION_BLUR", sCannonReflectionBlur, 0, 100);
+}
+
+int CannonReflectionStrength() {
+  ReadEnv();
+  return EnvIntIn("MP2_CANNON_REFLECTION_STRENGTH", sCannonReflectionStrength, 0, 200);
+}
+
+int ReflectionFacesPerFrame() {
+  ReadEnv();
+  const int faces = EnvIntIn("MP2_REFLECTION_REFRESH", sReflectionRefresh, 1, 6);
+  // 1, 2, 3 or 6, so the cube refreshes in whole frames (4 or 5 would leave a face a frame behind).
+  return faces >= 6 ? 6 : faces >= 3 ? 3 : faces;
+}
+
+int ReflectionResolution() {
+  ReadEnv();
+  const int size = EnvIntIn("MP2_REFLECTION_RESOLUTION", sReflectionResolution, 32, 128);
+  return size >= 128 ? 128 : size >= 64 ? 64 : 32;
 }
 
 bool OpenGles() {

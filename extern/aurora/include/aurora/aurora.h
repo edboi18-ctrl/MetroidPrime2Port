@@ -228,6 +228,10 @@ void aurora_set_per_pixel_lighting(bool enabled);
 /** Scales the highlights of GXPortSetSurfacePBR's draws (1 as computed, 0 none; clamped to 0-4); any thread,
  * taken by the next draws. */
 void aurora_set_pbr_highlight(float strength);
+/** GXPortSetEnvProbe's look: the probe level its environment stages read (0 sharp .. 5 blurriest; a
+ * blurred probe reads as rougher metal) and its reflection's strength (1 as captured, 0 none; 0-4). Any
+ * thread, taken by the next draws. Default 1, 1. */
+void aurora_set_env_probe_look(float level, float strength);
 /** Sets the clock timescale. Default 1.0f. 0.0f is paused. Range 0.0f-16.0f. */
 void aurora_set_timescale(float scale);
 

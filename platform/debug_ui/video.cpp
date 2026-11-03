@@ -290,6 +290,39 @@ void DrawVideoQuality() {
   Changed(ImGui::Checkbox("Live reflections", &sLiveReflections));
   ImGui::SetItemTooltip("The arm cannon (and surfaces with PBR maps) reflect the room around you: a small\n"
                         "cube map of the world, redrawn a side each frame. Costs a little GPU time.");
+  if (sLiveReflections) {
+    // Applied by PortVideo::Frame through aurora_set_env_probe_look, on change.
+    Changed(ImGui::SliderInt("Cannon reflection blur", &sCannonReflectionBlur, 0, 100, "%d%%",
+                             ImGuiSliderFlags_AlwaysClamp));
+    ImGui::SetItemTooltip("0%% is a sharp mirror of the room; higher blurs it towards a matte, brushed\n"
+                          "metal sheen.");
+    Changed(ImGui::SliderInt("Cannon reflection strength", &sCannonReflectionStrength, 0, 200, "%d%%",
+                             ImGuiSliderFlags_AlwaysClamp));
+    ImGui::SetItemTooltip("How bright the arm cannon's reflection is; 100%% is the room as captured.");
+    // Read each frame by CStateManager::PortCaptureProbeFace.
+    static const int kRefreshFaces[] = {1, 2, 3, 6};
+    int refresh = 2;
+    for (int i = 0; i < 4; ++i) {
+      if (kRefreshFaces[i] == sReflectionRefresh) {
+        refresh = i;
+      }
+    }
+    if (ImGui::Combo("Reflection refresh", &refresh, "Every 6 frames\0" "Every 3 frames\0" "Every 2 frames\0"
+                                                     "Every frame\0")) {
+      sReflectionRefresh = kRefreshFaces[refresh];
+      Changed(true);
+    }
+    ImGui::SetItemTooltip("How often the whole reflection is redrawn: faster keeps up with quick movement,\n"
+                          "and redraws more of the room each frame (mostly CPU time).");
+    static const int kResolutions[] = {32, 64, 128};
+    int resolution = sReflectionResolution >= 128 ? 2 : sReflectionResolution >= 64 ? 1 : 0;
+    if (ImGui::Combo("Reflection resolution", &resolution, "32\0" "64\0" "128\0")) {
+      sReflectionResolution = kResolutions[resolution];
+      Changed(true);
+    }
+    ImGui::SetItemTooltip("Each side of the reflection, in game pixels: lower is cheaper on the GPU; a\n"
+                          "blurred, matte reflection loses little.");
+  }
   if (sPbrMaps) {
     // Applied by PortVideo::Frame through aurora_set_pbr_highlight, on change.
     Changed(ImGui::SliderInt("PBR highlight strength", &sPbrHighlight, 0, 200, "%d%%",

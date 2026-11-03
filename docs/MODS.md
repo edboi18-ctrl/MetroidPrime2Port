@@ -127,16 +127,22 @@ shadow and the black pass are drawn as before. Those surfaces are lit per pixel 
 `pbrKind` rows), so each new one compiles the first time it is drawn.
 
 **Live reflections.** F1 > Video > Quality > Live reflections (`live_reflections`, off by default):
-`CStateManager::PortCaptureProbeFace`, ported from the MP1 port, draws one 128x128 face of a cube
-map of the world around the camera into a corner of the EFB before each frame's world (world geometry
-and sky, culled for that face) and copies it into Aurora's probe (`GXCopyProbeFace`), so the probe is
-six frames old at worst (a face every fourth frame once it is full and the camera holds still). It
+`CStateManager::PortCaptureProbeFace`, ported from the MP1 port, draws faces of a cube map of the
+world around the camera into a corner of the EFB before each frame's world (world geometry
+and sky, culled for that face) and copies it into Aurora's probe (`GXCopyProbeFace`). Quality >
+Reflection refresh sets how many faces a frame (1, 2, 3 or 6; default 3, the whole probe every 2
+frames) and Reflection resolution their size (32, 64 or 128; default 64). Once the probe is full and
+the camera has stopped, a face every fourth frame keeps it fresh (stopped: under 0.01 units moved in a
+frame; MP1's 0.5 a frame counted walking as stopped, and the reflections stepped). It
 runs only while something reads it, in the normal render mode. `CPlayerGun::Render` sets
 `CCubeMaterial::sPortEnvProbe`, and `CCubeModel::DrawSurface` then calls `GXPortSetEnvProbe` around
 the gun's surfaces: their environment-map stages (texture coordinates from the normal; the beam guns
 add `C2 x env` over the base, C2 a mask) sample the probe along the view reflected about the
-per-pixel normal, through `GXSetPBRProbe`'s matrix, at level 1 of its six (a little blur), instead
-of their fixed texture, the mask and the rest of the material unchanged. Surfaces with PBR maps
+per-pixel normal, through `GXSetPBRProbe`'s matrix, at the level Cannon reflection blur sets, scaled by its strength, instead
+of their fixed texture, the mask and the rest of the material unchanged. How sharp and bright the cannon's
+reflection is comes from Quality > Cannon reflection blur and strength (`aurora_set_env_probe_look`;
+by default 70% blur, about level 3.5 of 0-5, at 60%: a matte metal sheen rather than a mirror).
+Surfaces with PBR maps
 reflect the probe too, at the level their roughness asks, dimmed where the game lights them little.
 Until all six faces are drawn the materials keep their own look.
 

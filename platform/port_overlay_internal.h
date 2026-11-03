@@ -145,6 +145,10 @@ extern bool sPerPixelLighting;
 extern bool sPbrMaps;             // Video > Quality > PBR maps (port_pbr_maps.h)
 extern int sPbrHighlight;         // Video > Quality > PBR highlight strength, 0..200 (%)
 extern bool sLiveReflections;     // Video > Quality > Live reflections (CStateManager::PortCaptureProbeFace)
+extern int sCannonReflectionBlur;     // Video > Quality > Cannon reflection blur, 0..100 (%)
+extern int sCannonReflectionStrength; // Video > Quality > Cannon reflection strength, 0..200 (%)
+extern int sReflectionRefresh;    // Video > Quality > Reflection refresh: probe faces a frame (1, 2, 3, 6)
+extern int sReflectionResolution; // Video > Quality > Reflection resolution: 32, 64 or 128
 extern PortGraphicsBackend::EGraphicsBackend sGraphicsBackend; // renderer choice (Windows, desktop Linux)
 extern PortGraphicsBackend::EGraphicsBackend sGraphicsBackendAtStart;
 extern bool sOpenGles;

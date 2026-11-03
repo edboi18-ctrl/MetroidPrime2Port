@@ -247,6 +247,8 @@ wgpu::PrimitiveState to_primitive_state(GXCullMode gx_cullMode) {
 }
 std::atomic_bool sPerPixelLighting{false};
 std::atomic<float> sSurfacePbrHighlight{1.f};
+std::atomic<float> sEnvProbeLevel{1.f};
+std::atomic<float> sEnvProbeStrength{1.f};
 std::atomic_bool sBlockingPipelines{false};
 } // namespace
 
@@ -258,6 +260,16 @@ void set_surface_pbr_highlight(float strength) noexcept {
                              std::memory_order_relaxed);
 }
 float surface_pbr_highlight() noexcept { return sSurfacePbrHighlight.load(std::memory_order_relaxed); }
+
+void set_env_probe_look(float level, float strength) noexcept {
+  constexpr float maxLevel = static_cast<float>(gfx::probe::MipCount - 1);
+  sEnvProbeLevel.store(std::isfinite(level) ? std::clamp(level, 0.f, maxLevel) : 1.f, std::memory_order_relaxed);
+  sEnvProbeStrength.store(std::isfinite(strength) ? std::clamp(strength, 0.f, 4.f) : 1.f, std::memory_order_relaxed);
+}
+void env_probe_look(float& level, float& strength) noexcept {
+  level = sEnvProbeLevel.load(std::memory_order_relaxed);
+  strength = sEnvProbeStrength.load(std::memory_order_relaxed);
+}
 
 void set_blocking_pipelines(bool enabled) noexcept { sBlockingPipelines.store(enabled, std::memory_order_relaxed); }
 bool blocking_pipelines() noexcept { return sBlockingPipelines.load(std::memory_order_relaxed); }
@@ -609,28 +621,15 @@ void populate_pipeline_config(PipelineConfig& config, GXPrimitive primitive, GXV
       };
     }
   }
-  if (g_gxState.pbr == 0 && (g_gxState.surfacePbr != 0 || g_gxState.envProbe)) {
-    // GXPortSetSurfacePBR and GXPortSetEnvProbe: pbrKind holds the relit stage + 1 and the probe
-    // bit while pbr is 0, each kept only when it applies (port_surface_pbr_stage,
-    // port_env_probe_stages, which need per-pixel lights), so the draws they can't change keep
-    // the config, and the pipeline, they had.
-    auto& sc = config.shaderConfig;
-    sc.perPixelLight = 1;
-    sc.pbrKind = g_gxState.surfacePbr & kPortSurfacePbrStageMask;
-    if (sc.pbrKind != 0 && port_surface_pbr_stage(sc) < 0) {
-      sc.pbrKind = 0;
-    }
-    if (g_gxState.envProbe) {
-      sc.pbrKind |= kPortEnvProbeBit;
-      if (port_env_probe_stages(sc) == 0) {
-        sc.pbrKind &= static_cast<u8>(~kPortEnvProbeBit);
-      }
-    }
-  }
-  config.shaderConfig.perPixelLight = wants_per_pixel_light(config.shaderConfig);
   for (u8 i = 0; i < g_gxState.numTexGens; ++i) {
     config.shaderConfig.tcgs[i] = g_gxState.tcgs[i];
   }
+  // After the stages, swap table, channels and texgens it reads (the probe finds its stages by
+  // their texgen: copied after this, it saw none and never applied).
+  if (g_gxState.pbr == 0) {
+    apply_port_surface_flags(config.shaderConfig, g_gxState.surfacePbr, g_gxState.envProbe);
+  }
+  config.shaderConfig.perPixelLight = wants_per_pixel_light(config.shaderConfig);
   if (g_gxState.alphaCompare) {
     config.shaderConfig.alphaCompare = g_gxState.alphaCompare;
   }
