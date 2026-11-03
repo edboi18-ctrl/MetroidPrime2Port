@@ -433,6 +433,13 @@ Video > Quality and Frame rate:
   64): Quality > Reflection refresh / resolution (shown while Live reflections is on), the probe's
   faces drawn a frame (every 6, 3, 2 frames or every frame for the whole probe) and each face's size
   in EFB pixels (Aurora scales it to its 128). Env `MP2_REFLECTION_REFRESH`, `MP2_REFLECTION_RESOLUTION`.
+- `body_reflections` (on by default), `body_reflection_blur` (0..100, percent; default 30) and
+  `body_reflection_strength` (0..200, percent; default 100): Quality > Samus & morph ball reflections /
+  blur / strength (shown while Live reflections is on). Samus's body, the morph ball and the cutscene
+  Samus (`CPlayer::Render`, `CScriptPlayerActor::Render`) read the live probe in their environment-map
+  stages with their own look (`GXPortSetEnvProbeLook`), and while they read it the probe is captured
+  around her (`CCubeMaterial::CPortEnvProbeScope`) instead of the camera. Env `MP2_BODY_REFLECTIONS`,
+  `MP2_BODY_REFLECTION_BLUR`, `MP2_BODY_REFLECTION_STRENGTH`.
 - `bloom` (off by default), `bloom_strength` (0..200, percent; default 100) and `bloom_threshold`
   (50..95, percent of display white; default 90): Quality > Bloom / Bloom strength / Bloom threshold,
   Aurora's Remastered bloom (`GXPortPostProcess`) over the world, drawn in `CStateManager::DrawWorld`

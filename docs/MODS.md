@@ -145,6 +145,15 @@ by default 70% blur, about level 3.5 of 0-5, at 60%: a matte metal sheen rather 
 Surfaces with PBR maps
 reflect the probe too, at the level their roughness asks, dimmed where the game lights them little.
 Until all six faces are drawn the materials keep their own look.
+Samus's body, the morph ball and the cutscene Samus read it as well (Quality > Samus & morph ball
+reflections, on by default under Live reflections): `CPlayer::Render` and `CScriptPlayerActor::Render`
+open a `CCubeMaterial::CPortEnvProbeScope`, which sets `sPortEnvProbe` with their own blur and
+strength (`GXPortSetEnvProbeLook`, ordered with the draws, so the cannon keeps its matte look and
+the ball its glossier one). When any of their draws read the probe, the next capture is centred on
+her bounding box rather than on the camera: in the morph ball and cutscenes the camera stands well
+away from her, and a probe taken there would reflect the wrong part of the room. Only the
+environment-map stages their materials already have change; a material without one (or one drawn
+unlit) is drawn as before.
 
 **Bloom.** F1 > Video > Quality > Bloom (`bloom`, off by default): `CStateManager::DrawWorld` calls
 Aurora's `GXPortPostProcess`, the Remastered bloom the MP1 port draws (`extern/aurora/lib/gfx/bloom.cpp`:

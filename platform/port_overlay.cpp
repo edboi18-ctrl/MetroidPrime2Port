@@ -1941,6 +1941,9 @@ int sCannonReflectionBlur = 70;
 int sCannonReflectionStrength = 60;
 int sReflectionRefresh = 3;
 int sReflectionResolution = 64;
+bool sBodyReflections = true;
+int sBodyReflectionBlur = 30;
+int sBodyReflectionStrength = 100;
 bool sBloom = false;
 int sBloomStrength = PortBloom::kStrengthDefault;
 int sBloomThreshold = PortBloom::kThresholdDefault;
@@ -2071,6 +2074,21 @@ int ReflectionResolution() {
   ReadEnv();
   const int size = EnvIntIn("MP2_REFLECTION_RESOLUTION", sReflectionResolution, 32, 128);
   return size >= 128 ? 128 : size >= 64 ? 64 : 32;
+}
+
+bool BodyReflections() {
+  ReadEnv();
+  return EnvBool("MP2_BODY_REFLECTIONS", sBodyReflections);
+}
+
+int BodyReflectionBlur() {
+  ReadEnv();
+  return EnvIntIn("MP2_BODY_REFLECTION_BLUR", sBodyReflectionBlur, 0, 100);
+}
+
+int BodyReflectionStrength() {
+  ReadEnv();
+  return EnvIntIn("MP2_BODY_REFLECTION_STRENGTH", sBodyReflectionStrength, 0, 200);
 }
 
 bool Bloom() {

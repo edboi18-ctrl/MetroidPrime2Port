@@ -712,6 +712,16 @@ int CannonReflectionStrength();
 // (`MP2_REFLECTION_RESOLUTION`; default 64).
 int ReflectionFacesPerFrame();
 int ReflectionResolution();
+// A blur percentage as the probe level it reads: 0..100% over levels 0..5 (Aurora's
+// gfx::probe::MipCount is 6).
+constexpr float kReflectionLevelPerBlurPercent = 0.05f;
+// Samus's body, her morph ball and the cutscene Samus read the live probe too (F1 > Video > Quality,
+// shown with Live reflections; CCubeMaterial::CPortEnvProbeScope), centred on her: on by default
+// (`MP2_BODY_REFLECTIONS`), with their own blur 0..100% (`MP2_BODY_REFLECTION_BLUR`; default 30)
+// and strength 0..200% (`MP2_BODY_REFLECTION_STRENGTH`; default 100).
+bool BodyReflections();
+int BodyReflectionBlur();
+int BodyReflectionStrength();
 // Bloom over the world, under the visors and the HUD (`MP2_BLOOM`, F1 > Video > Quality; off by
 // default): Aurora's Remastered bloom (GXPortPostProcess) with the port's own curve and tints
 // (port_bloom_rules.h). Strength 0..200% (`MP2_BLOOM_STRENGTH`; default 100) and the brightness it

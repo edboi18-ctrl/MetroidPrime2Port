@@ -2932,6 +2932,31 @@ TEST_F(GXFifoTest, ScissorRender_EncodesAuroraOverride) {
   EXPECT_EQ(g_gxState.renderScissor.height, 600);
 }
 
+// GXPortSetEnvProbeLook: each model's own probe look, ordered with its draws; a negative strength goes
+// back to aurora_set_env_probe_look's.
+TEST_F(GXFifoTest, PortEnvProbeLook_DecodesPerDrawLook) {
+  GXPortSetEnvProbe(GX_TRUE);
+  GXPortSetEnvProbeLook(1.5f, 1.25f);
+  auto bytes = capture_fifo();
+
+  EXPECT_TRUE(has_aurora_cmd(bytes, GX_AURORA_PORT_ENV_PROBE));
+  EXPECT_TRUE(has_aurora_cmd(bytes, GX_AURORA_PORT_ENV_PROBE_LOOK));
+
+  reset_gx_state();
+  EXPECT_LT(g_gxState.envProbeLook.y(), 0.f); // the frame's look by default
+  decode_fifo(bytes);
+
+  EXPECT_TRUE(g_gxState.envProbe);
+  EXPECT_FLOAT_EQ(g_gxState.envProbeLook.x(), 1.5f);
+  EXPECT_FLOAT_EQ(g_gxState.envProbeLook.y(), 1.25f);
+
+  GXPortSetEnvProbeLook(0.f, -1.f);
+  GXPortSetEnvProbe(GX_FALSE);
+  decode_fifo(capture_fifo());
+  EXPECT_FALSE(g_gxState.envProbe);
+  EXPECT_LT(g_gxState.envProbeLook.y(), 0.f);
+}
+
 // --- GXLoadLightObjImm (XF 0x600-0x67F) ---
 
 TEST_F(GXFifoTest, LoadLightObjImm_Light0_BasicColor) {

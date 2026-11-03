@@ -960,9 +960,42 @@ static void PortChooseSurfacePbr(const CTexture* const* textures, uint texCount,
 }
 
 bool CCubeMaterial::sPortEnvProbe = false;
+float CCubeMaterial::sPortEnvProbeLevel = 0.f;
+float CCubeMaterial::sPortEnvProbeStrength = -1.f;
+bool CCubeMaterial::sPortProbeFocusSet = false;
+CVector3f CCubeMaterial::sPortProbeFocus = CVector3f::Zero();
 bool CCubeMaterial::sPortCapturingProbe = false;
 uint CCubeMaterial::sPortProbeDraws = 0;
 float CCubeMaterial::sPortProbeWeight = 0.f;
+
+CCubeMaterial::CPortEnvProbeScope::CPortEnvProbeScope(bool on, float level, float strength,
+                                                      const CVector3f& focus)
+: mOn(on)
+, mSavedProbe(sPortEnvProbe)
+, mSavedLevel(sPortEnvProbeLevel)
+, mSavedStrength(sPortEnvProbeStrength)
+, mDraws(sPortProbeDraws)
+, mFocus(focus) {
+  if (!mOn) {
+    return;
+  }
+  sPortEnvProbe = true;
+  sPortEnvProbeLevel = level;
+  sPortEnvProbeStrength = strength;
+}
+
+CCubeMaterial::CPortEnvProbeScope::~CPortEnvProbeScope() {
+  if (!mOn) {
+    return;
+  }
+  if (sPortProbeDraws != mDraws) {
+    sPortProbeFocus = mFocus;
+    sPortProbeFocusSet = true;
+  }
+  sPortEnvProbe = mSavedProbe;
+  sPortEnvProbeLevel = mSavedLevel;
+  sPortEnvProbeStrength = mSavedStrength;
+}
 
 uint CCubeMaterial::PortBeginSurfaceDraw() {
   uint begun = 0;
@@ -978,6 +1011,10 @@ uint CCubeMaterial::PortBeginSurfaceDraw() {
   if (sPortEnvProbe && liveReflections && !sPortCapturingProbe) {
     GXPortSetEnvProbe(GX_TRUE);
     begun |= 2;
+    if (sPortEnvProbeStrength >= 0.f) {
+      GXPortSetEnvProbeLook(sPortEnvProbeLevel, sPortEnvProbeStrength);
+      begun |= 4;
+    }
   }
   if (begun != 0) {
     // The probe is in world space with Y and Z swapped (world Z-up to the cube's Y-up), and the
@@ -1003,6 +1040,9 @@ void CCubeMaterial::PortEndSurfaceDraw(uint begun) {
   }
   if ((begun & 2) != 0) {
     GXPortSetEnvProbe(GX_FALSE);
+  }
+  if ((begun & 4) != 0) {
+    GXPortSetEnvProbeLook(0.f, -1.f);
   }
 }
 

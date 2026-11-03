@@ -463,6 +463,12 @@ void GXPortSetEnvProbe(GXBool on) {
   GX_WRITE_U8(on ? 1 : 0);
 }
 
+void GXPortSetEnvProbeLook(f32 level, f32 strength) {
+  GX_WRITE_AURORA(GX_AURORA_PORT_ENV_PROBE_LOOK);
+  GX_WRITE_F32(level);
+  GX_WRITE_F32(strength);
+}
+
 void GXSetSDF(u8 edge) {
   GX_WRITE_AURORA(GX_AURORA_SET_SDF);
   GX_WRITE_U8(edge);

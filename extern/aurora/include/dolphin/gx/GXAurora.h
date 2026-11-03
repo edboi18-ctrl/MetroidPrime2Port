@@ -385,6 +385,9 @@ extern "C" {
 // Port extension: screen-space ambient occlusion over the EFB so far (GXPortAmbientOcclusion). Payload:
 // 16 f32 words (gfx/ssao.hpp's Params).
 #define GX_AURORA_PORT_AMBIENT_OCCLUSION 0x0073
+// Port extension: the probe level and strength the following draws' environment stages read
+// (GXPortSetEnvProbeLook). Payload: f32 level, f32 strength (below 0: aurora_set_env_probe_look's).
+#define GX_AURORA_PORT_ENV_PROBE_LOOK 0x0074
 
 #define GX2_SET_POLYGON_OFFSET 0x1000
 

@@ -28,6 +28,11 @@
 #include "MetroidPrime/TCastTo.hpp"
 #include "MetroidPrime/Tweaks/CTweakPlayerRes.hpp"
 #include "REL/REL_Setup.h"
+#ifdef TARGET_PC
+#include "Kyoto/Graphics/CCubeMaterial.hpp"
+#include "MetroidPrime/CModelData.hpp"
+#include "port_overlay.h"
+#endif
 
 // @ fn_61_2FC8
 CScriptPlayerActor::CScriptPlayerActor(TUniqueId uid, const rstl::string& name, CEntityInfo& info,
@@ -267,6 +272,15 @@ void CScriptPlayerActor::RenderGun(const CStateManager& mgr) const {
 
 // @ fn_61_2490
 void CScriptPlayerActor::Render(const CStateManager& mgr) const {
+#ifdef TARGET_PC
+  // Port: the cutscene Samus and her cannon read the live probe as the player's body does
+  // (CPlayer::Render), centred on her.
+  CCubeMaterial::CPortEnvProbeScope probeScope(
+      PortOverlay::BodyReflections() && !mgr.IsMultiplayer() && GetModelData() != nullptr,
+      static_cast< float >(PortOverlay::BodyReflectionBlur()) * PortOverlay::kReflectionLevelPerBlurPercent,
+      static_cast< float >(PortOverlay::BodyReflectionStrength()) / 100.f,
+      GetModelData() != nullptr ? GetModelData()->GetBounds(GetTransform()).GetCenterPoint() : GetTranslation());
+#endif
   const bool gunFirst = (mFlags & 0x100) != 0;
   if (gunFirst) {
     RenderGun(mgr);

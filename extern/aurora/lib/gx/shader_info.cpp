@@ -724,6 +724,11 @@ static void fill_uniform(ByteBuffer& buf, const ShaderInfo& info) noexcept {
     float envLevel = 0.f;
     float envStrength = 1.f;
     env_probe_look(envLevel, envStrength);
+    // A draw's own look (GXPortSetEnvProbeLook) over the frame's.
+    if (g_gxState.envProbeLook.y() >= 0.f) {
+      envLevel = g_gxState.envProbeLook.x();
+      envStrength = g_gxState.envProbeLook.y();
+    }
     buf.append(Vec4<float>{surface_pbr_highlight(), envLevel, envStrength, 0.f});
     buf.append(g_gxState.pbrProbe);
   }

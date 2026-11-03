@@ -325,6 +325,20 @@ void DrawVideoQuality() {
     }
     ImGui::SetItemTooltip("Each side of the reflection, in game pixels: lower is cheaper on the GPU; a\n"
                           "blurred, matte reflection loses little.");
+    // Read each frame by CPlayer::Render and CScriptPlayerActor::Render (CCubeMaterial::CPortEnvProbeScope).
+    Changed(ImGui::Checkbox("Samus & morph ball reflections", &sBodyReflections));
+    ImGui::SetItemTooltip("Samus's suit and the morph ball reflect the room around them where the game\n"
+                          "gave them a shine (in third person, cutscenes and the morph ball); the\n"
+                          "reflection is captured around Samus while she is the one on screen.");
+    if (sBodyReflections) {
+      Changed(ImGui::SliderInt("Samus & morph ball blur", &sBodyReflectionBlur, 0, 100, "%d%%",
+                               ImGuiSliderFlags_AlwaysClamp));
+      ImGui::SetItemTooltip("0%% is a sharp mirror of the room; higher blurs it towards a soft sheen.");
+      Changed(ImGui::SliderInt("Samus & morph ball strength", &sBodyReflectionStrength, 0, 200, "%d%%",
+                               ImGuiSliderFlags_AlwaysClamp));
+      ImGui::SetItemTooltip("How bright Samus's and the morph ball's reflections are; 100%% is the room as\n"
+                            "captured.");
+    }
   }
   if (sPbrMaps) {
     // Applied by PortVideo::Frame through aurora_set_pbr_highlight, on change.

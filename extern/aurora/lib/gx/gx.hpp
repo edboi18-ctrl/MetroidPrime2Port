@@ -413,6 +413,9 @@ struct GXState {
   u8 pbr = 0; // GX_AURORA_SET_PBR: above 1, a cost test (GXSetPBRCostTest)
   u8 surfacePbr = 0; // GX_AURORA_PORT_SURFACE_PBR: the relit TEV stage + 1 (GXPortSetSurfacePBR), 0 off
   bool envProbe = false; // GX_AURORA_PORT_ENV_PROBE: environment-mapped stages read the probe (GXPortSetEnvProbe)
+  // GX_AURORA_PORT_ENV_PROBE_LOOK (GXPortSetEnvProbeLook): x the probe level, y the strength; y below 0
+  // takes aurora_set_env_probe_look's (env_probe_look).
+  Vec4<float> envProbeLook{0.f, -1.f, 0.f, 0.f};
   u8 sdf = 0; // GX_AURORA_SET_SDF
   u8 hudSample = 0; // GX_AURORA_SET_HUD_SAMPLE
   Vec4<float> hudDyin{0.f, 0.f, 0.f, 0.f}; // its DYIN

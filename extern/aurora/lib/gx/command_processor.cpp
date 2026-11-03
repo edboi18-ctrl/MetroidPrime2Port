@@ -1551,6 +1551,14 @@ void handle_aurora(ByteReader& reader) noexcept {
     }
     std::memcpy(&params, words, sizeof(params));
     gfx::ssao::record(params);
+  } else if (subCmd == GX_AURORA_PORT_ENV_PROBE_LOOK) {
+    const f32 level = reader.read<f32>();
+    const f32 strength = reader.read<f32>();
+    const Vec4<float> look{level, strength, 0.f, 0.f};
+    if (g_gxState.envProbeLook != look) {
+      g_gxState.envProbeLook = look;
+      g_gxState.dirty |= DirtyUniform;
+    }
   } else if (subCmd == GX_AURORA_PORT_ENV_PROBE) {
     const bool on = reader.read<u8>() != 0;
     if (g_gxState.envProbe != on) {

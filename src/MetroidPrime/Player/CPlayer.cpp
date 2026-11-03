@@ -111,6 +111,7 @@
 #include "port_touch.h"
 #include "port_gun_sway.h"
 #include "Kyoto/Math/CQuaternion.hpp"
+#include "Kyoto/Graphics/CCubeMaterial.hpp"
 #endif
 
 // NonMatching structure pass; incomplete behavior is explicit below.
@@ -3291,6 +3292,15 @@ rstl::pair< bool, CColor > CPlayer::GetHackedEffectColor() const {
 }
 
 void CPlayer::Render(const CStateManager& mgr) const {
+#ifdef TARGET_PC
+  // Port: Samus's body, the morph ball and her third-person cannon read the live probe with their
+  // own look, centred on her (Video > Quality > Samus & morph ball reflections). Single player:
+  // the probe is not captured in split screen.
+  CCubeMaterial::CPortEnvProbeScope probeScope(
+      PortOverlay::BodyReflections() && !mgr.IsMultiplayer(),
+      static_cast< float >(PortOverlay::BodyReflectionBlur()) * PortOverlay::kReflectionLevelPerBlurPercent,
+      static_cast< float >(PortOverlay::BodyReflectionStrength()) / 100.f, GetBoundingBox().GetCenterPoint());
+#endif
   if (mgr.GetCurrentRenderPlayer()->GetUniqueId() != GetUniqueId() &&
       mPlayerState->GetItemAmount(CPlayerState::kIT_Invisibility) != 0 &&
       mgr.GetPlayerState()->GetActiveVisor(mgr) != CPlayerState::kPV_Dark) {

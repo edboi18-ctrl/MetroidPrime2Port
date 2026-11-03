@@ -1355,6 +1355,11 @@ void CStateManager::PortCaptureProbeFace() {
   const uint draws = CCubeMaterial::sPortProbeDraws;
   const bool used = draws != lastDraws;
   lastDraws = draws;
+  // Samus or her morph ball read it last frame (CCubeMaterial::CPortEnvProbeScope): the room around
+  // her, not around a third-person camera. Taken once; the next frame's readers set it again.
+  const bool focused = CCubeMaterial::sPortProbeFocusSet;
+  const CVector3f focus = CCubeMaterial::sPortProbeFocus;
+  CCubeMaterial::sPortProbeFocusSet = false;
   if (!PortOverlay::LiveReflections()) {
     CCubeMaterial::sPortProbeWeight = 0.f;
     return;
@@ -1376,7 +1381,8 @@ void CStateManager::PortCaptureProbeFace() {
   const int kSize = PortOverlay::ReflectionResolution();
   const CGameCamera* camera = mCameraManager->GetCurrentCamera(*this, true);
   const CVector3f pos =
-      PortFreeCam::View(mCameraManager->GetCurrentCameraTransform(*this, true)).GetTranslation();
+      focused ? focus
+              : PortFreeCam::View(mCameraManager->GetCurrentCameraTransform(*this, true)).GetTranslation();
   static CVector3f lastPos = CVector3f::Zero();
   static int idleFrames = 0;
   int faces = PortOverlay::ReflectionFacesPerFrame();

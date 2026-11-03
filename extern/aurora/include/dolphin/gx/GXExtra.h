@@ -36,6 +36,11 @@ void GXPortSetSurfacePBR(s32 stage);
 // their own texture. Draws with an unlit channel 0, or GXSetPBR's, are drawn as before. Lit
 // with per-pixel lights.
 void GXPortSetEnvProbe(GXBool on);
+// Port extension: how the following draws' environment stages read the probe (GXPortSetEnvProbe):
+// at `level` (blur: 0 the sharp face, up to the probe's MipCount - 1) and scaled by `strength`.
+// A strength below 0 goes back to the look aurora_set_env_probe_look sets for every draw. Ordered
+// with the draws, so models drawn one after another can each have their own look.
+void GXPortSetEnvProbeLook(f32 level, f32 strength);
 // Aurora extension: distance-field texturing for the following draws (see
 // GX_AURORA_SET_SDF). 0 turns it off.
 void GXSetSDF(u8 edge);

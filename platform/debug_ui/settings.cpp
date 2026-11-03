@@ -570,6 +570,9 @@ const SettingKey kSettingKeys[] = {
        sReflectionResolution = size >= 128 ? 128 : size >= 64 ? 64 : 32;
      },
      [](std::ostream& out) { out << sReflectionResolution; }, false, "32", "128"},
+    BoolKey< &sBodyReflections >("body_reflections"),
+    IntKey< &sBodyReflectionBlur, 0, 100 >("body_reflection_blur", "0", "80"),
+    IntKey< &sBodyReflectionStrength, 0, 200 >("body_reflection_strength", "0", "150"),
     {"cannon_reflection_strength",
      [](const std::string& value) { sCannonReflectionStrength = std::clamp(std::atoi(value.c_str()), 0, 200); },
      [](std::ostream& out) { out << sCannonReflectionStrength; }, false, "0", "150"},
