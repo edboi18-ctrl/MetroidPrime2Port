@@ -343,12 +343,16 @@ def mlvl(world_strg, area_strg, mrea_id, layer_names):
     return body
 
 
-def mrea(*layers):
-    """A version-0x19 MREA: a stand-in geometry section, then the script layers, each section in a
-    stored block of its own (the layout echoes_disc.mrea_layers reads)."""
-    sections = [s + b"\0" * (-len(s) % 32) for s in (b"\xEE" * 32,) + layers]
+def mrea(*layers, collision=None):
+    """A version-0x19 MREA: a stand-in geometry section, the script layers, then the collision
+    section if given (header word 20 names it), each section in a stored block of its own (the layout
+    echoes_disc.mrea_layers and workshop.mrea_section read)."""
+    parts = (b"\xEE" * 32,) + layers + ((collision,) if collision is not None else ())
+    sections = [s + b"\0" * (-len(s) % 32) for s in parts]
     h = [0] * 32
     h[0], h[1], h[15], h[16], h[18], h[28] = 0xDEADBEEF, 0x19, len(layers), len(sections), 1, len(sections)
+    if collision is not None:
+        h[20] = len(sections) - 1
     body = be(*h) + be(*map(len, sections))
     body += b"\0" * (-len(body) % 32)
     body += b"".join(be(len(sec), len(sec), 0, 1) for sec in sections)
@@ -394,7 +398,7 @@ def gc_disc(files):
 
 def write_disc(base: pathlib.Path) -> str:
     room = mrea(layer(thing_object(0x00280001, "Gate", (1.5, -2.0, 3.0), 2.5, 1, links=[("ENTR", "ACTV", 0x00280002)]),
-                      thing_object(0x00280002, "Light", (0, 0, 0), 1.0, 0)))
+                      thing_object(0x00280002, "Light", (0, 0, 0), 1.0, 0)), collision=collision_section())
     resources = {0x900: ("MLVL", mlvl(0x11, 0x2000, 0x800, ["Default"])), 0x800: ("MREA", room),
                  0x11: ("STRG", strg("Test World")), 0x2000: ("STRG", strg("Test Hall")),
                  0x1A2B3C4D: ("TXTR", b"\x01" * 64)}
@@ -402,6 +406,51 @@ def write_disc(base: pathlib.Path) -> str:
     path = base / "test.iso"
     path.write_bytes(image)
     return str(path)
+
+
+FLOOR_STONE = (1 << 31) | (1 << 1)  # kMT_Floor | kMT_Stone
+
+
+def collision_section(neighbors=(0xFFFF, 0xFFFF, 1, 0xFFFF, 0xFFFF, 0)):
+    """A unit floor quad as two triangles, in the layout CGameArea::PostConstructArea and
+    CAreaOctTree::MakeFromMemory read: (0,1,2) on edges 0-1, 1-2, 2-0, and (2,3,0) on edges 2-3,
+    3-0, 0-2 (stored 2->0), both unflipped; one leaf holds both."""
+    vertices = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+    edges = [(0, 1), (1, 2), (2, 0), (2, 3), (3, 0)]
+    surface = [0, 1, 2, 3, 4, 2]
+    tree = struct.pack(">6f", 0, 0, 0, 1, 1, 0) + struct.pack(">HHHH", 2, 0, 1, 0)  # count, tris, pad
+    block = be(0xDEAFBABE, 4) + struct.pack(">6f", 0, 0, 0, 1, 1, 0) + be(2, len(tree)) + tree
+    block += be(1) + struct.pack(">Q", FLOOR_STONE)
+    block += be(4) + bytes(4) + be(5) + bytes(5) + be(2) + bytes(2)
+    block += be(len(edges)) + b"".join(struct.pack(">HH", *e) for e in edges)
+    block += be(len(surface)) + struct.pack(">6H", *surface)
+    block += be(len(neighbors)) + struct.pack(">6H", *neighbors)
+    block += be(len(vertices)) + b"".join(struct.pack(">3f", *v) for v in vertices)
+    return be(0, len(block)) + block
+
+
+class CollisionTests(unittest.TestCase):
+    def test_report_of_a_well_formed_quad(self):
+        report = ws.collision_report(ws.parse_area_collision(collision_section()))
+        self.assertEqual(report["triangles"], 2)
+        self.assertEqual((report["vertices"], report["edges"]), (4, 5))
+        self.assertEqual(report["materials"][0]["names"], ["Stone", "Floor"])
+        self.assertEqual(report["materials"][0]["triangles"], 2)
+        self.assertEqual(report["edge_slots_follow_corners"], "2/2")
+        self.assertEqual(report["neighbours_share_their_edge"], "2/2 (and 4 with none)")
+        self.assertEqual(report["octree"]["leaves"], 1)
+        self.assertEqual(report["octree"]["triangles_reached"], "2/2")
+        self.assertEqual(report["bytes_left_over"], 0)
+        self.assertFalse(report["any_material_has_solid_bit"])
+
+    def test_report_catches_a_bad_neighbour(self):
+        # Triangle 0's first edge (0-1) is not one of triangle 1's.
+        report = ws.collision_report(ws.parse_area_collision(collision_section((1, 0xFFFF, 1, 0xFFFF, 0xFFFF, 0))))
+        self.assertEqual(report["neighbours_share_their_edge"], "2/3 (and 3 with none)")
+
+    def test_section_of_an_mrea(self):
+        room = mrea(layer(), collision=collision_section())
+        self.assertEqual(ws.mrea_section(room, 2)[:8], collision_section()[:8])
 
 
 class DiscTests(unittest.TestCase):
@@ -470,12 +519,13 @@ class ServerTests(unittest.TestCase):
                      ("echoes_disc_describe_area", {"world": "Test World", "area": "Test Hall"}),
                      ("echoes_disc_describe_object", {"world": "Test World", "area": "0", "editor_id": "e00280001"}),
                      ("echoes_disc_find_resource", {"asset_id": "1a2b3c4d"}),
+                     ("echoes_disc_room_collision", {"world": "Test World", "area": "Test Hall"}),
                      ("echoes_mods_install_resource", {"source_path": str(base / "1A2B3C4D.TXTR"), "mod": "first"}),
                      ("echoes_mods_list", {})]
 
             async def run():
                 return [await call(name, args) for name, args in calls]
-            worlds, areas, room, obj, found, installed, listed = asyncio.run(run())
+            worlds, areas, room, obj, found, collision, installed, listed = asyncio.run(run())
             echoes_mcp._state.pop("disc").close()
             echoes_mcp._state.clear()
             for key in ("ECHOES_DISC", "ECHOES_MODS"):
@@ -490,6 +540,8 @@ class ServerTests(unittest.TestCase):
         self.assertIn("TXTR in Metroid1.pak", found)
         self.assertIn("replaces TXTR 0x1A2B3C4D in Metroid1.pak", installed)
         self.assertIn("replaces it in 1 PAK(s)", listed)
+        self.assertIn("# Collision of Test Hall (`01_test_hall`)", collision)
+        self.assertIn('"edge_slots_follow_corners": "2/2"', collision)
 
     def test_errors_reach_the_caller(self):
         os.environ.pop("ECHOES_DISC", None)

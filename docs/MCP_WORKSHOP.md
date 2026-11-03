@@ -75,6 +75,7 @@ What it reads and writes:
 | `echoes_disc_describe_area` | a room's objects per layer: editor ID, type, name, active, position, links |
 | `echoes_disc_describe_object` | one object's property values (only those that differ from the defaults, unless asked) |
 | `echoes_disc_find_resource` | which type an asset ID is and which PAKs hold it |
+| `echoes_disc_room_collision` | a room's collision as the game reads it: counts, each material's flags by name, the octree's shape, and checks of the rules PWE's collision writer follows |
 | `echoes_mods_list` | each mod and what the port does with each file (replace, or ignored and why) |
 | `echoes_mods_install_resource` | copy a cooked file in as `<ID>.<TYPE>`; refuses an ID no PAK holds, since the port would ignore it |
 | `echoes_mods_remove_file` | delete one file inside a mod |
@@ -98,6 +99,8 @@ Layouts followed: PWE `CScriptLoader::LoadObjectMP2`/`LoadStructMP2` (objects an
 (a property ID is CRC32 of name + type name with no final XOR; 96% of the Echoes templates' 28,797
 property names hash to their IDs, the rest are FourCC-style IDs such as `ACTV`),
 `platform/port_mods.cpp`/`port_mods_pak.cpp` (the mods folder rules).
+
+**Checking the editor's collision writer on your disc:** ask for `echoes_disc_room_collision` on a few rooms. On retail data, `edge_slots_follow_corners` and `neighbours_share_their_edge` should be all-of-all, and `edge_or_vertex_material_with_bit24` and `bytes_left_over` should be 0. If they are, the format rules PrimeWorldEditor's `CCollisionCooker` writes by are the ones Retro's own data follows. The octree figures (leaves, triangles per leaf, depth) are the numbers to compare the cooker's defaults against (PrimeWorldEditor `docs/ECHOES_ROOMS.md`).
 
 ## What a new game needs, and where things stand
 

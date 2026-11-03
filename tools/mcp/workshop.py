@@ -513,6 +513,149 @@ EDITOR_PROPERTIES = 0x255A4580   # EditorProperties: name INAM, transform XFRM, 
 NAME, TRANSFORM, ACTIVE = 0x494E414D, 0x5846524D, 0x41435456
 
 
+# ---------------------------------------------------------------------------- room collision
+# EMaterialTypes (include/Collision/CMaterialList.hpp): the bit of each collision material flag.
+MATERIAL_BITS = {
+    0: "NoStepLogic", 1: "Stone", 2: "Metal", 3: "Grass", 4: "Ice", 5: "Pillar", 6: "MetalGrating",
+    7: "Phazon", 8: "Dirt", 9: "Lava", 10: "LavaStone", 11: "Snow", 12: "MudSlow", 13: "HalfPipe",
+    14: "Mud", 15: "Glass", 16: "Shield", 17: "Sand", 18: "Unknown18", 19: "Unknown19",
+    20: "ProjectilePassthrough", 21: "CameraPassthrough", 22: "Wood", 23: "Organic",
+    24: "FlippedTriangle/NoEdgeCollision", 25: "Unknown25", 26: "SeeThrough", 27: "ScanPassthrough",
+    28: "AIPassthrough", 29: "Ceiling", 30: "Wall", 31: "Floor", 48: "AIBlock", 59: "Solid",
+}
+FLIPPED = 0x01000000  # kFlippedTriangle (src/WorldFormat/CCollisionPrimitiveData.cpp)
+COLLISION_SECTION = 20  # MREA header word: CGameArea::GetSectionIndex(3), PWE's mCollisionBlockNum
+
+
+def mrea_section(mrea: bytes, index: int) -> bytes:
+    """Section `index` of a version-0x19 MREA, inflating only the block that holds it (the block
+    walk of echoes_disc.mrea_generated)."""
+    h = struct.unpack_from(">32I", mrea, 0)
+    if h[0] != 0xDEADBEEF or h[1] < 24:
+        raise WorkshopError("not a version 0x18+ MREA")
+    nsec, nblk = h[16], h[28]
+    pos = 0x80
+    sizes = struct.unpack_from(">%dI" % nsec, mrea, pos)
+    pos += (nsec * 4 + 31) & ~31
+    blocks = [struct.unpack_from(">4I", mrea, pos + 16 * i) for i in range(nblk)]
+    pos += (nblk * 16 + 31) & ~31
+    si = 0
+    for buf, dl, cl, sc in blocks:
+        rd = ((cl or buf) + 31) & ~31
+        if si <= index < si + sc:
+            raw = mrea[pos:pos + rd]
+            data = ed.inflate_chunks(raw[rd - cl:], dl) if cl else raw[:dl]
+            off = sum(sizes[si:index])
+            return data[off:off + sizes[index]]
+        pos += rd
+        si += sc
+    raise WorkshopError(f"MREA has no section {index}")
+
+
+def parse_area_collision(section: bytes) -> dict:
+    """An MREA collision section, read as CGameArea::PostConstructArea and
+    CAreaOctTree::MakeFromMemory read it (src/MetroidPrime/CGameArea.cpp, src/WorldFormat/CAreaOctTree.cpp)."""
+    (size,) = struct.unpack_from(">I", section, 4)  # first byte skipped, aligned to a word: the size
+    b = section[8:8 + size]
+    r = ed.Rd(b)
+    r.u32()
+    r.u32()
+    bounds = struct.unpack_from(">6f", b, r.p)
+    r.skip(24)
+    root_type, tree_size = r.u32(), r.u32()
+    tree_start = r.p
+    leaves, branches, depth = [], 0, 0
+
+    def walk(at, node_type, level):
+        nonlocal branches, depth
+        depth = max(depth, level)
+        if node_type == 2:
+            (count,) = struct.unpack_from(">H", b, at + 24)
+            leaves.append((struct.unpack_from(">6f", b, at), struct.unpack_from(">%dH" % count, b, at + 26)))
+        elif node_type == 1:
+            branches += 1
+            (types,) = struct.unpack_from(">H", b, at)
+            offsets = struct.unpack_from(">8I", b, at + 4)
+            for i in range(8):
+                child = types >> (2 * i) & 3
+                if child:
+                    walk(at + 36 + offsets[i], child, level + 1)
+
+    walk(tree_start, root_type, 0)
+    r.p = tree_start + tree_size
+    material_count = r.u32()
+    materials = [struct.unpack_from(">Q", b, r.p + 8 * i)[0] for i in range(material_count)]
+    r.skip(8 * material_count)
+    arrays = []
+    for _ in range(3):
+        n = r.u32()
+        arrays.append(b[r.p:r.p + n])
+        r.skip(n)
+    edge_count = r.u32()
+    edges = [struct.unpack_from(">HH", b, r.p + 4 * i) for i in range(edge_count)]
+    r.skip(4 * edge_count)
+    index_count = r.u32() // 3 * 3
+    surface = struct.unpack_from(">%dH" % index_count, b, r.p)
+    r.skip(2 * index_count)
+    r.u32()
+    neighbors = struct.unpack_from(">%dH" % index_count, b, r.p)
+    r.skip(2 * index_count)
+    vertex_count = r.u32()
+    vertices = [struct.unpack_from(">3f", b, r.p + 12 * i) for i in range(vertex_count)]
+    r.skip(12 * vertex_count)
+    return {"bounds": bounds, "leaves": leaves, "branches": branches, "depth": depth, "tree_bytes": tree_size,
+            "materials": materials, "vertex_materials": arrays[0], "edge_materials": arrays[1],
+            "triangle_materials": arrays[2], "edges": edges, "surface": surface, "neighbors": neighbors,
+            "vertices": vertices, "leftover": len(b) - r.p}
+
+
+def material_names(flags: int) -> list:
+    return [MATERIAL_BITS.get(bit, f"bit{bit}") for bit in range(64) if flags >> bit & 1]
+
+
+def collision_report(c: dict) -> dict:
+    """What a room's collision holds, and whether it follows the rules tools/mcp and PWE's
+    CCollisionCooker write by (docs/MCP_WORKSHOP.md)."""
+    tris = len(c["surface"]) // 3
+    mats, edges, surface = c["materials"], c["edges"], c["surface"]
+
+    def corners(t):  # CCollisionPrimitiveData::GetTriangle
+        e0, e1 = edges[surface[3 * t]], edges[surface[3 * t + 1]]
+        flipped = mats[c["triangle_materials"][t]] & FLIPPED
+        return (e0[1], e0[0], e1[0]) if flipped else (e0[0], e0[1], e1[1])
+
+    slot_order = neighbor_ok = neighbor_set = flipped = 0
+    for t in range(tris):
+        v = corners(t)
+        flipped += bool(mats[c["triangle_materials"][t]] & FLIPPED)
+        if all({*edges[surface[3 * t + i]]} == {v[i], v[(i + 1) % 3]} for i in range(3)):
+            slot_order += 1
+        for i in range(3):
+            n = c["neighbors"][3 * t + i]
+            if n != 0xFFFF:
+                neighbor_set += 1
+                neighbor_ok += n < tris and surface[3 * t + i] in surface[3 * n:3 * n + 3]
+    reached = {t for _, ts in c["leaves"] for t in ts}
+    per_leaf = [len(ts) for _, ts in c["leaves"]] or [0]
+    uses = {}
+    for m in c["triangle_materials"]:
+        uses[m] = uses.get(m, 0) + 1
+    return {
+        "triangles": tris, "vertices": len(c["vertices"]), "edges": len(edges),
+        "materials": [{"index": i, "flags": f"0x{f:016X}", "names": material_names(f), "triangles": uses.get(i, 0)}
+                      for i, f in enumerate(mats)],
+        "flipped_triangles": flipped,
+        "any_material_has_solid_bit": any(f >> 59 & 1 for f in mats),
+        "edge_or_vertex_material_with_bit24": sum(bool(mats[m] & FLIPPED) for m in c["edge_materials"] + c["vertex_materials"]),
+        "edge_slots_follow_corners": f"{slot_order}/{tris}",
+        "neighbours_share_their_edge": f"{neighbor_ok}/{neighbor_set} (and {3 * tris - neighbor_set} with none)",
+        "octree": {"leaves": len(c["leaves"]), "branches": c["branches"], "depth": c["depth"],
+                   "triangles_per_leaf_max": max(per_leaf), "triangles_per_leaf_mean": round(sum(per_leaf) / len(per_leaf), 1),
+                   "tree_bytes": c["tree_bytes"], "triangles_reached": f"{len(reached)}/{tris}"},
+        "bytes_left_over": c["leftover"],
+    }
+
+
 # ---------------------------------------------------------------------------- disc
 def parse_layer_table(mlvl: bytes, end: int, area_count: int) -> list:
     """Per area, [(layer name, active by default)], from the MLVL past its area list.
@@ -639,6 +782,11 @@ class Disc:
             return matches[0]
         raise WorkshopError(f"No single area of {world['name']} matches {text!r} ({len(matches)} partial matches); "
                             "use echoes_disc_list_areas to see them.")
+
+    def collision(self, area: dict) -> dict:
+        """The room's collision (parse_area_collision of its MREA's collision section)."""
+        mrea = self.get("MREA", area["mrea"])
+        return parse_area_collision(mrea_section(mrea, struct.unpack_from(">32I", mrea, 0)[COLLISION_SECTION]))
 
     def layers(self, area: dict) -> list:
         """[[ScriptObject]] per script layer of an area (decompressing only its script blocks)."""

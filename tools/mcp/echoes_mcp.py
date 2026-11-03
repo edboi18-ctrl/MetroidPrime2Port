@@ -282,6 +282,24 @@ def _strip(entries: list) -> list:
     return out
 
 
+@mcp.tool(name="echoes_disc_room_collision", annotations=READ, structured_output=False)
+@tool_errors
+def disc_room_collision(
+    world: Annotated[str, Field(description="World name or MLVL ID.")],
+    area: Annotated[str, Field(description="Area slot, name, internal name or MREA ID.")],
+) -> str:
+    """A room's collision as the game reads it: triangle, vertex and edge counts, each material's
+    flags by name and how many triangles use it, the octree's shape, and checks of the rules Prime
+    World Editor's collision writer follows (edge slots follow the corners, neighbours share their
+    edge, the flipped bit only on triangles). Use it to pick materials for new rooms and to confirm
+    those rules on retail data."""
+    d = disc()
+    w = d.world(world)
+    a = d.area(w, area)
+    report = ws.collision_report(d.collision(a))
+    return f"# Collision of {d.area_name(a)} (`{a['iname']}`)\n" + ws.to_json(report)
+
+
 @mcp.tool(name="echoes_disc_find_resource", annotations=READ, structured_output=False)
 @tool_errors
 def disc_find_resource(
