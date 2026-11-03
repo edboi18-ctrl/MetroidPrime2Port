@@ -143,6 +143,7 @@
 #include "MetaRender/AmbientLightScale.hpp"
 #include "MetaRender/CCubeRenderer.hpp"
 #ifdef TARGET_PC
+#include "port_bloom_rules.h"
 #include "port_collision_view.h"
 #include "Kyoto/Graphics/CCubeMaterial.hpp"
 #include "Kyoto/Graphics/CGX.hpp"
@@ -1632,6 +1633,21 @@ void CStateManager::DrawWorld(const CInGameGuiManagerSet& gui) {
     CScopedProfiler reflectionProfile(rstl::string_l("*PlayerReflection"), true);
     CacheReflection();
   }
+#ifdef TARGET_PC
+  // Port: bloom over the world as drawn so far, arm cannon included, and under what follows: the
+  // Dark and Echo visors' pictures, the camera filters and blurs, and the HUD (CMFGame::DrawGui).
+  // Those two visors draw their own picture, not the room's light, so they keep none (as MP1's port
+  // leaves thermal and X-ray). One player only: the post covers the whole EFB, and each split-screen
+  // viewport would bloom the others again.
+  if (PortOverlay::Bloom() && PortOverlay::BloomStrength() > 0 && !IsMultiplayer() &&
+      visor != CPlayerState::kPV_Dark && visor != CPlayerState::kPV_Echo) {
+    float tone[3][4];
+    float tints[5][3];
+    PortBloom::ToneRows(tone);
+    PortBloom::Tints(PortOverlay::BloomStrength(), tints);
+    GXPortPostProcess(GX_TRUE, PortBloom::Threshold(PortOverlay::BloomThreshold()), tints, tone, 0, 0, 0.f, 0.f);
+  }
+#endif
 
   SetParticleAlphaUpdate(false);
   CParticleGen::sDrawFlags = 0;

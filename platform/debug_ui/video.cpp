@@ -4,6 +4,7 @@
 
 #include "debug_ui_internal.h"
 
+#include "port_bloom_rules.h"
 #include "port_gpu_driver.h"
 #include "port_input_remap_ui.h"
 #include "port_overlay.h"
@@ -329,6 +330,21 @@ void DrawVideoQuality() {
                              ImGuiSliderFlags_AlwaysClamp));
     ImGui::SetItemTooltip("How bright the PBR maps' highlights are. 100%% is as computed; each light's\n"
                           "highlight is already held to what the game's lighting allows.");
+  }
+  // Read each frame by CStateManager::DrawWorld.
+  Changed(ImGui::Checkbox("Bloom", &sBloom));
+  ImGui::SetItemTooltip("Bright lights and highlights glow into the picture around them, as a camera\n"
+                        "sees them: drawn over the world before the visor and the HUD, so the HUD\n"
+                        "stays sharp. Not in the Dark and Echo visors, which draw their own picture.\n"
+                        "Turn off a ReShade bloom (such as SOLARIS) with it, or both add up.");
+  if (sBloom) {
+    Changed(ImGui::SliderInt("Bloom strength", &sBloomStrength, PortBloom::kStrengthMin, PortBloom::kStrengthMax,
+                             "%d%%", ImGuiSliderFlags_AlwaysClamp));
+    ImGui::SetItemTooltip("How much the glow adds; 0%% adds none.");
+    Changed(ImGui::SliderInt("Bloom threshold", &sBloomThreshold, PortBloom::kThresholdMin,
+                             PortBloom::kThresholdMax, "%d%%", ImGuiSliderFlags_AlwaysClamp));
+    ImGui::SetItemTooltip("How bright a pixel must be drawn (of white) to glow: lower makes more of the\n"
+                          "picture glow, higher only the lights.");
   }
   // Applied by ApplyRenderScale from Draw, through PortVideo::DrawScale (dynamic resolution's while
   // it has lowered the scale).

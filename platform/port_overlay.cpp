@@ -14,6 +14,7 @@
 #include "port_video.h"
 #include "port_env.h"
 #include "port_overlay_internal.h"
+#include "port_bloom_rules.h"
 #include "port_logfile.h"
 #include "port_mouse.h"
 #include "port_radial.h"
@@ -1938,6 +1939,9 @@ int sCannonReflectionBlur = 70;
 int sCannonReflectionStrength = 60;
 int sReflectionRefresh = 3;
 int sReflectionResolution = 64;
+bool sBloom = false;
+int sBloomStrength = PortBloom::kStrengthDefault;
+int sBloomThreshold = PortBloom::kThresholdDefault;
 PortGraphicsBackend::EGraphicsBackend sGraphicsBackend = PortGraphicsBackend::kGraphicsBackend_Auto;
 PortGraphicsBackend::EGraphicsBackend sGraphicsBackendAtStart = PortGraphicsBackend::kGraphicsBackend_Auto;
 bool sOpenGles = false;
@@ -2060,6 +2064,21 @@ int ReflectionResolution() {
   ReadEnv();
   const int size = EnvIntIn("MP2_REFLECTION_RESOLUTION", sReflectionResolution, 32, 128);
   return size >= 128 ? 128 : size >= 64 ? 64 : 32;
+}
+
+bool Bloom() {
+  ReadEnv();
+  return EnvBool("MP2_BLOOM", sBloom);
+}
+
+int BloomStrength() {
+  ReadEnv();
+  return EnvIntIn("MP2_BLOOM_STRENGTH", sBloomStrength, PortBloom::kStrengthMin, PortBloom::kStrengthMax);
+}
+
+int BloomThreshold() {
+  ReadEnv();
+  return EnvIntIn("MP2_BLOOM_THRESHOLD", sBloomThreshold, PortBloom::kThresholdMin, PortBloom::kThresholdMax);
 }
 
 bool OpenGles() {

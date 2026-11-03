@@ -917,6 +917,11 @@ if(AURORA_SDL3_TARGET)
     target_include_directories(port_pbr_rules_tests PRIVATE platform/include)
     add_test(NAME port_pbr_rules_tests COMMAND port_pbr_rules_tests)
     set_tests_properties(port_pbr_rules_tests PROPERTIES TIMEOUT 30 LABELS port)
+    # Header-only (port_bloom_rules.h): the bloom's tone curve, threshold and tints.
+    add_executable(port_bloom_rules_tests tests/port_bloom_rules.cpp)
+    target_include_directories(port_bloom_rules_tests PRIVATE platform/include)
+    add_test(NAME port_bloom_rules_tests COMMAND port_bloom_rules_tests)
+    set_tests_properties(port_bloom_rules_tests PROPERTIES TIMEOUT 30 LABELS port)
 
     # Header-only (port_input_pad.h): the MP2_INPUT `pN.` prefix parser.
     add_executable(port_input_pad_tests tests/port_input_pad.cpp)

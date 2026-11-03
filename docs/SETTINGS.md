@@ -433,6 +433,13 @@ Video > Quality and Frame rate:
   64): Quality > Reflection refresh / resolution (shown while Live reflections is on), the probe's
   faces drawn a frame (every 6, 3, 2 frames or every frame for the whole probe) and each face's size
   in EFB pixels (Aurora scales it to its 128). Env `MP2_REFLECTION_REFRESH`, `MP2_REFLECTION_RESOLUTION`.
+- `bloom` (off by default), `bloom_strength` (0..200, percent; default 100) and `bloom_threshold`
+  (50..95, percent of display white; default 90): Quality > Bloom / Bloom strength / Bloom threshold,
+  Aurora's Remastered bloom (`GXPortPostProcess`) over the world, drawn in `CStateManager::DrawWorld`
+  after the arm cannon and before the visors' pictures, the camera filters and the HUD; not in the
+  Dark or Echo visor, nor split screen. MP2 has no Remastered rooms, so the tone curve its bright pass
+  undoes, the threshold and the tints are the port's own (`platform/include/port_bloom_rules.h`).
+  Env `MP2_BLOOM`, `MP2_BLOOM_STRENGTH`, `MP2_BLOOM_THRESHOLD`.
 - `MP2_PIPELINE_SEED=0` ignores the embedded pipeline cache seed (docs/RELEASING.md).
 - Pipeline memory (env only, not saved; `platform/port_memory_log.cpp`): `MP2_PIPELINE_LAZY=0|1`
   builds pipelines when first drawn instead of all at startup (default on for Android, where a

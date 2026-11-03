@@ -146,6 +146,21 @@ Surfaces with PBR maps
 reflect the probe too, at the level their roughness asks, dimmed where the game lights them little.
 Until all six faces are drawn the materials keep their own look.
 
+**Bloom.** F1 > Video > Quality > Bloom (`bloom`, off by default): `CStateManager::DrawWorld` calls
+Aurora's `GXPortPostProcess`, the Remastered bloom the MP1 port draws (`extern/aurora/lib/gfx/bloom.cpp`:
+a bright pass at 1/4 size, four downsamples to 1/64, four upsamples back, `b / (1 + b)` added to the
+frame), after the arm cannon and before the Dark and Echo visors' pictures, the camera filters and the
+HUD, so the HUD never glows. It is off in those two visors, which draw their own picture, and in split
+screen, where the post would cover the other viewports. The bright pass reads the EFB through a tone
+curve, undoing it to get the light back; MP2's rooms have no Remastered data, so
+`platform/include/port_bloom_rules.h` supplies one: the colour as drawn up to 0.6 linear, then a
+shoulder that reaches white only at infinite light, so a pixel drawn near white counts as brighter
+light (up to the pass's cap of 4.0, drawn at about 98%) and blooms more. The threshold (Quality > Bloom
+threshold, 50-95%, default 90%) is the brightness, as drawn, at which a pixel starts to glow. The five
+levels are weighted alike, and the strength (0-200%) scales the bright pass they all come from. The
+composite adds the bloom to the frame as drawn, so the curve changes nothing else. A ReShade bloom
+on top adds a second glow.
+
 Reload is a savestate-style world restart: `PortSaveState::RequestModReload` writes the current state
 to the undo slot and loads it back; `CMainFlow` (`kCFS_Game`) calls `ReloadModsNow` after the old world
 is gone, which closes every PAK, runs `PortMods::Reload` (rescan, overlay rebuilt through

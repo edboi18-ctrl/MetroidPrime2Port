@@ -712,6 +712,13 @@ int CannonReflectionStrength();
 // (`MP2_REFLECTION_RESOLUTION`; default 64).
 int ReflectionFacesPerFrame();
 int ReflectionResolution();
+// Bloom over the world, under the visors and the HUD (`MP2_BLOOM`, F1 > Video > Quality; off by
+// default): Aurora's Remastered bloom (GXPortPostProcess) with the port's own curve and tints
+// (port_bloom_rules.h). Strength 0..200% (`MP2_BLOOM_STRENGTH`; default 100) and the brightness it
+// starts at, 50..95% of display white (`MP2_BLOOM_THRESHOLD`; default 90).
+bool Bloom();
+int BloomStrength();
+int BloomThreshold();
 // F1 > Video > Compatibility, read when the GPU device is made (so after a restart):
 // OpenGL ES instead of Vulkan (`MP2_OPENGLES`, only where Aurora has the backend), the Adreno
 // storage clamp (-1 auto; Aurora reads `MP2_STORAGE_CLAMP` itself), the Dawn driver workarounds
