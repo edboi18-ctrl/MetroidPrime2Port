@@ -725,6 +725,13 @@ int BloomThreshold();
 // (`MP2_ACTOR_SHADOW_STRENGTH`; default 60).
 bool ActorShadows();
 int ActorShadowStrength();
+// Ambient occlusion over the world, under the arm cannon, the visors and the HUD (`MP2_AMBIENT_OCCLUSION`,
+// F1 > Video > Quality; off by default): Aurora's GXPortAmbientOcclusion (Scalable Ambient Obscurance)
+// with port_ao_rules.h's parameters. Strength 0..200% (`MP2_AO_STRENGTH`; default 100) and radius
+// 25..300% of a world unit (`MP2_AO_RADIUS`; default 100).
+bool AmbientOcclusion();
+int AoStrength();
+int AoRadius();
 // F1 > Video > Compatibility, read when the GPU device is made (so after a restart):
 // OpenGL ES instead of Vulkan (`MP2_OPENGLES`, only where Aurora has the backend), the Adreno
 // storage clamp (-1 auto; Aurora reads `MP2_STORAGE_CLAMP` itself), the Dawn driver workarounds

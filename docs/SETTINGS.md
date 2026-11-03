@@ -447,6 +447,13 @@ Video > Quality and Frame rate:
   multiply decal that reads it (`GXPortActorShadowCasters` / `GXPortActorShadowDecal`). Up to 16 a
   frame; the rest, and anything Aurora can't record, keep the blob. Env `MP2_ACTOR_SHADOWS`,
   `MP2_ACTOR_SHADOW_STRENGTH`.
+- `ambient_occlusion` (off by default), `ao_strength` (0..200, percent; default 100) and `ao_radius`
+  (25..300, percent of a world unit; default 100): Quality > Ambient occlusion / strength / radius,
+  Aurora's screen-space ambient obscurance (`GXPortAmbientOcclusion`, `extern/aurora/lib/gfx/ssao.cpp`)
+  over the world in `CStateManager::DrawWorld`, before the scan visor's markers, the fog planes, the
+  Dark World haze, the arm cannon and the HUD; not in the Dark or Echo visor nor split screen. Needs a
+  device with core features (it reads the depth buffer). Env `MP2_AMBIENT_OCCLUSION`, `MP2_AO_STRENGTH`,
+  `MP2_AO_RADIUS`.
 - `MP2_PIPELINE_SEED=0` ignores the embedded pipeline cache seed (docs/RELEASING.md).
 - Pipeline memory (env only, not saved; `platform/port_memory_log.cpp`): `MP2_PIPELINE_LAZY=0|1`
   builds pipelines when first drawn instead of all at startup (default on for Android, where a

@@ -143,6 +143,7 @@
 #include "MetaRender/AmbientLightScale.hpp"
 #include "MetaRender/CCubeRenderer.hpp"
 #ifdef TARGET_PC
+#include "port_ao_rules.h"
 #include "port_bloom_rules.h"
 #include "port_collision_view.h"
 #include "Kyoto/Graphics/CCubeMaterial.hpp"
@@ -1580,6 +1581,26 @@ void CStateManager::DrawWorld(const CInGameGuiManagerSet& gui) {
 #endif
     player->Render(*this);
   }
+#ifdef TARGET_PC
+  // Port: ambient occlusion over the world as drawn so far (port_ao_rules.h, GXPortAmbientOcclusion):
+  // before the scan visor's markers, the fog planes, the Dark World's haze and the arm cannon, so none
+  // of them is darkened. Off in the Dark and Echo visors (their own picture) and split screen (the pass
+  // covers the whole EFB).
+  if (PortOverlay::AmbientOcclusion() && PortOverlay::AoStrength() > 0 && !IsMultiplayer() &&
+      visor != CPlayerState::kPV_Dark && visor != CPlayerState::kPV_Echo) {
+    const CGraphics::CProjectionState& proj = CGraphics::GetProjectionState();
+    if (proj.IsPerspective()) {
+      const PortAo::Params ao =
+          PortAo::Make(proj.GetLeft(), proj.GetRight(), proj.GetTop(), proj.GetBottom(), proj.GetNear(), proj.GetFar(),
+                       CGraphics::GetDepthNear(), CGraphics::GetDepthFar(), PortOverlay::AoStrength(),
+                       PortOverlay::AoRadius());
+      static_assert(sizeof(PortAo::Params) == sizeof(GXPortAoParams));
+      GXPortAoParams params;
+      memcpy(&params, &ao, sizeof(params));
+      GXPortAmbientOcclusion(&params);
+    }
+  }
+#endif
   if (visor == CPlayerState::kPV_Scan) {
     CScopedProfiler visorProfile(rstl::string_l("*GameVisor"), true);
     CapturePlayerTextures();

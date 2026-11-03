@@ -927,6 +927,11 @@ if(AURORA_SDL3_TARGET)
     target_include_directories(port_actor_shadow_rules_tests PRIVATE platform/include)
     add_test(NAME port_actor_shadow_rules_tests COMMAND port_actor_shadow_rules_tests)
     set_tests_properties(port_actor_shadow_rules_tests PROPERTIES TIMEOUT 30 LABELS port)
+    # Header-only (port_ao_rules.h): the ambient occlusion's parameters.
+    add_executable(port_ao_rules_tests tests/port_ao_rules.cpp)
+    target_include_directories(port_ao_rules_tests PRIVATE platform/include)
+    add_test(NAME port_ao_rules_tests COMMAND port_ao_rules_tests)
+    set_tests_properties(port_ao_rules_tests PROPERTIES TIMEOUT 30 LABELS port)
 
     # Header-only (port_input_pad.h): the MP2_INPUT `pN.` prefix parser.
     add_executable(port_input_pad_tests tests/port_input_pad.cpp)

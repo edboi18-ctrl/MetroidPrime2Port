@@ -15,6 +15,7 @@
 #include "port_env.h"
 #include "port_overlay_internal.h"
 #include "port_actor_shadow_rules.h"
+#include "port_ao_rules.h"
 #include "port_bloom_rules.h"
 #include "port_logfile.h"
 #include "port_mouse.h"
@@ -1945,6 +1946,9 @@ int sBloomStrength = PortBloom::kStrengthDefault;
 int sBloomThreshold = PortBloom::kThresholdDefault;
 bool sActorShadows = false;
 int sActorShadowStrength = PortActorShadow::kStrengthDefault;
+bool sAmbientOcclusion = false;
+int sAoStrength = PortAo::kStrengthDefault;
+int sAoRadius = PortAo::kRadiusDefault;
 PortGraphicsBackend::EGraphicsBackend sGraphicsBackend = PortGraphicsBackend::kGraphicsBackend_Auto;
 PortGraphicsBackend::EGraphicsBackend sGraphicsBackendAtStart = PortGraphicsBackend::kGraphicsBackend_Auto;
 bool sOpenGles = false;
@@ -2093,6 +2097,21 @@ int ActorShadowStrength() {
   ReadEnv();
   return EnvIntIn("MP2_ACTOR_SHADOW_STRENGTH", sActorShadowStrength, PortActorShadow::kStrengthMin,
                   PortActorShadow::kStrengthMax);
+}
+
+bool AmbientOcclusion() {
+  ReadEnv();
+  return EnvBool("MP2_AMBIENT_OCCLUSION", sAmbientOcclusion);
+}
+
+int AoStrength() {
+  ReadEnv();
+  return EnvIntIn("MP2_AO_STRENGTH", sAoStrength, PortAo::kStrengthMin, PortAo::kStrengthMax);
+}
+
+int AoRadius() {
+  ReadEnv();
+  return EnvIntIn("MP2_AO_RADIUS", sAoRadius, PortAo::kRadiusMin, PortAo::kRadiusMax);
 }
 
 bool OpenGles() {

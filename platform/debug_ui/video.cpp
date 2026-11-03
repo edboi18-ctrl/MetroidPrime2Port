@@ -5,6 +5,7 @@
 #include "debug_ui_internal.h"
 
 #include "port_actor_shadow_rules.h"
+#include "port_ao_rules.h"
 #include "port_bloom_rules.h"
 #include "port_gpu_driver.h"
 #include "port_input_remap_ui.h"
@@ -356,6 +357,20 @@ void DrawVideoQuality() {
     Changed(ImGui::SliderInt("Actor shadow strength", &sActorShadowStrength, PortActorShadow::kStrengthMin,
                              PortActorShadow::kStrengthMax, "%d%%", ImGuiSliderFlags_AlwaysClamp));
     ImGui::SetItemTooltip("How dark the actor shadows are.");
+  }
+  // Read each frame by CStateManager::DrawWorld.
+  Changed(ImGui::Checkbox("Ambient occlusion", &sAmbientOcclusion));
+  ImGui::SetItemTooltip("Darkens creases, corners and the ground around objects, where less of the room's\n"
+                        "light reaches, from the depth buffer. Drawn before the arm cannon, the visor and the\n"
+                        "HUD, so they stay clean, and with any anti-aliasing or resolution. Turn off a ReShade\n"
+                        "AO (such as LSAO or MXAO) with it, or both darken.");
+  if (sAmbientOcclusion) {
+    Changed(ImGui::SliderInt("Ambient occlusion strength", &sAoStrength, PortAo::kStrengthMin, PortAo::kStrengthMax,
+                             "%d%%", ImGuiSliderFlags_AlwaysClamp));
+    ImGui::SetItemTooltip("How dark the occlusion gets; 0%% is none.");
+    Changed(ImGui::SliderInt("Ambient occlusion radius", &sAoRadius, PortAo::kRadiusMin, PortAo::kRadiusMax, "%d%%",
+                             ImGuiSliderFlags_AlwaysClamp));
+    ImGui::SetItemTooltip("How far around a point geometry darkens it: 100%% is about a metre.");
   }
   // Applied by ApplyRenderScale from Draw, through PortVideo::DrawScale (dynamic resolution's while
   // it has lowered the scale).

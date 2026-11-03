@@ -175,6 +175,21 @@ height (`CSimpleShadow`'s max object height). The decal keeps to the shadow's bo
 facing up within 60 degrees. One layer each, so 16 a frame; the rest keep the blob. The quad is flat, as
 the blob is, so on uneven ground the shadow cuts into the floor as the blob does.
 
+**Ambient occlusion.** F1 > Video > Quality > Ambient occlusion (`ambient_occlusion`, off by default):
+`CStateManager::DrawWorld` calls Aurora's `GXPortAmbientOcclusion` (`extern/aurora/lib/gfx/ssao.cpp`)
+after the world and the actors and before the scan visor's markers, the fog planes, the Dark World
+haze, the arm cannon and the HUD. It is McGuire, Mara and Luebke's Scalable Ambient Obscurance (HPG
+2012) without its depth MIP chain: at half the EFB's size, each pixel's view position from the depth
+buffer (reversed Z, the world's GX z range 0.125-1; nearer is the viewmodel, the far plane the sky), its
+face normal from the neighbouring positions, and the AlchemyAO estimator (the paper's equation 1) over 9
+samples on a 7-turn spiral within the radius; two 7-tap bilateral blurs; then the frame multiplied by
+it in linear light, the four nearest half-size texels weighted by depth. It fades out from 40 to 80
+units away. A flat surface is never darkened (the estimator's `v . n` is 0 on a plane), so it adds
+contact darkening in creases and under objects on top of the lightmaps' baked shading rather than
+replacing it. `platform/include/port_ao_rules.h` holds the intensity (sigma 0.6 at 100%) and radius
+(1 unit at 100%). It works with MSAA and any render scale, unlike a ReShade AO, which loses the depth
+buffer to MSAA and draws over the HUD.
+
 **No sun shadows.** Aurora's sun cascades (`GXPortSetShadowFrame`) are received only by Remastered's
 PBR materials (`shadow_receives` in `extern/aurora/lib/gx/gx.hpp` needs `pbr != 0`), which MP2's TEV
 materials are not, and MP2's rooms are lightmapped: the lightmaps already hold the static shadows, so a

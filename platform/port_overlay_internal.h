@@ -154,6 +154,9 @@ extern int sBloomStrength;        // Video > Quality > Bloom strength, 0..200 (%
 extern int sBloomThreshold;       // Video > Quality > Bloom threshold, 50..95 (% of display white)
 extern bool sActorShadows;        // Video > Quality > Actor shadows (CSimpleShadow::PortRenderSilhouette)
 extern int sActorShadowStrength;  // Video > Quality > Actor shadow strength, 0..100 (%)
+extern bool sAmbientOcclusion;    // Video > Quality > Ambient occlusion (CStateManager::DrawWorld, port_ao_rules.h)
+extern int sAoStrength;           // Video > Quality > Ambient occlusion strength, 0..200 (%)
+extern int sAoRadius;             // Video > Quality > Ambient occlusion radius, 25..300 (% of a unit)
 extern PortGraphicsBackend::EGraphicsBackend sGraphicsBackend; // renderer choice (Windows, desktop Linux)
 extern PortGraphicsBackend::EGraphicsBackend sGraphicsBackendAtStart;
 extern bool sOpenGles;

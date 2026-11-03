@@ -1,6 +1,7 @@
 #include "command_processor.hpp"
 
 #include "../gfx/bloom.hpp"
+#include "../gfx/ssao.hpp"
 #include "../gfx/volfog.hpp"
 #include "../gfx/thermal.hpp"
 #include "../gfx/xray.hpp"
@@ -1542,6 +1543,14 @@ void handle_aurora(ByteReader& reader) noexcept {
       g_gxState.surfacePbr = stage;
       g_gxState.dirty |= DirtyPipeline;
     }
+  } else if (subCmd == GX_AURORA_PORT_AMBIENT_OCCLUSION) {
+    gfx::ssao::Params params;
+    u32 words[sizeof(params) / sizeof(u32)];
+    for (u32& word : words) {
+      word = reader.read<u32>();
+    }
+    std::memcpy(&params, words, sizeof(params));
+    gfx::ssao::record(params);
   } else if (subCmd == GX_AURORA_PORT_ENV_PROBE) {
     const bool on = reader.read<u8>() != 0;
     if (g_gxState.envProbe != on) {

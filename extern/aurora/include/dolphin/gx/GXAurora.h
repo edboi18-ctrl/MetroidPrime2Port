@@ -382,6 +382,9 @@ extern "C" {
 // Port extension: environment-mapped stages of the following draws read the live probe
 // (GXPortSetEnvProbe). Payload: u8 on.
 #define GX_AURORA_PORT_ENV_PROBE 0x0072
+// Port extension: screen-space ambient occlusion over the EFB so far (GXPortAmbientOcclusion). Payload:
+// 16 f32 words (gfx/ssao.hpp's Params).
+#define GX_AURORA_PORT_AMBIENT_OCCLUSION 0x0073
 
 #define GX2_SET_POLYGON_OFFSET 0x1000
 

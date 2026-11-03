@@ -313,6 +313,24 @@ GXBool GXPortVolumetricFog(const GXPortFogParams* params);
 // opaque ones per pixel as the full-screen pass, blended and additive ones per vertex (blended:
 // colour T + in-scatter, additive: colour T). Harmless when no fog was drawn.
 void GXPortVolumetricFogEnd(void);
+// Port extension: screen-space ambient occlusion over the EFB as drawn so far, from its depth alone
+// (lib/gfx/ssao.cpp: Scalable Ambient Obscurance, McGuire, Mara and Luebke, HPG 2012). Pixels in the
+// world's GX z range (depth[2] to depth[3]) are darkened where nearby geometry hides them, by the
+// obscurance computed at half size and smoothed along depth edges; nearer (the viewmodel) and the far
+// plane are left alone, and the effect fades out between fade start and end (view depth). Ends the
+// current pass. False when it could not be recorded (no core features, the HDR scene, draw-id view).
+// View space is GX's (x right, y up, z towards the camera).
+typedef struct {
+  f32 frustum[4]; // left, right, top, bottom at a view depth of 1
+  f32 depth[4];   // near, far, and the GX z range the world draws in (min, max)
+  f32 radius;     // world units
+  f32 intensity;  // the estimator's sigma: 0 none
+  f32 bias;       // per unit of view depth
+  f32 fadeStart;
+  f32 fadeEnd;
+  f32 pad[3];
+} GXPortAoParams;
+GXBool GXPortAmbientOcclusion(const GXPortAoParams* params);
 // Marks the draws up to the next call with false as particles' (inside the volumetric fog). As
 // Remastered's particle renderers, they fog themselves per vertex as colour T + in-scatter unless
 // their blend mode is additive or premultiplied (the static render state's "no fog" flag), when
