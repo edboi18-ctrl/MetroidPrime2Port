@@ -290,6 +290,16 @@ void DrawVideoQuality() {
   Changed(ImGui::Checkbox("Live reflections", &sLiveReflections));
   ImGui::SetItemTooltip("The arm cannon (and surfaces with PBR maps) reflect the room around you: a small\n"
                         "cube map of the world, redrawn a side each frame. Costs a little GPU time.");
+  if (sLiveReflections) {
+    // Applied by PortVideo::Frame through aurora_set_env_probe_look, on change.
+    Changed(ImGui::SliderInt("Cannon reflection blur", &sCannonReflectionBlur, 0, 100, "%d%%",
+                             ImGuiSliderFlags_AlwaysClamp));
+    ImGui::SetItemTooltip("0%% is a sharp mirror of the room; higher blurs it towards a matte, brushed\n"
+                          "metal sheen.");
+    Changed(ImGui::SliderInt("Cannon reflection strength", &sCannonReflectionStrength, 0, 200, "%d%%",
+                             ImGuiSliderFlags_AlwaysClamp));
+    ImGui::SetItemTooltip("How bright the arm cannon's reflection is; 100%% is the room as captured.");
+  }
   if (sPbrMaps) {
     // Applied by PortVideo::Frame through aurora_set_pbr_highlight, on change.
     Changed(ImGui::SliderInt("PBR highlight strength", &sPbrHighlight, 0, 200, "%d%%",

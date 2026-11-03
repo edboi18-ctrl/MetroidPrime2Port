@@ -984,9 +984,10 @@ auto lighting_func(const ShaderConfig& config, const ColorChannelConfig& cc, u8 
 // environment-mapped stage (texture coordinates from the normal) samples the live probe instead
 // of its texture, along the view reflected about the per-pixel normal, through GXSetPBRProbe's
 // view-to-probe rows (surface_probe, its weight in [0].w: 0 until the probe has been filled, and
-// the stage keeps its texture). surface_pbr.y is the probe level read (a little blur), z how much
-// of the probe replaces the texture. The probe is the display-referred scene, as the TEV's colours
-// are. The stage's alpha stays the texture's. explicit-level sampling, so no derivatives.
+// the stage keeps its texture). surface_pbr.y is the probe level read (0 sharp .. MipCount-1
+// blurriest: aurora_set_env_probe_look's blur), z scales the reflection (its strength), so a
+// blurred, dimmed probe reads as matte metal. The probe is the display-referred scene, as the TEV's
+// colours are. The stage's alpha stays the texture's. Explicit-level sampling, so no derivatives.
 static std::string port_env_probe(u32 stages) {
   std::string out;
   for (u32 i = 0; i < MaxTevStages; ++i) {
@@ -1000,8 +1001,8 @@ static std::string port_env_probe(u32 stages) {
         let pe{0}_d = ubuf.surface_probe[0].xyz * pe{0}_r.x + ubuf.surface_probe[1].xyz * pe{0}_r.y +
                       ubuf.surface_probe[2].xyz * pe{0}_r.z;
         let pe{0}_c = textureSampleLevel(pbr_cube, pbr_cube_samp, pe{0}_d, ubuf.surface_pbr.y).rgb;
-        sampled{0} = vec4f(mix(sampled{0}.rgb, pe{0}_c,
-                               clamp(ubuf.surface_pbr.z * ubuf.surface_probe[0].w, 0.0, 1.0)), sampled{0}.a);
+        sampled{0} = vec4f(mix(sampled{0}.rgb, pe{0}_c * max(ubuf.surface_pbr.z, 0.0),
+                               clamp(ubuf.surface_probe[0].w, 0.0, 1.0)), sampled{0}.a);
     }})""",
                        i);
   }
@@ -4377,7 +4378,7 @@ fn vf_apply_hdr(c: vec4f, fog: vec4f, w: f32) -> vec4f {
     uniBufAttrs += "\n    hud_dyin: vec4f,";
   }
   if (info.usesSurfacePbr) {
-    uniBufAttrs += "\n    surface_pbr: vec4f, // x: highlight strength, y: env stages' probe level, z: their probe weight";
+    uniBufAttrs += "\n    surface_pbr: vec4f, // x: highlight strength, y: env stages' probe level, z: their reflection strength";
     uniBufAttrs += "\n    surface_probe: mat3x4f, // GXSetPBRProbe: view to probe rows, weight in [0].w";
   }
   if (info.usesPTTexMtx.any()) {

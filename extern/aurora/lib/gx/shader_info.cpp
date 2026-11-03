@@ -719,9 +719,12 @@ static void fill_uniform(ByteBuffer& buf, const ShaderInfo& info) noexcept {
     buf.append(g_gxState.hudDyin);
   }
   if (info.usesSurfacePbr) {
-    // y: the probe level an environment stage reads (of 0..MipCount-1; a little blur), z: how
-    // much of the probe replaces its texture.
-    buf.append(Vec4<float>{surface_pbr_highlight(), 1.f, 1.f, 0.f});
+    // y: the probe level an environment stage reads (0..MipCount-1), z: its reflection's strength
+    // (aurora_set_env_probe_look).
+    float envLevel = 0.f;
+    float envStrength = 1.f;
+    env_probe_look(envLevel, envStrength);
+    buf.append(Vec4<float>{surface_pbr_highlight(), envLevel, envStrength, 0.f});
     buf.append(g_gxState.pbrProbe);
   }
   if (info.usesPTTexMtx.any()) {

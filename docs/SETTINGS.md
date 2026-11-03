@@ -424,6 +424,11 @@ Video > Quality and Frame rate:
   (`CStateManager::PortCaptureProbeFace`, one 128x128 face of a cube map around the camera a
   frame) that the arm cannon's environment maps (`GXPortSetEnvProbe`) and the PBR maps' surfaces
   reflect; env `MP2_LIVE_REFLECTIONS`.
+- `cannon_reflection_blur` (0..100, percent; default 70) and `cannon_reflection_strength` (0..200,
+  percent; default 60): Quality > Cannon reflection blur / strength (shown while Live reflections is
+  on), the arm cannon's live reflection: the probe level it reads (0% sharp, 100% the blurriest of
+  its six levels) and its brightness (`aurora_set_env_probe_look`); the defaults give a matte metal
+  sheen. Env `MP2_CANNON_REFLECTION_BLUR`, `MP2_CANNON_REFLECTION_STRENGTH`.
 - `MP2_PIPELINE_SEED=0` ignores the embedded pipeline cache seed (docs/RELEASING.md).
 - Pipeline memory (env only, not saved; `platform/port_memory_log.cpp`): `MP2_PIPELINE_LAZY=0|1`
   builds pipelines when first drawn instead of all at startup (default on for Android, where a

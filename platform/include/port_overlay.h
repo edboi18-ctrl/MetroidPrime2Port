@@ -702,6 +702,11 @@ int PbrHighlight();
 // around the camera, drawn a face a frame, that the arm cannon's environment maps and the PBR maps'
 // surfaces reflect (CStateManager::PortCaptureProbeFace); off by default.
 bool LiveReflections();
+// How the arm cannon's live reflection looks (F1 > Video > Quality, shown with Live reflections):
+// blur 0..100% (`MP2_CANNON_REFLECTION_BLUR`; 0 a sharp mirror, 100 the probe's blurriest level;
+// default 70, matte) and strength 0..200% (`MP2_CANNON_REFLECTION_STRENGTH`; default 60).
+int CannonReflectionBlur();
+int CannonReflectionStrength();
 // F1 > Video > Compatibility, read when the GPU device is made (so after a restart):
 // OpenGL ES instead of Vulkan (`MP2_OPENGLES`, only where Aurora has the backend), the Adreno
 // storage clamp (-1 auto; Aurora reads `MP2_STORAGE_CLAMP` itself), the Dawn driver workarounds

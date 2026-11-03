@@ -363,6 +363,17 @@ void Frame() {
       sAppliedPerPixel = perPixel;
       aurora_set_per_pixel_lighting(perPixel != 0);
     }
+    static int sAppliedReflectionBlur = -1;
+    static int sAppliedReflectionStrength = -1;
+    const int reflectionBlur = PortOverlay::CannonReflectionBlur();
+    const int reflectionStrength = PortOverlay::CannonReflectionStrength();
+    if (reflectionBlur != sAppliedReflectionBlur || reflectionStrength != sAppliedReflectionStrength) {
+      sAppliedReflectionBlur = reflectionBlur;
+      sAppliedReflectionStrength = reflectionStrength;
+      // Blur 0..100% over the probe's levels 0..5 (Aurora's gfx::probe::MipCount is 6).
+      aurora_set_env_probe_look(static_cast< float >(reflectionBlur) * 0.05f,
+                                static_cast< float >(reflectionStrength) / 100.f);
+    }
     static int sAppliedPbrHighlight = -1;
     const int pbrHighlight = PortOverlay::PbrHighlight();
     if (pbrHighlight != sAppliedPbrHighlight) {

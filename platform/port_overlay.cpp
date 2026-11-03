@@ -1934,6 +1934,8 @@ bool sPerPixelLighting = false;
 bool sPbrMaps = false;
 int sPbrHighlight = 100;
 bool sLiveReflections = false;
+int sCannonReflectionBlur = 70;
+int sCannonReflectionStrength = 60;
 PortGraphicsBackend::EGraphicsBackend sGraphicsBackend = PortGraphicsBackend::kGraphicsBackend_Auto;
 PortGraphicsBackend::EGraphicsBackend sGraphicsBackendAtStart = PortGraphicsBackend::kGraphicsBackend_Auto;
 bool sOpenGles = false;
@@ -2033,6 +2035,16 @@ int PbrHighlight() {
 bool LiveReflections() {
   ReadEnv();
   return EnvBool("MP2_LIVE_REFLECTIONS", sLiveReflections);
+}
+
+int CannonReflectionBlur() {
+  ReadEnv();
+  return EnvIntIn("MP2_CANNON_REFLECTION_BLUR", sCannonReflectionBlur, 0, 100);
+}
+
+int CannonReflectionStrength() {
+  ReadEnv();
+  return EnvIntIn("MP2_CANNON_REFLECTION_STRENGTH", sCannonReflectionStrength, 0, 200);
 }
 
 bool OpenGles() {

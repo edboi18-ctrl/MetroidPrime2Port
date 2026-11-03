@@ -886,5 +886,13 @@ void aurora_set_pbr_highlight(float strength) {
   (void)strength;
 #endif
 }
+void aurora_set_env_probe_look(float level, float strength) {
+#ifdef AURORA_ENABLE_GX
+  aurora::gx::set_env_probe_look(level, strength);
+#else
+  (void)level;
+  (void)strength;
+#endif
+}
 void aurora_set_timescale(float scale) { aurora::time::set_scale(scale); }
 float aurora_get_timescale() { return aurora::time::scale(); }

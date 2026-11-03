@@ -89,7 +89,10 @@ TEST(GxSurfacePbr, EnvironmentStageReadsTheProbe) {
   EXPECT_NE(source.find("surface_probe: mat3x4f,"), std::string::npos);
   EXPECT_NE(source.find("let pe2_r = reflect(normalize(in.mv_pos), pp_nrm);"), std::string::npos);
   // Replaced before the TEV stages read it.
-  EXPECT_LT(source.find("sampled2 = vec4f(mix(sampled2.rgb, pe2_c,"), source.find("// TEV stage 0"));
+  EXPECT_LT(source.find("sampled2 = vec4f(mix(sampled2.rgb, pe2_c * max(ubuf.surface_pbr.z, 0.0),"),
+            source.find("// TEV stage 0"));
+  // The level read is the uniform's (aurora_set_env_probe_look's blur).
+  EXPECT_NE(source.find("textureSampleLevel(pbr_cube, pbr_cube_samp, pe2_d, ubuf.surface_pbr.y)"), std::string::npos);
   EXPECT_EQ(source.find("pbrs_"), std::string::npos);
 }
 
