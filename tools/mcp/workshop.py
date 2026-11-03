@@ -656,6 +656,163 @@ def collision_report(c: dict) -> dict:
     }
 
 
+# ---------------------------------------------------------------------------- room geometry
+def mrea_sections(mrea: bytes) -> list:
+    """Every section of a version-0x19 MREA, in order (stored and compressed blocks)."""
+    h = struct.unpack_from(">32I", mrea, 0)
+    if h[0] != 0xDEADBEEF or h[1] < 24:
+        raise WorkshopError("not a version 0x18+ MREA")
+    nsec, nblk = h[16], h[28]
+    pos = 0x80
+    sizes = struct.unpack_from(">%dI" % nsec, mrea, pos)
+    pos += (nsec * 4 + 31) & ~31
+    blocks = [struct.unpack_from(">4I", mrea, pos + 16 * i) for i in range(nblk)]
+    pos += (nblk * 16 + 31) & ~31
+    out, si = [], 0
+    for buf, dl, cl, sc in blocks:
+        rd = ((cl or buf) + 31) & ~31
+        raw = mrea[pos:pos + rd]
+        data = ed.inflate_chunks(raw[rd - cl:], dl) if cl else raw[:dl]
+        off = 0
+        for i in range(si, si + sc):
+            out.append(data[off:off + sizes[i]])
+            off += sizes[i]
+        pos += rd
+        si += sc
+    return out
+
+
+def _counter(values) -> dict:
+    out = {}
+    for v in values:
+        out[v] = out.get(v, 0) + 1
+    return dict(sorted(out.items(), key=lambda kv: -kv[1])[:8])
+
+
+def geometry_report(mrea: bytes) -> dict:
+    """A room's world geometry walked as CGameArea::PostConstructArea and FillInStaticGeometry walk
+    it (src/MetroidPrime/CGameArea.cpp), with the facts PrimeWorldEditor's CWorldGeometryCooker
+    relies on, so retail rooms can confirm or correct them."""
+    h = struct.unpack_from(">32I", mrea, 0)
+    secs = mrea_sections(mrea)
+    model_count, layer_count = h[14], h[15]
+    s = h[17]
+    u32 = lambda b, at: struct.unpack_from(">I", b, at)[0]  # noqa: E731
+
+    # Materials (CMetroidModelInstance::GetMaterialByIndex, CCubeMaterial::SetCurrent).
+    mats = secs[s]
+    tex = u32(mats, 0)
+    at = 4 + 4 * tex
+    mat_count = u32(mats, at)
+    ends = struct.unpack_from(">%dI" % mat_count, mats, at + 4)
+    base = at + 4 + 4 * mat_count
+    materials, start = [], base
+    for e in ends:
+        flags, tc = u32(mats, start), u32(mats, start + 4)
+        materials.append((flags, u32(mats, start + 8 + 4 * tc)))
+        start = base + e
+    s += 1
+
+    surfaces, models, formats, prims = [], [], [], []
+    record_first, record_area, banks = [], [], []
+    group_sizes, consistency = [], [0, 0]
+    for m in range(model_count):
+        flags = u32(secs[s], 0)
+        n = u32(secs[s + 6], 0)
+        models.append({"short_normals": bool(flags & 1), "flags": flags, "surfaces": n})
+        rec = secs[s + 7 + n]
+        grp = secs[s + 8 + n]
+        g_count = struct.unpack_from(">H", grp, 0)[0]
+        g_table = struct.unpack_from(">%dH" % g_count, grp, 2)
+        g_members = {}
+        for g in range(g_count):
+            lo = 0 if g == 0 else g_table[g - 1]
+            hi = g_table[g]
+            idx = struct.unpack_from(">%dH" % (hi - lo), grp, 2 + 2 * g_count + 2 * lo)
+            group_sizes.append(hi - lo)
+            for i in idx:
+                g_members.setdefault(i, []).append(g)
+        for i in range(n):
+            sec = secs[s + 7 + i]
+            mat = u32(sec, 0xC)
+            dl_size = u32(sec, 0x10) & 0x7FFFFFFF
+            extra = u32(sec, 0x1C)
+            mb, sb = struct.unpack_from(">hh", sec, 0x2C)
+            banks.append((mb, sb))
+            first, area = struct.unpack_from(">HH", rec, 2 + 4 * i)
+            record_first.append((first == 0, first == i))
+            record_area.append((m, i, area))
+            surfaces.append({"material": mat, "extra": extra})
+            flags_m, desc = materials[mat] if mat < len(materials) else (0, 0)
+            # The display list (CCubeModel's walk: primitive & 0xF8, a u16 count).
+            p = (0x4F + extra) & ~31
+            end = p + dl_size
+            stride = sum({3: 2, 2: 1}.get(desc >> (2 * a) & 3, 0) for a in range(11)) + bin(desc >> 24).count("1")
+            direct = any(desc >> (2 * a) & 3 == 1 for a in range(11))
+            while p < end and p < len(sec) and not direct:
+                op = sec[p]
+                if op & 0xF8 == 0:
+                    break
+                count = struct.unpack_from(">H", sec, p + 1)[0]
+                prims.append(op & 0xF8)
+                packed = bool(flags_m & (1 << 13))
+                want = (2 if packed else 1) if flags & 1 else 0
+                formats.append("as expected" if op & 7 == want else f"format {op & 7} for {'short' if flags & 1 else 'float'} normals, packed={packed}")
+                p += 3 + count * stride
+        s += 9 + n
+
+    octree_ok = h[25] != 0xFFFFFFFF
+    arot = secs[s]
+    area_secs = secs[s + 1]
+    ambient = secs[s + 2]
+    a_count = u32(area_secs, 0)
+    areas = [struct.unpack_from(">6f4h", area_secs, 4 + 32 * k) for k in range(a_count)]
+    for m, i, area in record_area:
+        if area + 1 < len(areas):
+            _, _, _, _, _, _, am, ag, _, _ = areas[area + 1]
+            consistency[0] += 1
+            consistency[1] += am == m
+    nodes = u32(arot, 16)
+    words = (u32(arot, 12) + 31) // 32
+    table = 64 + 4 * u32(arot, 8) * words
+    entries = table + 4 * nodes
+    node_flags = [arot[entries + u32(arot, table + 4 * i) + 3] for i in range(nodes)]
+    node_x2 = [arot[entries + u32(arot, table + 4 * i) + 2] for i in range(nodes)]
+    ids = u32(ambient, 0)
+    idx_count = u32(ambient, 4 + 4 * ids)
+    after = s + 3
+    layer_magic = [secs[after + i][:4] for i in range(layer_count)]
+    return {
+        "world_models": model_count,
+        "short_normal_models": sum(m["short_normals"] for m in models),
+        "model_flags": _counter(m["flags"] for m in models),
+        "surfaces": len(surfaces),
+        "materials": mat_count,
+        "materials_with_packed_lightmap_uvs": sum(bool(f & (1 << 13)) for f, _ in materials),
+        "materials_with_matrix_index_bits": sum(bool(d >> 24) for _, d in materials),
+        "materials_with_clr1_or_tex7": sum(bool(d >> 6 & 3 or d >> 22 & 3) for _, d in materials),
+        "materials_with_direct_attributes": sum(any(d >> (2 * a) & 3 == 1 for a in range(11)) for _, d in materials),
+        "material_flags": {f"0x{k:X}": v for k, v in _counter(f for f, _ in materials).items()},
+        "surface_extra_sizes": _counter(x["extra"] for x in surfaces),
+        "surface_matrix_and_shadow_banks": {str(k): v for k, v in _counter(banks).items()},
+        "display_list_primitives": {f"0x{k:02X}": v for k, v in _counter(prims).items()},
+        "display_list_vertex_formats": _counter(formats),
+        "record_first_halfword": {"zero": sum(z for z, _ in record_first),
+                                  "equals_surface_index": sum(e for _, e in record_first),
+                                  "neither": sum(not z and not e for z, e in record_first)},
+        "surfaces_per_group": _counter(group_sizes),
+        "record_area_surface_belongs_to_its_model": f"{consistency[1]}/{consistency[0]}",
+        "area_surfaces": a_count,
+        "area_surface_0": {"model": areas[0][6], "group": areas[0][7]} if areas else None,
+        "area_surface_last_two_shorts": {str(k): v for k, v in _counter((a[8], a[9]) for a in areas).items()},
+        "render_octree": {"header_index_not_minus_1": octree_ok, "words_0_1": [f"0x{u32(arot, 0):08X}", u32(arot, 4)],
+                          "bitmaps": u32(arot, 8), "mesh_count": u32(arot, 12), "nodes": nodes,
+                          "node_flags": _counter(node_flags), "node_byte_2": _counter(node_x2)},
+        "ambient_light_ids": ids, "ambient_light_indices": idx_count,
+        "walk_reaches_script_layers": all(m == b"SCLY" for m in layer_magic) and secs[after + layer_count][:4] == b"SCGN",
+    }
+
+
 # ---------------------------------------------------------------------------- disc
 def parse_layer_table(mlvl: bytes, end: int, area_count: int) -> list:
     """Per area, [(layer name, active by default)], from the MLVL past its area list.

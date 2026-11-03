@@ -453,6 +453,35 @@ class CollisionTests(unittest.TestCase):
         self.assertEqual(ws.mrea_section(room, 2)[:8], collision_section()[:8])
 
 
+class GeometryTests(unittest.TestCase):
+    """tests/data/pwe_cooked_room.MREA is a room PrimeWorldEditor cooked with its geometry and
+    collision replaced (PrimeWorldEditor tests/AreaCookerTests.cpp, `pwe_area_cooker_tests --dump`):
+    one floor model, synthetic, no game content. Reading it here checks the editor's writers against
+    this independent reader of the game's layouts."""
+
+    def setUp(self):
+        self.room = (ROOT / "tests" / "data" / "pwe_cooked_room.MREA").read_bytes()
+
+    def test_geometry_walk(self):
+        r = ws.geometry_report(self.room)
+        self.assertTrue(r["walk_reaches_script_layers"])
+        self.assertEqual((r["world_models"], r["surfaces"], r["area_surfaces"]), (1, 1, 2))
+        self.assertEqual(r["display_list_vertex_formats"], {"as expected": 1})
+        self.assertEqual(r["area_surface_0"], {"model": -1, "group": -1})
+        self.assertEqual(r["record_area_surface_belongs_to_its_model"], "1/1")
+        self.assertTrue(r["render_octree"]["header_index_not_minus_1"])
+        self.assertEqual(r["render_octree"]["mesh_count"], 1)
+
+    def test_collision_of_the_cooked_room(self):
+        sections = ws.mrea_sections(self.room)
+        header = struct.unpack_from(">32I", self.room, 0)
+        self.assertEqual(len(sections), header[16])
+        report = ws.collision_report(ws.parse_area_collision(sections[header[20]]))
+        self.assertEqual(report["edge_slots_follow_corners"], "2/2")
+        self.assertEqual(report["bytes_left_over"], 0)
+        self.assertEqual(report["materials"][0]["names"], ["Stone", "Floor"])
+
+
 class DiscTests(unittest.TestCase):
     def test_world_area_layers_objects(self):
         with tempfile.TemporaryDirectory() as tmp, ws.Disc(write_disc(pathlib.Path(tmp))) as d:

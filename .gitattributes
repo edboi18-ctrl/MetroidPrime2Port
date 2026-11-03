@@ -11,3 +11,6 @@
 
 # DTK keeps these files with LF
 config/**/*.txt  text eol=lf
+
+# Test fixtures (tests/data) are binary
+tests/data/** binary

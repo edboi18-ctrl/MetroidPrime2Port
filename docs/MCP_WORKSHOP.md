@@ -75,6 +75,7 @@ What it reads and writes:
 | `echoes_disc_describe_area` | a room's objects per layer: editor ID, type, name, active, position, links |
 | `echoes_disc_describe_object` | one object's property values (only those that differ from the defaults, unless asked) |
 | `echoes_disc_find_resource` | which type an asset ID is and which PAKs hold it |
+| `echoes_disc_room_geometry` | a room's world geometry walked as the game walks it: models, surfaces, materials, display-list vertex formats, surface records and groups, area surfaces, render octree; checks of the rules PWE's geometry writer follows |
 | `echoes_disc_room_collision` | a room's collision as the game reads it: counts, each material's flags by name, the octree's shape, and checks of the rules PWE's collision writer follows |
 | `echoes_mods_list` | each mod and what the port does with each file (replace, or ignored and why) |
 | `echoes_mods_install_resource` | copy a cooked file in as `<ID>.<TYPE>`; refuses an ID no PAK holds, since the port would ignore it |
@@ -99,6 +100,8 @@ Layouts followed: PWE `CScriptLoader::LoadObjectMP2`/`LoadStructMP2` (objects an
 (a property ID is CRC32 of name + type name with no final XOR; 96% of the Echoes templates' 28,797
 property names hash to their IDs, the rest are FourCC-style IDs such as `ACTV`),
 `platform/port_mods.cpp`/`port_mods_pak.cpp` (the mods folder rules).
+
+**Checking the editor's geometry writer on your disc:** ask for `echoes_disc_room_geometry` on a few rooms. `walk_reaches_script_layers` should be true (the game's section walk lands on the script layers), `display_list_vertex_formats` all "as expected", `record_area_surface_belongs_to_its_model` all-of-all, and `materials_with_matrix_index_bits`, `materials_with_clr1_or_tex7` and `materials_with_direct_attributes` 0 (the writer refuses those). `record_first_halfword`, `area_surface_last_two_shorts`, `surface_matrix_and_shadow_banks`, `render_octree.words_0_1` and `node_byte_2` show values the game never reads and the writer guesses (0, or 'AROT' and 1); if retail uses others, the writer can match them.
 
 **Checking the editor's collision writer on your disc:** ask for `echoes_disc_room_collision` on a few rooms. On retail data, `edge_slots_follow_corners` and `neighbours_share_their_edge` should be all-of-all, and `edge_or_vertex_material_with_bit24` and `bytes_left_over` should be 0. If they are, the format rules PrimeWorldEditor's `CCollisionCooker` writes by are the ones Retro's own data follows. The octree figures (leaves, triangles per leaf, depth) are the numbers to compare the cooker's defaults against (PrimeWorldEditor `docs/ECHOES_ROOMS.md`).
 

@@ -300,6 +300,23 @@ def disc_room_collision(
     return f"# Collision of {d.area_name(a)} (`{a['iname']}`)\n" + ws.to_json(report)
 
 
+@mcp.tool(name="echoes_disc_room_geometry", annotations=READ, structured_output=False)
+@tool_errors
+def disc_room_geometry(
+    world: Annotated[str, Field(description="World name or MLVL ID.")],
+    area: Annotated[str, Field(description="Area slot, name, internal name or MREA ID.")],
+) -> str:
+    """A room's world geometry walked as the game walks it: models, surfaces, materials (vertex
+    descriptions, packed lightmap UVs), display list formats, surface records and groups, the area
+    surface list, the render octree and ambient lights, with the facts Prime World Editor's geometry
+    writer relies on. Use it to confirm those facts on retail rooms and to pick material sets."""
+    d = disc()
+    w = d.world(world)
+    a = d.area(w, area)
+    report = ws.geometry_report(d.get("MREA", a["mrea"]))
+    return f"# World geometry of {d.area_name(a)} (`{a['iname']}`)\n" + ws.to_json(report)
+
+
 @mcp.tool(name="echoes_disc_find_resource", annotations=READ, structured_output=False)
 @tool_errors
 def disc_find_resource(
