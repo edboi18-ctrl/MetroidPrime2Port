@@ -295,7 +295,9 @@ def parse_mlvl(b):
         a["offs"] = [r.u32() for _ in range(r.u32())]
         a["iname"] = r.cstr()
         areas.append(a)
-    return {"version": ver, "strg": strg, "dark": dark, "skybox": skybox, "areas": areas}
+    # end: where the area list stops (the MapWorld ID, layer flags and layer names follow; see
+    # tools/mcp/workshop.py parse_layer_table).
+    return {"version": ver, "strg": strg, "dark": dark, "skybox": skybox, "areas": areas, "end": r.p}
 
 
 # ---------------------------------------------------------------------------- MREA

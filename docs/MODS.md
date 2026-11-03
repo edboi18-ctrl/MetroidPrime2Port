@@ -2,7 +2,8 @@
 
 Ported from MP1's first mods slice (MP1 `05cbf722a`): loose-file and PAK overrides plus a Mods list on
 F1's Mods page. Suit colours and the HD texture pack were added later (sections below); downloads are
-not part of it.
+not part of it. An assistant can inspect rooms and manage this folder through the MCP server in
+`tools/mcp` ([MCP_WORKSHOP.md](MCP_WORKSHOP.md)).
 
 `mods` in the user path (`MP2_USER_PATH`, created on first start; `MP2_MODS` points elsewhere) holds one
 folder per mod, applied in name order so a later name wins; folders starting with `.` are skipped.
