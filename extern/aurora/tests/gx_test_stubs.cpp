@@ -4,6 +4,7 @@
 
 #include "gx/gx.hpp"
 #include "gfx/bloom.hpp"
+#include "gfx/ssao.hpp"
 #include "gfx/volfog.hpp"
 #include "gfx/thermal.hpp"
 #include "gfx/xray.hpp"
@@ -417,6 +418,12 @@ bool ensure_task() { return false; }
 bool record(const Params& params) { return false; }
 void shutdown() {}
 } // namespace aurora::gfx::volfog
+
+namespace aurora::gfx::ssao {
+bool ensure_task() { return false; }
+bool record(const Params& params) { return false; }
+void shutdown() {}
+} // namespace aurora::gfx::ssao
 
 namespace aurora::gfx::thermal {
 bool set_lut(const uint8_t*, uint32_t) { return false; }
