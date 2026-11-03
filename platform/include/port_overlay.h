@@ -707,6 +707,11 @@ bool LiveReflections();
 // default 70, matte) and strength 0..200% (`MP2_CANNON_REFLECTION_STRENGTH`; default 60).
 int CannonReflectionBlur();
 int CannonReflectionStrength();
+// The live probe's refresh: faces drawn a frame, 1, 2, 3 or 6 (`MP2_REFLECTION_REFRESH`; default 3,
+// the whole probe every 2 frames), and each face's size, 32, 64 or 128 EFB pixels a side
+// (`MP2_REFLECTION_RESOLUTION`; default 64).
+int ReflectionFacesPerFrame();
+int ReflectionResolution();
 // F1 > Video > Compatibility, read when the GPU device is made (so after a restart):
 // OpenGL ES instead of Vulkan (`MP2_OPENGLES`, only where Aurora has the backend), the Adreno
 // storage clamp (-1 auto; Aurora reads `MP2_STORAGE_CLAMP` itself), the Dawn driver workarounds

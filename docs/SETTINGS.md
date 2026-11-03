@@ -429,6 +429,10 @@ Video > Quality and Frame rate:
   on), the arm cannon's live reflection: the probe level it reads (0% sharp, 100% the blurriest of
   its six levels) and its brightness (`aurora_set_env_probe_look`); the defaults give a matte metal
   sheen. Env `MP2_CANNON_REFLECTION_BLUR`, `MP2_CANNON_REFLECTION_STRENGTH`.
+- `reflection_refresh` (1, 2, 3 or 6; default 3) and `reflection_resolution` (32, 64 or 128; default
+  64): Quality > Reflection refresh / resolution (shown while Live reflections is on), the probe's
+  faces drawn a frame (every 6, 3, 2 frames or every frame for the whole probe) and each face's size
+  in EFB pixels (Aurora scales it to its 128). Env `MP2_REFLECTION_REFRESH`, `MP2_REFLECTION_RESOLUTION`.
 - `MP2_PIPELINE_SEED=0` ignores the embedded pipeline cache seed (docs/RELEASING.md).
 - Pipeline memory (env only, not saved; `platform/port_memory_log.cpp`): `MP2_PIPELINE_LAZY=0|1`
   builds pipelines when first drawn instead of all at startup (default on for Android, where a

@@ -1332,13 +1332,20 @@ void CStateManager::SetupViewForDraw(const CViewport& viewport) {
 void CStateManager::DrawDebugStuff() const {}
 
 #ifdef TARGET_PC
-// Port: the live reflection probe (GXCopyProbeFace), as the MP1 port's: one face of a cube map of
-// the world around the camera is drawn into a corner of the EFB each frame, the way CacheReflection
-// draws its picture, so the probe is six frames old at worst (a face every fourth frame once it is
-// full and the camera holds still). World geometry and sky only. The arm cannon's environment maps
-// and the PBR maps' surfaces read it (CCubeMaterial::PortBeginSurfaceDraw); it runs only while one
-// of them is drawn, with Live reflections on (`live_reflections`), and only in the normal render
-// mode (the echo and dark visors draw the world in other colours, and keep the last one).
+// Port: the live reflection probe (GXCopyProbeFace), as the MP1 port's: faces of a cube map of the
+// world around the camera are drawn into a corner of the EFB each frame, the way CacheReflection
+// draws its picture. Reflection refresh (`reflection_refresh`) says how many a frame (1, 2, 3 or all
+// 6; the probe is then 6, 3, 2 or 1 frames old at worst) and Reflection resolution
+// (`reflection_resolution`) how large each is drawn (32, 64 or 128 EFB pixels a side; Aurora scales
+// it to the probe's 128 and blurs it down its mips). Once the probe is full and the camera has
+// stopped (moved under 0.01 units since the last frame), a face every fourth frame keeps it fresh.
+// MP1's port called the camera still below 0.5 units a frame: walking (a dash clamps at 10-18 units
+// a second, CPlayerDynamics) moves less than that, so the probe refreshed a face every fourth frame
+// while walking, and its reflections stepped. World geometry and sky only. The arm cannon's
+// environment maps and the PBR maps' surfaces read it (CCubeMaterial::PortBeginSurfaceDraw); it runs
+// only while one of them is drawn, with Live reflections on (`live_reflections`), and only in the
+// normal render mode (the echo and dark visors draw the world in other colours, and keep the last
+// one).
 void CStateManager::PortCaptureProbeFace() {
   static uint lastDraws = 0;
   static int face = 0;
@@ -1364,25 +1371,22 @@ void CStateManager::PortCaptureProbeFace() {
       {0.f, 0.f, 1.f, 0.f, -1.f, 0.f}, {0.f, 0.f, -1.f, 0.f, 1.f, 0.f},
       {0.f, 1.f, 0.f, 0.f, 0.f, 1.f},  {0.f, -1.f, 0.f, 0.f, 0.f, 1.f},
   };
-  const int kSize = 128;
+  const int kSize = PortOverlay::ReflectionResolution();
   const CGameCamera* camera = mCameraManager->GetCurrentCamera(*this, true);
   const CVector3f pos =
       PortFreeCam::View(mCameraManager->GetCurrentCameraTransform(*this, true)).GetTranslation();
   static CVector3f lastPos = CVector3f::Zero();
   static int idleFrames = 0;
-  if (filled == 6 && (pos - lastPos).MagSquared() < 0.25f) {
+  int faces = PortOverlay::ReflectionFacesPerFrame();
+  if (filled == 6 && (pos - lastPos).MagSquared() < 0.0001f) {
     if (++idleFrames % 4 != 0) {
       return;
     }
+    faces = 1;
   } else {
     idleFrames = 0;
   }
   lastPos = pos;
-  const CVector3f fwd(kFaces[face][0], kFaces[face][1], kFaces[face][2]);
-  const CVector3f up(kFaces[face][3], kFaces[face][4], kFaces[face][5]);
-  const CVector3f right = CVector3f::Cross(fwd, up);
-  const CTransform4f xf(right.GetX(), fwd.GetX(), up.GetX(), pos.GetX(), right.GetY(), fwd.GetY(),
-                        up.GetY(), pos.GetY(), right.GetZ(), fwd.GetZ(), up.GetZ(), pos.GetZ());
 
   const CViewport oldViewport = CGraphics::GetViewport();
   const int captureTop = static_cast< int >(CGraphics::GetRenderMode().efbHeight) - kSize;
@@ -1391,52 +1395,65 @@ void CStateManager::PortCaptureProbeFace() {
   GXSetTexCopySrc(0, 0, kSize, kSize);
   GXSetTexCopyDst(kSize, kSize, GX_TF_RGB565, GX_FALSE);
   CGX::SetZMode(true, GX_LEQUAL, true);
+  // Clears the corner; each face's copy (GXCopyProbeFace) clears it again for the next.
   GXCopyTex(CGraphics::GetDolphinSpareBuffer(), true);
 
-  CCubeMaterial::KillCachedViewDepState();
-  CCubeMaterial::ResetCachedMaterials();
-  gpRender->SetWorldViewpoint(xf);
-  CGraphics::SetDepthRange(0.125f, 1.f);
-  gpRender->SetPerspective(90.f, static_cast< float >(kSize), static_cast< float >(kSize),
-                           camera->GetNearClipDistance(), camera->GetFarClipDistance());
-  gpRender->PrimColor(CColor::White());
-  gpRender->SetModelMatrix(CTransform4f::Identity());
-  gpRender->SetRequestedMaterialMode(0);
-
-  // Culled for this face: its frustum, the areas' PVS, no portal frusta (they are the view's).
-  // DrawWorld's own PrepareWorldRendering, next, culls again for the view.
   const CFrustumPlanes oldPlanes = mPlanes;
   const rstl::reserved_vector< rstl::pair< int, CFrustumPlanes >, 10 > oldAreaFrusta = mAreaFrusta;
-  mPlanes = CFrustumPlanes(xf, 0.5f * M_PIF, 1.f, camera->GetNearClipDistance(), false, 100.f);
-  mAreaFrusta.clear();
-  TVisibleAreas areas;
-  TAreaVisibility visibility;
-  GatherVisibleAreas(areas, visibility);
-  PrepareWorldRendering(areas, visibility);
+  for (int n = 0; n < faces; ++n) {
+    const CVector3f fwd(kFaces[face][0], kFaces[face][1], kFaces[face][2]);
+    const CVector3f up(kFaces[face][3], kFaces[face][4], kFaces[face][5]);
+    const CVector3f right = CVector3f::Cross(fwd, up);
+    const CTransform4f xf(right.GetX(), fwd.GetX(), up.GetX(), pos.GetX(), right.GetY(), fwd.GetY(),
+                          up.GetY(), pos.GetY(), right.GetZ(), fwd.GetZ(), up.GetZ(), pos.GetZ());
 
-  CCubeMaterial::sPortCapturingProbe = true;
-  for (int i = areas.size() - 1; i >= 0; --i) {
-    const CGameArea& area = *areas[i];
-    SetupFogForArea(area);
-    gpRender->SetWorldLightFadeLevel(area.GetPostConstructed()->mWorldLightingLevel);
-    gpRender->DrawUnsortedGeometry(area.GetId().Value());
-  }
-  mWorld->TouchSky();
-  bool fogEnabled = false;
-  if (mCameraManager->IsFogEnabled()) {
-    gpRender->SetWorldFog(kRFM_PerspLin, 0.f, 0.05f, mCameraManager->GetFog().GetColor());
-    fogEnabled = true;
-  } else {
-    gpRender->SetWorldFog(kRFM_None, 0.f, 1.f, CColor::Black());
-  }
-  mWorld->DrawSky(CTransform4f::Translate(pos), fogEnabled);
-  if (!areas.empty()) {
-    SetupFogForArea(*areas[areas.size() - 1]);
-  }
-  CCubeMaterial::sPortCapturingProbe = false;
+    CCubeMaterial::KillCachedViewDepState();
+    CCubeMaterial::ResetCachedMaterials();
+    gpRender->SetWorldViewpoint(xf);
+    CGraphics::SetDepthRange(0.125f, 1.f);
+    gpRender->SetPerspective(90.f, static_cast< float >(kSize), static_cast< float >(kSize),
+                             camera->GetNearClipDistance(), camera->GetFarClipDistance());
+    gpRender->PrimColor(CColor::White());
+    gpRender->SetModelMatrix(CTransform4f::Identity());
+    gpRender->SetRequestedMaterialMode(0);
 
-  CGX::SetZMode(true, GX_LEQUAL, true);
-  GXCopyProbeFace(face);
+    // Culled for this face: its frustum, the areas' PVS, no portal frusta (they are the view's).
+    // DrawWorld's own PrepareWorldRendering, next, culls again for the view.
+    mPlanes = CFrustumPlanes(xf, 0.5f * M_PIF, 1.f, camera->GetNearClipDistance(), false, 100.f);
+    mAreaFrusta.clear();
+    TVisibleAreas areas;
+    TAreaVisibility visibility;
+    GatherVisibleAreas(areas, visibility);
+    PrepareWorldRendering(areas, visibility);
+
+    CCubeMaterial::sPortCapturingProbe = true;
+    for (int i = areas.size() - 1; i >= 0; --i) {
+      const CGameArea& area = *areas[i];
+      SetupFogForArea(area);
+      gpRender->SetWorldLightFadeLevel(area.GetPostConstructed()->mWorldLightingLevel);
+      gpRender->DrawUnsortedGeometry(area.GetId().Value());
+    }
+    mWorld->TouchSky();
+    bool fogEnabled = false;
+    if (mCameraManager->IsFogEnabled()) {
+      gpRender->SetWorldFog(kRFM_PerspLin, 0.f, 0.05f, mCameraManager->GetFog().GetColor());
+      fogEnabled = true;
+    } else {
+      gpRender->SetWorldFog(kRFM_None, 0.f, 1.f, CColor::Black());
+    }
+    mWorld->DrawSky(CTransform4f::Translate(pos), fogEnabled);
+    if (!areas.empty()) {
+      SetupFogForArea(*areas[areas.size() - 1]);
+    }
+    CCubeMaterial::sPortCapturingProbe = false;
+
+    CGX::SetZMode(true, GX_LEQUAL, true);
+    GXCopyProbeFace(face);
+    face = (face + 1) % 6;
+    if (filled < 6) {
+      ++filled;
+    }
+  }
   mPlanes = oldPlanes;
   mAreaFrusta = oldAreaFrusta;
   CCubeMaterial::KillCachedViewDepState();
@@ -1445,11 +1462,6 @@ void CStateManager::PortCaptureProbeFace() {
                          oldViewport.mHeight);
   CGraphics::SetScissor(oldViewport.mLeft, oldViewport.mTop, oldViewport.mWidth,
                         oldViewport.mHeight);
-
-  face = (face + 1) % 6;
-  if (filled < 6) {
-    ++filled;
-  }
 }
 #endif
 

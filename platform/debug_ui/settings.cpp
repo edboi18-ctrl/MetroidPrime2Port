@@ -555,6 +555,18 @@ const SettingKey kSettingKeys[] = {
     {"cannon_reflection_blur",
      [](const std::string& value) { sCannonReflectionBlur = std::clamp(std::atoi(value.c_str()), 0, 100); },
      [](std::ostream& out) { out << sCannonReflectionBlur; }, false, "0", "90"},
+    {"reflection_refresh",
+     [](const std::string& value) {
+       const int faces = std::clamp(std::atoi(value.c_str()), 1, 6);
+       sReflectionRefresh = faces >= 6 ? 6 : faces >= 3 ? 3 : faces;
+     },
+     [](std::ostream& out) { out << sReflectionRefresh; }, false, "1", "6"},
+    {"reflection_resolution",
+     [](const std::string& value) {
+       const int size = std::clamp(std::atoi(value.c_str()), 32, 128);
+       sReflectionResolution = size >= 128 ? 128 : size >= 64 ? 64 : 32;
+     },
+     [](std::ostream& out) { out << sReflectionResolution; }, false, "32", "128"},
     {"cannon_reflection_strength",
      [](const std::string& value) { sCannonReflectionStrength = std::clamp(std::atoi(value.c_str()), 0, 200); },
      [](std::ostream& out) { out << sCannonReflectionStrength; }, false, "0", "150"},

@@ -160,6 +160,8 @@
 {"Video", "Quality", "Quality", "Live reflections", "reflection probe cube map arm cannon gun shiny environment mirror"},
 {"Video", "Quality", "Quality", "Cannon reflection blur", "arm cannon gun reflection matte brushed rough sharp mirror blur"},
 {"Video", "Quality", "Quality", "Cannon reflection strength", "arm cannon gun reflection shiny bright dim strength"},
+{"Video", "Quality", "Quality", "Reflection refresh", "reflection probe update rate stutter faces per frame live reflections"},
+{"Video", "Quality", "Quality", "Reflection resolution", "reflection probe size quality performance live reflections"},
 {"Video", "Quality", "Quality", "PBR highlight strength", "pbr specular shine gloss glare too bright highlights"},
 {"Video", "Quality", "Quality", "Auto render scale (native)", "resolution internal efb"},
 {"Video", "Quality", "Quality", "EFB scale", "resolution internal supersample render scale"},
