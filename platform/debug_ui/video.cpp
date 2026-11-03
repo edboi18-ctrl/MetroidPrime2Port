@@ -4,6 +4,7 @@
 
 #include "debug_ui_internal.h"
 
+#include "port_actor_shadow_rules.h"
 #include "port_bloom_rules.h"
 #include "port_gpu_driver.h"
 #include "port_input_remap_ui.h"
@@ -345,6 +346,16 @@ void DrawVideoQuality() {
                              PortBloom::kThresholdMax, "%d%%", ImGuiSliderFlags_AlwaysClamp));
     ImGui::SetItemTooltip("How bright a pixel must be drawn (of white) to glow: lower makes more of the\n"
                           "picture glow, higher only the lights.");
+  }
+  // Read each frame by CSimpleShadow::PortRenderSilhouette.
+  Changed(ImGui::Checkbox("Actor shadows", &sActorShadows));
+  ImGui::SetItemTooltip("Enemies and objects cast their own shape onto the floor below them, moving with\n"
+                        "their animation, where the original draws a round blob. Up to 16 a frame; the\n"
+                        "rest keep the blob.");
+  if (sActorShadows) {
+    Changed(ImGui::SliderInt("Actor shadow strength", &sActorShadowStrength, PortActorShadow::kStrengthMin,
+                             PortActorShadow::kStrengthMax, "%d%%", ImGuiSliderFlags_AlwaysClamp));
+    ImGui::SetItemTooltip("How dark the actor shadows are.");
   }
   // Applied by ApplyRenderScale from Draw, through PortVideo::DrawScale (dynamic resolution's while
   // it has lowered the scale).

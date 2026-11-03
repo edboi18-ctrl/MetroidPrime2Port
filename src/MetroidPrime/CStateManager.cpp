@@ -2732,6 +2732,12 @@ void CStateManager::RendererDrawCallback(const void* drawable, const void* conte
     break;
   }
   case 1:
+#ifdef TARGET_PC
+    // Port: Video > Quality > Actor shadows draws the actor's silhouette instead of the blob.
+    if (static_cast< const CSimpleShadow* >(drawable)->PortRenderSilhouette(mgr)) {
+      break;
+    }
+#endif
     static_cast< const CSimpleShadow* >(drawable)->Render(mgr.mShadowTex.GetObject());
     break;
   case 2:

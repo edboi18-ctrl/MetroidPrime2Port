@@ -440,6 +440,13 @@ Video > Quality and Frame rate:
   Dark or Echo visor, nor split screen. MP2 has no Remastered rooms, so the tone curve its bright pass
   undoes, the threshold and the tints are the port's own (`platform/include/port_bloom_rules.h`).
   Env `MP2_BLOOM`, `MP2_BLOOM_STRENGTH`, `MP2_BLOOM_THRESHOLD`.
+- `actor_shadows` (off by default) and `actor_shadow_strength` (0..100, percent; default 60): Quality >
+  Actor shadows / Actor shadow strength, the actors' silhouettes where retail's `CSimpleShadow` drops a
+  round blob (`CSimpleShadow::PortRenderSilhouette`): each actor's models drawn depth only into one of
+  Aurora's 16 Remastered actor shadow maps, looking straight down, and the blob's quad redrawn as the
+  multiply decal that reads it (`GXPortActorShadowCasters` / `GXPortActorShadowDecal`). Up to 16 a
+  frame; the rest, and anything Aurora can't record, keep the blob. Env `MP2_ACTOR_SHADOWS`,
+  `MP2_ACTOR_SHADOW_STRENGTH`.
 - `MP2_PIPELINE_SEED=0` ignores the embedded pipeline cache seed (docs/RELEASING.md).
 - Pipeline memory (env only, not saved; `platform/port_memory_log.cpp`): `MP2_PIPELINE_LAZY=0|1`
   builds pipelines when first drawn instead of all at startup (default on for Android, where a

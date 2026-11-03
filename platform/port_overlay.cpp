@@ -14,6 +14,7 @@
 #include "port_video.h"
 #include "port_env.h"
 #include "port_overlay_internal.h"
+#include "port_actor_shadow_rules.h"
 #include "port_bloom_rules.h"
 #include "port_logfile.h"
 #include "port_mouse.h"
@@ -1942,6 +1943,8 @@ int sReflectionResolution = 64;
 bool sBloom = false;
 int sBloomStrength = PortBloom::kStrengthDefault;
 int sBloomThreshold = PortBloom::kThresholdDefault;
+bool sActorShadows = false;
+int sActorShadowStrength = PortActorShadow::kStrengthDefault;
 PortGraphicsBackend::EGraphicsBackend sGraphicsBackend = PortGraphicsBackend::kGraphicsBackend_Auto;
 PortGraphicsBackend::EGraphicsBackend sGraphicsBackendAtStart = PortGraphicsBackend::kGraphicsBackend_Auto;
 bool sOpenGles = false;
@@ -2079,6 +2082,17 @@ int BloomStrength() {
 int BloomThreshold() {
   ReadEnv();
   return EnvIntIn("MP2_BLOOM_THRESHOLD", sBloomThreshold, PortBloom::kThresholdMin, PortBloom::kThresholdMax);
+}
+
+bool ActorShadows() {
+  ReadEnv();
+  return EnvBool("MP2_ACTOR_SHADOWS", sActorShadows);
+}
+
+int ActorShadowStrength() {
+  ReadEnv();
+  return EnvIntIn("MP2_ACTOR_SHADOW_STRENGTH", sActorShadowStrength, PortActorShadow::kStrengthMin,
+                  PortActorShadow::kStrengthMax);
 }
 
 bool OpenGles() {

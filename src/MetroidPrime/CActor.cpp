@@ -402,6 +402,10 @@ void CActor::AddToRenderer(const CStateManager& mgr) const {
       if (ShouldDrawShadow(mgr)) {
         if (GetShadow()->Valid() &&
             mgr.GetFrustumPlanes().BoxInFrustumPlanes(GetShadow()->GetBounds())) {
+#ifdef TARGET_PC
+          // Port: the silhouette shadow draws this actor's models (CSimpleShadow::PortRenderSilhouette).
+          GetShadow()->PortSetOwner(this);
+#endif
           gpRender->AddDrawable(GetShadow(), GetShadow()->GetTransform().GetTranslation(),
                                 GetShadow()->GetBounds(), 1, IRenderer::kDS_SortedCallback);
         }

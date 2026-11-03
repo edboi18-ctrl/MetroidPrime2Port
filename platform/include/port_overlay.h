@@ -719,6 +719,12 @@ int ReflectionResolution();
 bool Bloom();
 int BloomStrength();
 int BloomThreshold();
+// Actor shadows (`MP2_ACTOR_SHADOWS`, F1 > Video > Quality; off by default): the actors' own silhouettes,
+// from Aurora's Remastered actor shadow maps, where retail drops a round blob
+// (CSimpleShadow::PortRenderSilhouette, port_actor_shadow_rules.h). Strength 0..100%
+// (`MP2_ACTOR_SHADOW_STRENGTH`; default 60).
+bool ActorShadows();
+int ActorShadowStrength();
 // F1 > Video > Compatibility, read when the GPU device is made (so after a restart):
 // OpenGL ES instead of Vulkan (`MP2_OPENGLES`, only where Aurora has the backend), the Adreno
 // storage clamp (-1 auto; Aurora reads `MP2_STORAGE_CLAMP` itself), the Dawn driver workarounds

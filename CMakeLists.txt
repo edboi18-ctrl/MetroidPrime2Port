@@ -922,6 +922,11 @@ if(AURORA_SDL3_TARGET)
     target_include_directories(port_bloom_rules_tests PRIVATE platform/include)
     add_test(NAME port_bloom_rules_tests COMMAND port_bloom_rules_tests)
     set_tests_properties(port_bloom_rules_tests PROPERTIES TIMEOUT 30 LABELS port)
+    # Header-only (port_actor_shadow_rules.h): the actor shadows' map matrices and decal parameters.
+    add_executable(port_actor_shadow_rules_tests tests/port_actor_shadow_rules.cpp)
+    target_include_directories(port_actor_shadow_rules_tests PRIVATE platform/include)
+    add_test(NAME port_actor_shadow_rules_tests COMMAND port_actor_shadow_rules_tests)
+    set_tests_properties(port_actor_shadow_rules_tests PROPERTIES TIMEOUT 30 LABELS port)
 
     # Header-only (port_input_pad.h): the MP2_INPUT `pN.` prefix parser.
     add_executable(port_input_pad_tests tests/port_input_pad.cpp)

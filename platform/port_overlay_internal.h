@@ -152,6 +152,8 @@ extern int sReflectionResolution; // Video > Quality > Reflection resolution: 32
 extern bool sBloom;               // Video > Quality > Bloom (CStateManager::DrawWorld, port_bloom_rules.h)
 extern int sBloomStrength;        // Video > Quality > Bloom strength, 0..200 (%)
 extern int sBloomThreshold;       // Video > Quality > Bloom threshold, 50..95 (% of display white)
+extern bool sActorShadows;        // Video > Quality > Actor shadows (CSimpleShadow::PortRenderSilhouette)
+extern int sActorShadowStrength;  // Video > Quality > Actor shadow strength, 0..100 (%)
 extern PortGraphicsBackend::EGraphicsBackend sGraphicsBackend; // renderer choice (Windows, desktop Linux)
 extern PortGraphicsBackend::EGraphicsBackend sGraphicsBackendAtStart;
 extern bool sOpenGles;

@@ -5,6 +5,7 @@
 
 #include "../port_overlay_internal.h"
 
+#include "port_actor_shadow_rules.h"
 #include "port_bloom_rules.h"
 #include "port_discord.h"
 #include "port_env.h"
@@ -577,6 +578,9 @@ const SettingKey kSettingKeys[] = {
     BoolKey< &sBloom >("bloom"),
     IntKey< &sBloomStrength, PortBloom::kStrengthMin, PortBloom::kStrengthMax >("bloom_strength", "0", "150"),
     IntKey< &sBloomThreshold, PortBloom::kThresholdMin, PortBloom::kThresholdMax >("bloom_threshold", "50", "80"),
+    BoolKey< &sActorShadows >("actor_shadows"),
+    IntKey< &sActorShadowStrength, PortActorShadow::kStrengthMin, PortActorShadow::kStrengthMax >(
+        "actor_shadow_strength", "0", "90"),
     BoolKey< &sDynamicRes >("dynamic_res"),
     {"dynamic_res_target",
      [](const std::string& value) { sDynamicResTarget = std::clamp(std::atoi(value.c_str()), 0, PortOverlay::kFpsCapMax); },

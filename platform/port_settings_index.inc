@@ -166,6 +166,8 @@
 {"Video", "Quality", "Quality", "Bloom", "bloom glow hdr lights bright halo post processing remastered"},
 {"Video", "Quality", "Quality", "Bloom strength", "bloom glow intensity amount strength"},
 {"Video", "Quality", "Quality", "Bloom threshold", "bloom glow threshold brightness lights only"},
+{"Video", "Quality", "Quality", "Actor shadows", "shadow shadows enemies actors silhouette blob remastered dynamic"},
+{"Video", "Quality", "Quality", "Actor shadow strength", "shadow darkness opacity strength actors"},
 {"Video", "Quality", "Quality", "Auto render scale (native)", "resolution internal efb"},
 {"Video", "Quality", "Quality", "EFB scale", "resolution internal supersample render scale"},
 {"Video", "Quality", "Quality", "Dynamic resolution", "dynamic resolution scale performance fps"},

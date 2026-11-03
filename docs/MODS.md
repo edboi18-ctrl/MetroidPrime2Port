@@ -161,6 +161,25 @@ levels are weighted alike, and the strength (0-200%) scales the bright pass they
 composite adds the bloom to the frame as drawn, so the curve changes nothing else. A ReShade bloom
 on top adds a second glow.
 
+**Actor shadows.** F1 > Video > Quality > Actor shadows (`actor_shadows`, off by default): where
+retail's `CSimpleShadow` drops a round blob textured quad onto the floor below an actor (a ray cast
+straight down), `CSimpleShadow::PortRenderSilhouette` draws the actor's own shape there with Aurora's
+Remastered actor shadow (`extern/aurora/lib/gfx/actor_shadow.cpp`). `CActor::AddToRenderer` notes the
+owner on the shadow; the shadow's draw then renders the owner's models (opaque, depth only, the whole
+model) between `GXPortActorShadowCasters` and `GXPortActorShadowEnd` into one 256x256 layer of the
+actor maps, through an orthographic view straight down over the model's bounds
+(`platform/include/port_actor_shadow_rules.h`), has `GXPortActorShadowRender` draw the map, and redraws
+the blob's quad, widened to cover the map, as the multiply decal (`GXPortActorShadowDecal`):
+`1 - (1 - vis) opacity (1 - w)^2`, `w` the floor's depth below the actor's feet over the blob's fade
+height (`CSimpleShadow`'s max object height). The decal keeps to the shadow's box and to surfaces
+facing up within 60 degrees. One layer each, so 16 a frame; the rest keep the blob. The quad is flat, as
+the blob is, so on uneven ground the shadow cuts into the floor as the blob does.
+
+**No sun shadows.** Aurora's sun cascades (`GXPortSetShadowFrame`) are received only by Remastered's
+PBR materials (`shadow_receives` in `extern/aurora/lib/gx/gx.hpp` needs `pbr != 0`), which MP2's TEV
+materials are not, and MP2's rooms are lightmapped: the lightmaps already hold the static shadows, so a
+second sun shadow over them would darken them twice.
+
 Reload is a savestate-style world restart: `PortSaveState::RequestModReload` writes the current state
 to the undo slot and loads it back; `CMainFlow` (`kCFS_Game`) calls `ReloadModsNow` after the old world
 is gone, which closes every PAK, runs `PortMods::Reload` (rescan, overlay rebuilt through
