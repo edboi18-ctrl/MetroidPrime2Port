@@ -113,7 +113,8 @@ retail file formats and PWE can express. What can be made today, with sources:
 | Content | Today | Where the limit is |
 |---|---|---|
 | Room scripting: objects, links, layers, doors between existing rooms | **Yes**, in PWE's World Editor (it re-cooks a room's script layers) | `CAreaCooker::CookMREA` rewrites SCLY/SCGN and the dependency and module sections |
-| New room geometry, collision, lighting, portals | **No** | `CookMREA` copies every other section from the original file (`mSectionDataBuffers`); nothing in PWE builds them |
+| New room geometry and collision | **Yes, replacing a room's**: PrimeWorldEditor's Blender add-on (`tools/blender`, its README) builds a room's world geometry, materials, collision and new textures into the mods folder; PWE's C++ cookers (`CWorldGeometryCooker`, `CCollisionCooker`) do the same from code | not yet run in the game; the room keeps its lights, portals and doors; new rooms in a world are not supported (PWE `docs/ECHOES_ROOMS.md`) |
+| Room lighting, portals, new rooms in a world | **No** | `CookMREA` copies the light and visibility sections from the original file; adding an area means editing the MLVL |
 | Models | **Not yet for Echoes** | the Model Editor's import (Assimp: .obj/.fbx/.dae/.3ds/.blend) gives placeholder materials (`CMaterialLoader::LoadAssimpMaterial`, a `todo` with a random colour, no textures, built as Prime 1), and Save is enabled only for Prime 1 (`CModelEditorWindow.cpp`); `CModelCooker` does have an Echoes (version 4) path |
 | Textures | **Yes**, the easy way: the port's texture pack (`docs/MODS.md`) takes `.png`/`.dds` under Dolphin-style `tex1_<w>x<h>_<hash>...` names (`MP2_DUMP_TEXTURES` dumps the originals to start from); PWE only converts a DXT1 DDS to TXTR | Aurora `lib/gfx/texture_replacement.cpp`; `CTextureEncoder` (DXT1 to CMPR only) |
 | Strings, scans, tweaks | **Yes**, PWE cooks STRG, SCAN, CTWK | `CResourceCooker::CookResource` |
@@ -133,9 +134,8 @@ retail file formats and PWE can express. What can be made today, with sources:
    mods folder in one step. That replaces PWE's Dolphin-only quick play with "play this room in the port".
 4. **Models for Echoes**: real materials on import (a diffuse texture and the lightmap/lit TEV stages
    world geometry uses) and Save enabled for Echoes, tested by loading the result in the port.
-5. **Room geometry**: either an MREA geometry/collision cooker in PWE, or a port-side loader (behind
-   `TARGET_PC`) that builds a room's geometry and collision from a modern format such as glTF. The second
-   is likely less work, since the port owns the renderer and the collision code, but it is a design choice
-   to make before starting.
+5. **Room geometry**: done as an MREA geometry/collision cooker (PWE `CWorldGeometryCooker`,
+   `CCollisionCooker`) and a Blender add-on that builds rooms with it (PWE `tools/blender`). Next: test a
+   built room in the game, and show it in PWE's World Editor by putting it into a PWE project.
 6. **Sound**: since the port links MusyX from source, a port-side path that loads WAV/OGG for a sound ID
    is the likely route, rather than writing MusyX sample pools.
