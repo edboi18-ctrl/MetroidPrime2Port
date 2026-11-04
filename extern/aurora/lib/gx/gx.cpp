@@ -627,11 +627,10 @@ void populate_pipeline_config(PipelineConfig& config, GXPrimitive primitive, GXV
   }
   // After the stages, swap table, channels and texgens it reads (the probe finds its stages by
   // their texgen: copied after this, it saw none and never applied).
-  // GXPortSetRetailLighting: the console's lighting, none of the port's surface modes.
-  if (g_gxState.pbr == 0 && !g_gxState.retailLighting) {
+  if (g_gxState.pbr == 0) {
     apply_port_surface_flags(config.shaderConfig, g_gxState.surfacePbr, g_gxState.envProbe, g_gxState.waterReflect);
   }
-  config.shaderConfig.perPixelLight = g_gxState.retailLighting ? 0 : wants_per_pixel_light(config.shaderConfig);
+  config.shaderConfig.perPixelLight = wants_per_pixel_light(config.shaderConfig);
   if (g_gxState.alphaCompare) {
     config.shaderConfig.alphaCompare = pipeline_alpha_compare(g_gxState.alphaCompare);
   }

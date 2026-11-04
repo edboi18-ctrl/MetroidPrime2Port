@@ -416,7 +416,7 @@ struct GXState {
   u8 pbr = 0; // GX_AURORA_SET_PBR: above 1, a cost test (GXSetPBRCostTest)
   u8 surfacePbr = 0; // GX_AURORA_PORT_SURFACE_PBR: the relit TEV stage + 1 (GXPortSetSurfacePBR), 0 off
   u8 waterReflect = 0; // GX_AURORA_PORT_WATER_REFLECTION: the reflecting TEV stage + 1, 0 off
-  bool retailLighting = false; // GX_AURORA_PORT_RETAIL_LIGHTING: per-vertex GX lighting, no port surface modes
+  f32 surfacePbrStrength = 1.f; // GX_AURORA_PORT_SURFACE_PBR_STRENGTH: 0 the stage's own result, 1 full PBR
   bool envProbe = false; // GX_AURORA_PORT_ENV_PROBE: environment-mapped stages read the probe (GXPortSetEnvProbe)
   // GX_AURORA_PORT_ENV_PROBE_LOOK (GXPortSetEnvProbeLook): x the probe level, y the strength; y below 0
   // takes aurora_set_env_probe_look's (env_probe_look).

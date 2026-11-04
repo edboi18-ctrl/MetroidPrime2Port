@@ -90,21 +90,21 @@ public:
   // model that last read it, if it isn't the first-person view's. Unset, the probe is the camera's.
   static bool sPortProbeFocusSet;
   static CVector3f sPortProbeFocus;
-  // While a CPortRetailLightingScope lives: no PBR maps or probe (PortBeginSurfaceDraw does nothing).
-  static bool sPortRetailLighting;
-  // The draws in it are lit exactly as the console lights them (GXPortSetRetailLighting): per vertex
-  // whatever Per-pixel lighting says, and without the PBR maps or the live probe. The face
-  // reflection in Samus's visor (CSamusFaceReflection::Draw): lit by the flash right next to it,
-  // per-pixel light and a PBR map's specular made a glossy, plastic face of retail's soft one.
-  class CPortRetailLightingScope {
+  // How much of the PBR maps' lighting the surfaces drawn now take, 0..1 (GXPortSetSurfacePBRStrength);
+  // 1 outside a CPortPbrStrengthScope.
+  static float sPortPbrStrength;
+  // The face reflection in Samus's visor (CSamusFaceReflection::Draw): lit by a flash right next to it,
+  // full PBR (the GGX highlight, the normal map, the probe) made a glossy, plastic face. Its draws take
+  // `strength` of it, the rest the game's own lighting.
+  class CPortPbrStrengthScope {
   public:
-    CPortRetailLightingScope();
-    ~CPortRetailLightingScope();
+    explicit CPortPbrStrengthScope(float strength);
+    ~CPortPbrStrengthScope();
 
   private:
-    CPortRetailLightingScope(const CPortRetailLightingScope&);
-    CPortRetailLightingScope& operator=(const CPortRetailLightingScope&);
-    bool mSaved;
+    CPortPbrStrengthScope(const CPortPbrStrengthScope&);
+    CPortPbrStrengthScope& operator=(const CPortPbrStrengthScope&);
+    float mSaved;
   };
   // Samus's body, her morph ball and the cutscene Samus (CPlayer::Render, CScriptPlayerActor::Render):
   // their environment maps read the live probe with their own look while it lives, and, if any of

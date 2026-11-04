@@ -180,7 +180,7 @@ extern bool sAmbientOcclusion;    // Video > Quality > Ambient occlusion (CState
 extern int sAoStrength;           // Video > Quality > Ambient occlusion strength, 0..200 (%)
 extern int sAoRadius;             // Video > Quality > Ambient occlusion radius, 25..300 (% of a unit)
 extern int sAoAngleBias;          // Video > Quality > Ambient occlusion angle bias, 0..60 (%)
-extern int sFaceReflectionStrength; // Video > Quality > Visor face reflection, 0..100 (% of retail)
+extern int sFacePbrStrength;      // Video > Quality > Visor face PBR strength, 0..100 (%)
 extern PortGraphicsBackend::EGraphicsBackend sGraphicsBackend; // renderer choice (Windows, desktop Linux)
 extern PortGraphicsBackend::EGraphicsBackend sGraphicsBackendAtStart;
 extern bool sOpenGles;

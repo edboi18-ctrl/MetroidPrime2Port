@@ -359,6 +359,12 @@ void DrawVideoQuality() {
                              ImGuiSliderFlags_AlwaysClamp));
     ImGui::SetItemTooltip("How bright the PBR maps' highlights are. 100%% is as computed; each light's\n"
                           "highlight is already held to what the game's lighting allows.");
+    // Read each frame by CSamusFaceReflection::Draw.
+    Changed(ImGui::SliderInt("Visor face PBR strength", &sFacePbrStrength, 0, 100, "%d%%",
+                             ImGuiSliderFlags_AlwaysClamp));
+    ImGui::SetItemTooltip("How much of the PBR maps' look Samus's face in the visor takes when a charge shot\n"
+                          "or a missile lights it up: lower is softer and closer to the original face,\n"
+                          "0%% the original's lighting.");
   }
   // Read each frame by CStateManager::DrawWorld.
   Changed(ImGui::Checkbox("Bloom", &sBloom));
@@ -404,12 +410,6 @@ void DrawVideoQuality() {
                           "shallow folds between a room's flat polygons (dark lines along their edges);\n"
                           "lower darkens gentler creases too.");
   }
-  // Read each frame by CSamusFaceReflection::Draw.
-  Changed(ImGui::SliderInt("Visor face reflection", &sFaceReflectionStrength, 0, 100, "%d%%",
-                           ImGuiSliderFlags_AlwaysClamp));
-  ImGui::SetItemTooltip("How bright Samus's face is when a charge shot or a missile lights it up in the\n"
-                        "visor. 100%% is the original game; 0%% hides it. Always lit as the original\n"
-                        "lights it, whatever Per-pixel lighting and PBR maps say.");
   // Applied by ApplyRenderScale from Draw, through PortVideo::DrawScale (dynamic resolution's while
   // it has lowered the scale).
   // Dynamic resolution's mode is the two saved settings together: Auto draws up to the window's own

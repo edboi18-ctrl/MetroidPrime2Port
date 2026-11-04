@@ -142,8 +142,8 @@ void CSamusFaceReflection::Draw(const CStateManager& mgr) const {
     if (const CGameCamera* fpCam = CCameraManager::CastGameCameratoFirstPersonCamera(
             mgr.GetCurrentRenderCameraManager()->GetCurrentCamera(mgr, true))) {
 #ifdef TARGET_PC
-      // Port: the face is lit as the console lit it, whatever Per-pixel lighting and PBR maps say.
-      CCubeMaterial::CPortRetailLightingScope retailLighting;
+      // Port: Video > Quality > Visor face PBR strength (default 40%).
+      CCubeMaterial::CPortPbrStrengthScope pbrStrength(static_cast< float >(PortOverlay::FacePbrStrength()) / 100.f);
 #endif
       const CVector3f camTranslation = fpCam->GetTranslation();
       const CVector3f camYcol = fpCam->GetTransform().GetColumn(kDY);
@@ -189,10 +189,6 @@ void CSamusFaceReflection::Draw(const CStateManager& mgr) const {
         float transFactor = playerState->GetActiveVisor(mgr) == CPlayerState::kPV_Combat
                                 ? playerState->GetVisorTransitionFactor()
                                 : 0.f;
-#ifdef TARGET_PC
-        // Port: Video > Quality > Visor face reflection scales the face's additive weight.
-        transFactor *= static_cast< float >(PortOverlay::FaceReflectionStrength()) / 100.f;
-#endif
         if (transFactor > 0.f) {
           mModelData->Render(mgr, modelXf, nullptr,
                              CModelFlags::Additive(CColor::Black()).DepthCompareUpdate(true, true));

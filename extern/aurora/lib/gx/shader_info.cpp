@@ -729,7 +729,8 @@ static void fill_uniform(ByteBuffer& buf, const ShaderInfo& info) noexcept {
       envLevel = g_gxState.envProbeLook.x();
       envStrength = g_gxState.envProbeLook.y();
     }
-    buf.append(Vec4<float>{surface_pbr_highlight(), envLevel, envStrength, 0.f});
+    // w: GXPortSetSurfacePBRStrength.
+    buf.append(Vec4<float>{surface_pbr_highlight(), envLevel, envStrength, g_gxState.surfacePbrStrength});
     buf.append(g_gxState.pbrProbe);
   }
   if (info.usesPTTexMtx.any()) {

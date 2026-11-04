@@ -543,10 +543,11 @@ Video > Quality and Frame rate:
   Dark World haze, the arm cannon and the HUD; not in the Dark or Echo visor nor split screen. Needs a
   device with core features (it reads the depth buffer). Env `MP2_AMBIENT_OCCLUSION`, `MP2_AO_STRENGTH`,
   `MP2_AO_RADIUS`, `MP2_AO_ANGLE_BIAS`.
-- `face_reflection_strength` (0..100, percent of retail; default 60, 100 under Original Experience):
-  Quality > Visor face reflection, how bright Samus's face is in the visor when a charge shot's or a
-  missile's flash lights it (`CSamusFaceReflection::Draw` scales its additive weight). The face is always
-  lit as retail lights it (`CCubeMaterial::CPortRetailLightingScope`). Env `MP2_FACE_REFLECTION_STRENGTH`.
+- `face_pbr_strength` (0..100, percent; default 40): Quality > Visor face PBR strength (shown while PBR maps
+  is on), how much of the PBR maps' lighting Samus's face reflection in the visor takes when a charge
+  shot's or a missile's flash lights it; the rest is the game's own lighting (`CSamusFaceReflection::Draw`
+  opens a `CCubeMaterial::CPortPbrStrengthScope`; Aurora's `GXPortSetSurfacePBRStrength` makes the relit
+  stage `mix(L x base, PBR, strength)`). Env `MP2_FACE_PBR_STRENGTH`.
 - `MP2_PIPELINE_SEED=0` ignores the embedded pipeline cache seed (docs/RELEASING.md).
 - Pipeline memory (env only, not saved; `platform/port_memory_log.cpp`): `MP2_PIPELINE_LAZY=0|1`
   builds pipelines when first drawn instead of all at startup (default on for Android, where a

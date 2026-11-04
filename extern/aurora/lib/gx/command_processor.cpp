@@ -1551,11 +1551,12 @@ void handle_aurora(ByteReader& reader) noexcept {
     }
     std::memcpy(&params, words, sizeof(params));
     gfx::ssao::record(params);
-  } else if (subCmd == GX_AURORA_PORT_RETAIL_LIGHTING) {
-    const bool on = reader.read<u8>() != 0;
-    if (g_gxState.retailLighting != on) {
-      g_gxState.retailLighting = on;
-      g_gxState.dirty |= DirtyPipeline;
+  } else if (subCmd == GX_AURORA_PORT_SURFACE_PBR_STRENGTH) {
+    const f32 strength = reader.read<f32>();
+    const f32 clamped = strength >= 0.f ? (strength <= 1.f ? strength : 1.f) : 0.f; // NaN -> 0
+    if (g_gxState.surfacePbrStrength != clamped) {
+      g_gxState.surfacePbrStrength = clamped;
+      g_gxState.dirty |= DirtyUniform;
     }
   } else if (subCmd == GX_AURORA_PORT_WATER_REFLECTION) {
     const u8 stage = reader.read<u8>();

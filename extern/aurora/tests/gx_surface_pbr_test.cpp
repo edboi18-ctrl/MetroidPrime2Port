@@ -291,6 +291,8 @@ TEST(GxSurfacePbr, RoomDiffuseStageIsRelit) {
   EXPECT_NE(source.find("let pbrs_rast = (ubuf.cc0_mat * clamp(pbrs_lighting"), std::string::npos);
   EXPECT_NE(source.find("var diff = max(0.0, dot(ldir, pbrs_n));"), std::string::npos);
   EXPECT_NE(source.find("prev = vec4f(clamp(pbrs_lit, vec3f(0.0), vec3f(1.0)), prev.a);"), std::string::npos);
+  // GXPortSetSurfacePBRStrength: the result fades towards the stage's own, L x base.
+  EXPECT_NE(source.find("* pbrs_base, pbrs_pbr, clamp(ubuf.surface_pbr.w, 0.0, 1.0));"), std::string::npos);
   // The highlights: each light feeds at most 1.0, all of them together at most 1.0 (GX's clamped
   // sum), scaled by aurora_set_pbr_highlight through the surface_pbr uniform.
   EXPECT_NE(source.find("surface_pbr: vec4f,"), std::string::npos);

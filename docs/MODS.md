@@ -174,14 +174,12 @@ captured around the camera, and around Samus while she is drawn in third person,
 reflection is of the room as seen from there, not mirrored about the water; nearby walls are slightly
 off in parallax and distant ones (sky, far walls) are right.
 
-**Retail lighting for the visor's face reflection.** `CSamusFaceReflection::Draw` (Samus's face in the
-visor, lit by a charge shot's or a missile's flash right next to it) opens a
-`CCubeMaterial::CPortRetailLightingScope`: Aurora's `GXPortSetRetailLighting` (command `0x0076`) keeps its
-draws' GX lighting per vertex whatever Per-pixel lighting says and drops the port's surface modes, and
-`PortBeginSurfaceDraw` skips the PBR maps and the probe. Per-pixel light and a PBR map's specular from
-that close a light made the face glossy and plastic where retail's is soft. Quality > Visor face reflection
-(`face_reflection_strength`, default 60% of retail, 100% under Original Experience) also scales the
-face's additive weight, so it can be toned down or hidden.
+**Visor face PBR strength.** Samus's face in the visor (`CSamusFaceReflection`), lit by a charge shot's or a
+missile's flash right next to it, looked glossy and plastic with the PBR maps at full strength. Its draw
+opens a `CCubeMaterial::CPortPbrStrengthScope` (Quality > Visor face PBR strength, default 40%), and
+`PortBeginSurfaceDraw` sends Aurora's `GXPortSetSurfacePBRStrength` (command `0x0076`) with its PBR maps: the
+relit stage's result becomes `mix(L x base, PBR, strength)`, the stage's own TEV result and the PBR one, so
+the normal map, the highlights and the probe's reflection fade together towards the game's own look.
 
 **Bloom.** F1 > Video > Quality > Bloom (`bloom`, off by default): `CStateManager::DrawWorld` calls
 Aurora's `GXPortPostProcess`, the Remastered bloom the MP1 port draws (`extern/aurora/lib/gfx/bloom.cpp`:

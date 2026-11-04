@@ -1029,7 +1029,9 @@ static std::string port_surface_pbr(const ShaderConfig& config, u32 idx, std::st
       }}
       let pbrs_env = pbrs_envl * (pbrs_f0 * pbrs_ab.x + pbrs_ab.y) * pbrs_ao;
       let pbrs_diff = pbrs_base * (1.0 - pbrs_metal) * pbrs_light * pbrs_ao;
-      let pbrs_lit = pow(pow(pbrs_diff, vec3f(2.2)) + pbrs_spec + max(pbrs_env, vec3f(0.0)), vec3f(1.0 / 2.2));
+      let pbrs_pbr = pow(pow(pbrs_diff, vec3f(2.2)) + pbrs_spec + max(pbrs_env, vec3f(0.0)), vec3f(1.0 / 2.2));
+      // GXPortSetSurfacePBRStrength: towards the stage's own result, 0 + lerp(0, L, TEXC).
+      let pbrs_lit = mix(max({light}, vec3f(0.0)) * pbrs_base, pbrs_pbr, clamp(ubuf.surface_pbr.w, 0.0, 1.0));
       {out} = vec4f({result}, {out}.a);
     }})""",
       fmt::arg("stage", idx), fmt::arg("uv", fmt::format("tex{}_uv", underlying(stage.texCoordId))),
@@ -4321,7 +4323,7 @@ fn vf_apply_hdr(c: vec4f, fog: vec4f, w: f32) -> vec4f {
     uniBufAttrs += "\n    hud_dyin: vec4f,";
   }
   if (info.usesSurfacePbr) {
-    uniBufAttrs += "\n    surface_pbr: vec4f, // x: highlight strength, y: env stages' probe level, z: their reflection strength";
+    uniBufAttrs += "\n    surface_pbr: vec4f, // x: highlight strength, y: env stages' probe level, z: their reflection strength, w: PBR strength";
     uniBufAttrs += "\n    surface_probe: mat3x4f, // GXSetPBRProbe: view to probe rows, weight in [0].w";
   }
   if (info.usesPTTexMtx.any()) {

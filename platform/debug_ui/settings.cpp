@@ -737,7 +737,7 @@ const SettingKey kSettingKeys[] = {
     IntKey< &sAoStrength, PortAo::kStrengthMin, PortAo::kStrengthMax >("ao_strength", "0", "150"),
     IntKey< &sAoRadius, PortAo::kRadiusMin, PortAo::kRadiusMax >("ao_radius", "25", "200"),
     IntKey< &sAoAngleBias, PortAo::kAngleBiasMin, PortAo::kAngleBiasMax >("ao_angle_bias", "0", "50"),
-    IntKey< &sFaceReflectionStrength, 0, 100 >("face_reflection_strength", "0", "100"),
+    IntKey< &sFacePbrStrength, 0, 100 >("face_pbr_strength", "0", "100"),
     BoolKey< &sDynamicRes >("dynamic_res"),
     {"dynamic_res_target",
      [](const std::string& value) { sDynamicResTarget = std::clamp(std::atoi(value.c_str()), 0, PortOverlay::kFpsCapMax); },

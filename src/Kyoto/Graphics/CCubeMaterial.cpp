@@ -971,17 +971,13 @@ float CCubeMaterial::sPortEnvProbeStrength = -1.f;
 bool CCubeMaterial::sPortProbeFocusSet = false;
 CVector3f CCubeMaterial::sPortProbeFocus = CVector3f::Zero();
 bool CCubeMaterial::sPortCapturingProbe = false;
-bool CCubeMaterial::sPortRetailLighting = false;
+float CCubeMaterial::sPortPbrStrength = 1.f;
 
-CCubeMaterial::CPortRetailLightingScope::CPortRetailLightingScope() : mSaved(sPortRetailLighting) {
-  sPortRetailLighting = true;
-  GXPortSetRetailLighting(GX_TRUE);
+CCubeMaterial::CPortPbrStrengthScope::CPortPbrStrengthScope(float strength) : mSaved(sPortPbrStrength) {
+  sPortPbrStrength = strength < 0.f ? 0.f : strength > 1.f ? 1.f : strength;
 }
 
-CCubeMaterial::CPortRetailLightingScope::~CPortRetailLightingScope() {
-  sPortRetailLighting = mSaved;
-  GXPortSetRetailLighting(mSaved ? GX_TRUE : GX_FALSE);
-}
+CCubeMaterial::CPortPbrStrengthScope::~CPortPbrStrengthScope() { sPortPbrStrength = mSaved; }
 uint CCubeMaterial::sPortProbeDraws = 0;
 float CCubeMaterial::sPortProbeWeight = 0.f;
 
@@ -1016,9 +1012,6 @@ CCubeMaterial::CPortEnvProbeScope::~CPortEnvProbeScope() {
 
 uint CCubeMaterial::PortBeginSurfaceDraw() {
   uint begun = 0;
-  if (sPortRetailLighting) {
-    return begun;
-  }
   if (sPortPbrChoice.maps != nullptr && sPortPbrChoice.generation == PortPbrMaps::Generation()) {
     PortPbrMaps::Load(*sPortPbrChoice.maps);
     // The slots now hold the maps: the next CTexture bound to them must load again.
@@ -1026,6 +1019,10 @@ uint CCubeMaterial::PortBeginSurfaceDraw() {
     CTexture::InvalidateTexmap(GX_TEXMAP7);
     GXPortSetSurfacePBR(sPortPbrChoice.stage);
     begun |= 1;
+    if (sPortPbrStrength < 1.f) {
+      GXPortSetSurfacePBRStrength(sPortPbrStrength);
+      begun |= 8;
+    }
   }
   const bool liveReflections = PortOverlay::LiveReflections();
   if (sPortEnvProbe && liveReflections && !sPortCapturingProbe) {
@@ -1061,6 +1058,9 @@ void CCubeMaterial::PortLoadProbe() {
 void CCubeMaterial::PortEndSurfaceDraw(uint begun) {
   if ((begun & 1) != 0) {
     GXPortSetSurfacePBR(-1);
+  }
+  if ((begun & 8) != 0) {
+    GXPortSetSurfacePBRStrength(1.f);
   }
   if ((begun & 2) != 0) {
     GXPortSetEnvProbe(GX_FALSE);

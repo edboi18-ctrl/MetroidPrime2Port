@@ -30,6 +30,10 @@ void GXSetPBR(GXBool enable);
 // as they are. Draws whose stage isn't of that form, that use maps 6 or 7 themselves, or that
 // GXSetPBR shades, are drawn as before. Lit with per-pixel lights. A negative stage turns it off.
 void GXPortSetSurfacePBR(s32 stage);
+// Port extension: how much of GXPortSetSurfacePBR's lighting the following draws take, 0..1 (clamped): the
+// relit stage's result is mix(its own TEV result, the PBR result, strength), so the normal map, the
+// highlights and the probe's reflection fade together towards the game's own look. 1 by default.
+void GXPortSetSurfacePBRStrength(f32 strength);
 // Port extension: the following draws' environment-mapped TEV stages (texture coordinates from
 // the normal, GX_TG_NRM) sample the live probe (GXCopyProbeFace) in the view's reflected
 // direction, through GXSetPBRProbe's matrix, once its weight is above 0; before that they keep
@@ -49,11 +53,6 @@ void GXPortSetEnvProbeLook(f32 level, f32 strength);
 // GXPortSetEnvProbeLook's level and strength; until the probe is filled the stage keeps its own
 // texture. A stage that doesn't read its texture's colour, or a negative stage, turns it off.
 void GXPortSetWaterReflection(s32 stage);
-// Port extension: while on, the following draws keep GX's lighting as the console computes it: per
-// vertex whatever aurora_set_per_pixel_lighting says, and none of the port's surface modes
-// (GXPortSetSurfacePBR, GXPortSetEnvProbe, GXPortSetWaterReflection) apply. For what must keep
-// retail's look exactly, such as the face reflection in Samus's visor.
-void GXPortSetRetailLighting(GXBool on);
 // Aurora extension: distance-field texturing for the following draws (see
 // GX_AURORA_SET_SDF). 0 turns it off.
 void GXSetSDF(u8 edge);

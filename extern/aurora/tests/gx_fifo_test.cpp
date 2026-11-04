@@ -2957,18 +2957,21 @@ TEST_F(GXFifoTest, PortEnvProbeLook_DecodesPerDrawLook) {
   EXPECT_LT(g_gxState.envProbeLook.y(), 0.f);
 }
 
-// GXPortSetRetailLighting: on and off reach the state the pipeline config reads.
-TEST_F(GXFifoTest, PortRetailLighting_DecodesOnOff) {
-  GXPortSetRetailLighting(GX_TRUE);
-  auto bytes = capture_fifo();
-  EXPECT_TRUE(has_aurora_cmd(bytes, GX_AURORA_PORT_RETAIL_LIGHTING));
+// GXPortSetSurfacePBRStrength: the strength reaches the uniform's state, clamped to 0..1.
+TEST_F(GXFifoTest, PortSurfacePbrStrength_DecodesClamped) {
   reset_gx_state();
-  EXPECT_FALSE(g_gxState.retailLighting);
+  EXPECT_FLOAT_EQ(g_gxState.surfacePbrStrength, 1.f);
+  GXPortSetSurfacePBRStrength(0.4f);
+  auto bytes = capture_fifo();
+  EXPECT_TRUE(has_aurora_cmd(bytes, GX_AURORA_PORT_SURFACE_PBR_STRENGTH));
   decode_fifo(bytes);
-  EXPECT_TRUE(g_gxState.retailLighting);
-  GXPortSetRetailLighting(GX_FALSE);
+  EXPECT_FLOAT_EQ(g_gxState.surfacePbrStrength, 0.4f);
+  GXPortSetSurfacePBRStrength(3.f);
   decode_fifo(capture_fifo());
-  EXPECT_FALSE(g_gxState.retailLighting);
+  EXPECT_FLOAT_EQ(g_gxState.surfacePbrStrength, 1.f);
+  GXPortSetSurfacePBRStrength(-1.f);
+  decode_fifo(capture_fifo());
+  EXPECT_FLOAT_EQ(g_gxState.surfacePbrStrength, 0.f);
 }
 
 // GXPortSetWaterReflection: the water's reflecting stage + 1 reaches the state the pipeline config reads;

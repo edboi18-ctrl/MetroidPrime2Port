@@ -458,13 +458,13 @@ void GXPortSetSurfacePBR(s32 stage) {
   GX_WRITE_U8(stage >= 0 && stage < GX_MAX_TEVSTAGE ? static_cast<u8>(stage + 1) : 0);
 }
 
-void GXPortSetEnvProbe(GXBool on) {
-  GX_WRITE_AURORA(GX_AURORA_PORT_ENV_PROBE);
-  GX_WRITE_U8(on ? 1 : 0);
+void GXPortSetSurfacePBRStrength(f32 strength) {
+  GX_WRITE_AURORA(GX_AURORA_PORT_SURFACE_PBR_STRENGTH);
+  GX_WRITE_F32(strength);
 }
 
-void GXPortSetRetailLighting(GXBool on) {
-  GX_WRITE_AURORA(GX_AURORA_PORT_RETAIL_LIGHTING);
+void GXPortSetEnvProbe(GXBool on) {
+  GX_WRITE_AURORA(GX_AURORA_PORT_ENV_PROBE);
   GX_WRITE_U8(on ? 1 : 0);
 }
 
