@@ -391,6 +391,9 @@ extern "C" {
 // Port extension: the following draws' TEV stage reflects the live probe off the water
 // (GXPortSetWaterReflection). Payload: u8 stage + 1, 0 off.
 #define GX_AURORA_PORT_WATER_REFLECTION 0x0075
+// Port extension: the following draws are lit as the console lights them (GXPortSetRetailLighting).
+// Payload: u8 on.
+#define GX_AURORA_PORT_RETAIL_LIGHTING 0x0076
 
 #define GX2_SET_POLYGON_OFFSET 0x1000
 

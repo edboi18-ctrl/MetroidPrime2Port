@@ -21,6 +21,7 @@
 #include "Kyoto/Math/CRelAngle.hpp"
 
 #ifdef TARGET_PC
+#include "Kyoto/Graphics/CCubeMaterial.hpp"
 #include "port_overlay.h"
 #endif
 
@@ -140,6 +141,10 @@ void CSamusFaceReflection::Draw(const CStateManager& mgr) const {
   if (mModelData.get() != nullptr && !mHidden) {
     if (const CGameCamera* fpCam = CCameraManager::CastGameCameratoFirstPersonCamera(
             mgr.GetCurrentRenderCameraManager()->GetCurrentCamera(mgr, true))) {
+#ifdef TARGET_PC
+      // Port: the face is lit as the console lit it, whatever Per-pixel lighting and PBR maps say.
+      CCubeMaterial::CPortRetailLightingScope retailLighting;
+#endif
       const CVector3f camTranslation = fpCam->GetTranslation();
       const CVector3f camYcol = fpCam->GetTransform().GetColumn(kDY);
       const CVector3f camZcol = fpCam->GetTransform().GetColumn(kDZ);

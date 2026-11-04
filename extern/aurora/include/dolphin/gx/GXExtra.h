@@ -49,6 +49,11 @@ void GXPortSetEnvProbeLook(f32 level, f32 strength);
 // GXPortSetEnvProbeLook's level and strength; until the probe is filled the stage keeps its own
 // texture. A stage that doesn't read its texture's colour, or a negative stage, turns it off.
 void GXPortSetWaterReflection(s32 stage);
+// Port extension: while on, the following draws keep GX's lighting as the console computes it: per
+// vertex whatever aurora_set_per_pixel_lighting says, and none of the port's surface modes
+// (GXPortSetSurfacePBR, GXPortSetEnvProbe, GXPortSetWaterReflection) apply. For what must keep
+// retail's look exactly, such as the face reflection in Samus's visor.
+void GXPortSetRetailLighting(GXBool on);
 // Aurora extension: distance-field texturing for the following draws (see
 // GX_AURORA_SET_SDF). 0 turns it off.
 void GXSetSDF(u8 edge);

@@ -2957,6 +2957,20 @@ TEST_F(GXFifoTest, PortEnvProbeLook_DecodesPerDrawLook) {
   EXPECT_LT(g_gxState.envProbeLook.y(), 0.f);
 }
 
+// GXPortSetRetailLighting: on and off reach the state the pipeline config reads.
+TEST_F(GXFifoTest, PortRetailLighting_DecodesOnOff) {
+  GXPortSetRetailLighting(GX_TRUE);
+  auto bytes = capture_fifo();
+  EXPECT_TRUE(has_aurora_cmd(bytes, GX_AURORA_PORT_RETAIL_LIGHTING));
+  reset_gx_state();
+  EXPECT_FALSE(g_gxState.retailLighting);
+  decode_fifo(bytes);
+  EXPECT_TRUE(g_gxState.retailLighting);
+  GXPortSetRetailLighting(GX_FALSE);
+  decode_fifo(capture_fifo());
+  EXPECT_FALSE(g_gxState.retailLighting);
+}
+
 // GXPortSetWaterReflection: the water's reflecting stage + 1 reaches the state the pipeline config reads;
 // a negative stage turns it off.
 TEST_F(GXFifoTest, PortWaterReflection_DecodesStage) {

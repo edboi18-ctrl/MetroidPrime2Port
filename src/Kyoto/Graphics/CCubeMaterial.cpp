@@ -971,6 +971,17 @@ float CCubeMaterial::sPortEnvProbeStrength = -1.f;
 bool CCubeMaterial::sPortProbeFocusSet = false;
 CVector3f CCubeMaterial::sPortProbeFocus = CVector3f::Zero();
 bool CCubeMaterial::sPortCapturingProbe = false;
+bool CCubeMaterial::sPortRetailLighting = false;
+
+CCubeMaterial::CPortRetailLightingScope::CPortRetailLightingScope() : mSaved(sPortRetailLighting) {
+  sPortRetailLighting = true;
+  GXPortSetRetailLighting(GX_TRUE);
+}
+
+CCubeMaterial::CPortRetailLightingScope::~CPortRetailLightingScope() {
+  sPortRetailLighting = mSaved;
+  GXPortSetRetailLighting(mSaved ? GX_TRUE : GX_FALSE);
+}
 uint CCubeMaterial::sPortProbeDraws = 0;
 float CCubeMaterial::sPortProbeWeight = 0.f;
 
@@ -1005,6 +1016,9 @@ CCubeMaterial::CPortEnvProbeScope::~CPortEnvProbeScope() {
 
 uint CCubeMaterial::PortBeginSurfaceDraw() {
   uint begun = 0;
+  if (sPortRetailLighting) {
+    return begun;
+  }
   if (sPortPbrChoice.maps != nullptr && sPortPbrChoice.generation == PortPbrMaps::Generation()) {
     PortPbrMaps::Load(*sPortPbrChoice.maps);
     // The slots now hold the maps: the next CTexture bound to them must load again.

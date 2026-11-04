@@ -174,6 +174,13 @@ captured around the camera, and around Samus while she is drawn in third person,
 reflection is of the room as seen from there, not mirrored about the water; nearby walls are slightly
 off in parallax and distant ones (sky, far walls) are right.
 
+**Retail lighting for the visor's face reflection.** `CSamusFaceReflection::Draw` (Samus's face in the
+visor, lit by a charge shot's or a missile's flash right next to it) opens a
+`CCubeMaterial::CPortRetailLightingScope`: Aurora's `GXPortSetRetailLighting` (command `0x0076`) keeps its
+draws' GX lighting per vertex whatever Per-pixel lighting says and drops the port's surface modes, and
+`PortBeginSurfaceDraw` skips the PBR maps and the probe. Per-pixel light and a PBR map's specular from
+that close a light made the face glossy and plastic where retail's is soft.
+
 **Bloom.** F1 > Video > Quality > Bloom (`bloom`, off by default): `CStateManager::DrawWorld` calls
 Aurora's `GXPortPostProcess`, the Remastered bloom the MP1 port draws (`extern/aurora/lib/gfx/bloom.cpp`:
 a bright pass at 1/4 size, four downsamples to 1/64, four upsamples back, `b / (1 + b)` added to the

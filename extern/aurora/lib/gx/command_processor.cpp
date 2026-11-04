@@ -1551,6 +1551,12 @@ void handle_aurora(ByteReader& reader) noexcept {
     }
     std::memcpy(&params, words, sizeof(params));
     gfx::ssao::record(params);
+  } else if (subCmd == GX_AURORA_PORT_RETAIL_LIGHTING) {
+    const bool on = reader.read<u8>() != 0;
+    if (g_gxState.retailLighting != on) {
+      g_gxState.retailLighting = on;
+      g_gxState.dirty |= DirtyPipeline;
+    }
   } else if (subCmd == GX_AURORA_PORT_WATER_REFLECTION) {
     const u8 stage = reader.read<u8>();
     if (stage > MaxTevStages) {
