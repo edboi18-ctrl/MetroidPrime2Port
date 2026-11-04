@@ -222,7 +222,7 @@
 {"Enhancements", "", "Music", "Light world music in Dark Aether", "dark world soundtrack theme bgm song track override"},
 {"Enhancements", "", "Pace", "Skippable cutscenes", "skip cinematics movies"},
 {"Enhancements", "", "Weapons", "Power Beam speed", "power beam shot projectile velocity fast speed weapon"},
-{"Enhancements", "", "Pace", "Seamless item pickups", "pickup item acquired cutscene cinematic message box textbox memo control lock jingle randomizer"},
+{"Enhancements", "", "Pace", "Seamless item pickups", "pickup item acquired cutscene cinematic message box textbox memo control lock jingle randomizer map station"},
 {"Enhancements", "", "Pace", "Custom walk speed", "sprint run toggle hold movement speed retail"},
 {"Enhancements", "", "Pace", "Walk speed", "movement run fast slow strafe velocity samus"},
 {"Enhancements", "", "Pace", "Scan speed", "scanning visor faster slower scan time"},
