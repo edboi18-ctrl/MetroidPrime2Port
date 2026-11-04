@@ -155,6 +155,25 @@ away from her, and a probe taken there would reflect the wrong part of the room.
 environment-map stages their materials already have change; a material without one (or one drawn
 unlit) is drawn as before.
 
+**Water reflections.** Quality > Water reflections (`water_reflections`, on by default under Live
+reflections): retail's water (`CFluidPlaneCPU::RenderSetup`) has no reflection of the room. Its
+"environment map" is a painted texture laid flat over the surface (texture coordinates from the
+position, scaled to the water's bounds), so it never moves with the view. With the setting on, that
+stage's sample becomes the live probe along the view reflected off the surface
+(`GXPortSetWaterReflection`, Aurora command `0x0075`), still masked by the water's gloss layers and lit
+by its lightmap as retail combines them. Water without an environment map keeps its own stages and
+gets one more, last, adding the reflection on top (`PREV = reflection + PREV`); it reads a black
+texture until the probe is filled. The reflection is weighted by Schlick's Fresnel approximation for
+water, `F = F0 + (1 - F0)(1 - cos)^5` with `F0 = ((1.333 - 1) / (1.333 + 1))^2 = 0.0204` (water's index
+of refraction 1.333 at 20 C and 589 nm), so it is faint looking straight down and a mirror at
+grazing angles. The surface's normal comes from screen-space derivatives of its view-space position
+(a varying of its own), since MP2's water is a flat plane drawn with positions only and often unlit.
+Blur (default 10%) and strength (default 100%) are the water's own (`GXPortSetEnvProbeLook`). Not with
+the camera under the surface (retail drops the env map there too) nor in split screen. The probe is
+captured around the camera, and around Samus while she is drawn in third person, so a pool's
+reflection is of the room as seen from there, not mirrored about the water; nearby walls are slightly
+off in parallax and distant ones (sky, far walls) are right.
+
 **Bloom.** F1 > Video > Quality > Bloom (`bloom`, off by default): `CStateManager::DrawWorld` calls
 Aurora's `GXPortPostProcess`, the Remastered bloom the MP1 port draws (`extern/aurora/lib/gfx/bloom.cpp`:
 a bright pass at 1/4 size, four downsamples to 1/64, four upsamples back, `b / (1 + b)` added to the

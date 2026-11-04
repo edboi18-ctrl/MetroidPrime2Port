@@ -2156,6 +2156,9 @@ int sReflectionResolution = 64;
 bool sBodyReflections = true;
 int sBodyReflectionBlur = 30;
 int sBodyReflectionStrength = 100;
+bool sWaterReflections = true;
+int sWaterReflectionBlur = 10;
+int sWaterReflectionStrength = 100;
 bool sBloom = false;
 int sBloomStrength = PortBloom::kStrengthDefault;
 int sBloomThreshold = PortBloom::kThresholdDefault;
@@ -2301,6 +2304,21 @@ int BodyReflectionBlur() {
 int BodyReflectionStrength() {
   ReadEnv();
   return EnvIntIn("MP2_BODY_REFLECTION_STRENGTH", sBodyReflectionStrength, 0, 200);
+}
+
+bool WaterReflections() {
+  ReadEnv();
+  return EnvBool("MP2_WATER_REFLECTIONS", sWaterReflections);
+}
+
+int WaterReflectionBlur() {
+  ReadEnv();
+  return EnvIntIn("MP2_WATER_REFLECTION_BLUR", sWaterReflectionBlur, 0, 100);
+}
+
+int WaterReflectionStrength() {
+  ReadEnv();
+  return EnvIntIn("MP2_WATER_REFLECTION_STRENGTH", sWaterReflectionStrength, 0, 200);
 }
 
 bool Bloom() {

@@ -900,6 +900,28 @@ static std::string port_env_probe(u32 stages) {
   return out;
 }
 
+// GXPortSetWaterReflection (pbr 0, pbrKind = kPortWaterBit | stage + 1; port_water_stage): the stage's
+// texture sample is the live probe along the view reflected off the water's facet, times Schlick's
+// Fresnel for water, F = F0 + (1 - F0)(1 - cos)^5 with F0 = ((1.333 - 1) / (1.333 + 1))^2 = 0.0204
+// (n of water 1.333 at 589 nm). The stage's own combine (the gloss mask, the base colour it adds)
+// stays as it was.
+static std::string port_water_reflection(u32 stage) {
+  return fmt::format(R"""(
+    // GXPortSetWaterReflection: TEV stage {0} reflects the live probe off the water
+    if (ubuf.surface_probe[0].w > 0.0) {{
+        let pw{0}_v = select(vec3f(0.0, 0.0, -1.0), normalize(in.pw_pos), dot(in.pw_pos, in.pw_pos) > 1e-12);
+        let pw{0}_r = reflect(pw{0}_v, pw_n);
+        let pw{0}_d = ubuf.surface_probe[0].xyz * pw{0}_r.x + ubuf.surface_probe[1].xyz * pw{0}_r.y +
+                      ubuf.surface_probe[2].xyz * pw{0}_r.z;
+        let pw{0}_c = textureSampleLevel(pbr_cube, pbr_cube_samp, pw{0}_d, ubuf.surface_pbr.y).rgb;
+        let pw{0}_cos = clamp(dot(-pw{0}_v, pw_n), 0.0, 1.0);
+        let pw{0}_f = 0.0204 + 0.9796 * pow(1.0 - pw{0}_cos, 5.0);
+        sampled{0} = vec4f(mix(sampled{0}.rgb, pw{0}_c * (pw{0}_f * max(ubuf.surface_pbr.z, 0.0)),
+                               clamp(ubuf.surface_probe[0].w, 0.0, 1.0)), sampled{0}.a);
+    }})""",
+                     stage);
+}
+
 // GXPortSetSurfacePBR (pbr 0, pbrKind = stage + 1; port_surface_pbr_stage says when it applies):
 // the TEV stage that lights the surface's base colour, 0 + lerp(0, L, TEXC) with L channel 0's lit
 // colour or a register an earlier stage set to it plus something (a room's lightmap stage: C0 =
@@ -3419,6 +3441,11 @@ std::string build_shader_source(const ShaderConfig& config) noexcept {
       "\n    let nrm_tmp = vec4f({}, 0.0) * ubuf.nrm_mtx[in_pnmtxidx];"
       "\n    let mv_nrm = select(nrm_tmp, normalize(nrm_tmp), dot(nrm_tmp, nrm_tmp) > 1e-10);",
       vtx_attr(config, GX_VA_NRM));
+  if (port_water_stage(config) >= 0) {
+    // GXPortSetWaterReflection: the fragment stage reflects the view off the surface's own facet.
+    vtxOutAttrs += fmt::format("\n    @location({}) pw_pos: vec3f,", vtxOutIdx++);
+    vtxXfrAttrsPre += "\n    out.pw_pos = mv_pos;";
+  }
   if (config.actorDecal != 0 && config.lineMode == 0) {
     // Remastered's projected actor shadow (gfx/actor_shadow.hpp): the fragment stage needs the view-space
     // position, and the decal sits 0.015 m toward the camera so it wins LEQUAL against the surface it paints.
@@ -3441,6 +3468,19 @@ std::string build_shader_source(const ShaderConfig& config) noexcept {
   const int portPbrStage = port_surface_pbr_stage(config);
   if (const u32 envStages = port_env_probe_stages(config); envStages != 0) {
     fragmentFn += port_env_probe(envStages);
+  }
+  if (const int waterStage = port_water_stage(config); waterStage >= 0) {
+    // The facet normal from screen-space derivatives, at the top of the fragment stage where control
+    // flow is uniform, turned to face the camera.
+    fragmentFnPre +=
+        "\n    let pw_dx = dpdx(in.pw_pos);"
+        "\n    let pw_dy = dpdy(in.pw_pos);"
+        "\n    let pw_c = cross(pw_dx, pw_dy);"
+        "\n    var pw_n = select(vec3f(0.0, 0.0, 1.0), normalize(pw_c), dot(pw_c, pw_c) > 1e-24);"
+        "\n    if (dot(pw_n, in.pw_pos) > 0.0) {"
+        "\n        pw_n = -pw_n;"
+        "\n    }";
+    fragmentFn += port_water_reflection(static_cast<u32>(waterStage));
   }
   std::array<bool, MaxTevRegs> colorNormalized{};
   std::array<bool, MaxTevRegs> alphaNormalized{};

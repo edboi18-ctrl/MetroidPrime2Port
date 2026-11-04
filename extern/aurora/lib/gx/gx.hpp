@@ -48,6 +48,9 @@ namespace aurora::gx {
 // ShaderConfig::pbrKind while pbr is 0: the relit stage + 1, and the live-probe bit.
 constexpr u8 kPortSurfacePbrStageMask = 0x1F;
 constexpr u8 kPortEnvProbeBit = 0x20;
+// GXPortSetWaterReflection: with it set, the low bits (kPortSurfacePbrStageMask) are the water's
+// reflecting TEV stage + 1 instead of a surface PBR stage (a water draw has no PBR maps).
+constexpr u8 kPortWaterBit = 0x40;
 constexpr bool EnableNormalVisualization = false;
 constexpr bool EnableDebugPrints = false;
 constexpr bool UseReversedZ = true;
@@ -412,6 +415,7 @@ struct GXState {
   u8 numTexGens = 0;
   u8 pbr = 0; // GX_AURORA_SET_PBR: above 1, a cost test (GXSetPBRCostTest)
   u8 surfacePbr = 0; // GX_AURORA_PORT_SURFACE_PBR: the relit TEV stage + 1 (GXPortSetSurfacePBR), 0 off
+  u8 waterReflect = 0; // GX_AURORA_PORT_WATER_REFLECTION: the reflecting TEV stage + 1, 0 off
   bool envProbe = false; // GX_AURORA_PORT_ENV_PROBE: environment-mapped stages read the probe (GXPortSetEnvProbe)
   // GX_AURORA_PORT_ENV_PROBE_LOOK (GXPortSetEnvProbeLook): x the probe level, y the strength; y below 0
   // takes aurora_set_env_probe_look's (env_probe_look).
@@ -766,8 +770,9 @@ inline bool wants_per_pixel_light(const ShaderConfig& config) noexcept {
   }
   // GXPortSetSurfacePBR's and GXPortSetEnvProbe's draws (populate_pipeline_config keeps pbrKind
   // only on a draw they apply to, whose channel 0 is lit) light per pixel: the relit stage needs
-  // it, and the probe needs the per-pixel position and normal.
-  if (config.pbrKind != 0) {
+  // it, and the probe needs the per-pixel position and normal. GXPortSetWaterReflection's don't:
+  // the water carries its own position and takes its normal from it.
+  if (config.pbrKind != 0 && (config.pbrKind & kPortWaterBit) == 0) {
     return true;
   }
   if (!per_pixel_lighting()) {

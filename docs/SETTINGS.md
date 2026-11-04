@@ -513,6 +513,13 @@ Video > Quality and Frame rate:
   stages with their own look (`GXPortSetEnvProbeLook`), and while they read it the probe is captured
   around her (`CCubeMaterial::CPortEnvProbeScope`) instead of the camera. Env `MP2_BODY_REFLECTIONS`,
   `MP2_BODY_REFLECTION_BLUR`, `MP2_BODY_REFLECTION_STRENGTH`.
+- `water_reflections` (on by default), `water_reflection_blur` (0..100, percent; default 10) and
+  `water_reflection_strength` (0..200, percent; default 100): Quality > Water reflections / Water blur /
+  Water strength (shown while Live reflections is on). `CFluidPlaneCPU::RenderSetup` makes the water's
+  environment stage (or, for water without an environment map, a stage built as retail builds one)
+  reflect the live probe along the view reflected off the surface, times Schlick's Fresnel for water
+  (`GXPortSetWaterReflection`). Not with the camera under the surface, nor in split screen. Env
+  `MP2_WATER_REFLECTIONS`, `MP2_WATER_REFLECTION_BLUR`, `MP2_WATER_REFLECTION_STRENGTH`.
 - `bloom` (off by default), `bloom_strength` (0..200, percent; default 100) and `bloom_threshold`
   (50..95, percent of display white; default 90): Quality > Bloom / Bloom strength / Bloom threshold,
   Aurora's Remastered bloom (`GXPortPostProcess`) over the world, drawn in `CStateManager::DrawWorld`

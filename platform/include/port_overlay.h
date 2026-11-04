@@ -800,6 +800,13 @@ constexpr float kReflectionLevelPerBlurPercent = 0.05f;
 bool BodyReflections();
 int BodyReflectionBlur();
 int BodyReflectionStrength();
+// Water surfaces reflect the live probe too (F1 > Video > Quality, shown with Live reflections;
+// CFluidPlaneCPU::RenderSetup, GXPortSetWaterReflection): on by default (`MP2_WATER_REFLECTIONS`),
+// with their own blur 0..100% (`MP2_WATER_REFLECTION_BLUR`; default 10) and strength 0..200%
+// (`MP2_WATER_REFLECTION_STRENGTH`; default 100).
+bool WaterReflections();
+int WaterReflectionBlur();
+int WaterReflectionStrength();
 // Bloom over the world, under the visors and the HUD (`MP2_BLOOM`, F1 > Video > Quality; off by
 // default): Aurora's Remastered bloom (GXPortPostProcess) with the port's own curve and tints
 // (port_bloom_rules.h). Strength 0..200% (`MP2_BLOOM_STRENGTH`; default 100) and the brightness it

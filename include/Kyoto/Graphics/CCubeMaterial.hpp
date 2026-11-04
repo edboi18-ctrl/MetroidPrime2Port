@@ -77,6 +77,9 @@ public:
   // and for either the live probe's matrix (GXSetPBRProbe). Begin returns what End undoes.
   static uint PortBeginSurfaceDraw();
   static void PortEndSurfaceDraw(uint begun);
+  // GXSetPBRProbe for the current view (the live probe's matrix and weight), and counts a draw
+  // that reads it (sPortProbeDraws). PortBeginSurfaceDraw's, and the water's (CFluidPlaneCPU).
+  static void PortLoadProbe();
   // CPlayerGun::Render sets it: the first-person gun's environment maps read the live probe.
   static bool sPortEnvProbe;
   // The look sPortEnvProbe's draws read the probe with (GXPortSetEnvProbeLook): the probe level and

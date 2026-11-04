@@ -157,7 +157,7 @@ u32 line_texcoord_mask() noexcept {
 
 int port_surface_pbr_stage(const ShaderConfig& config) noexcept {
   const u32 kind = config.pbrKind & kPortSurfacePbrStageMask;
-  if (config.pbr != 0 || kind == 0 || config.perPixelLight == 0 ||
+  if (config.pbr != 0 || kind == 0 || (config.pbrKind & kPortWaterBit) != 0 || config.perPixelLight == 0 ||
       !config.colorChannels[GX_COLOR0].lightingEnabled) {
     return -1;
   }
@@ -236,7 +236,8 @@ int port_surface_pbr_stage(const ShaderConfig& config) noexcept {
 }
 
 u32 port_env_probe_stages(const ShaderConfig& config) noexcept {
-  if (config.pbr != 0 || (config.pbrKind & kPortEnvProbeBit) == 0 || config.perPixelLight == 0 ||
+  if (config.pbr != 0 || (config.pbrKind & kPortEnvProbeBit) == 0 || (config.pbrKind & kPortWaterBit) != 0 ||
+      config.perPixelLight == 0 ||
       !config.colorChannels[GX_COLOR0].lightingEnabled) {
     return 0;
   }
@@ -262,8 +263,40 @@ u32 port_env_probe_stages(const ShaderConfig& config) noexcept {
   return stages;
 }
 
-void apply_port_surface_flags(ShaderConfig& config, u8 surfacePbr, bool envProbe) noexcept {
-  if (config.pbr != 0 || (surfacePbr == 0 && !envProbe)) {
+int port_water_stage(const ShaderConfig& config) noexcept {
+  if (config.pbr != 0 || (config.pbrKind & kPortWaterBit) == 0 || config.lineMode != 0) {
+    return -1;
+  }
+  const u32 kind = config.pbrKind & kPortSurfacePbrStageMask;
+  if (kind == 0 || kind - 1u >= config.tevStageCount) {
+    return -1;
+  }
+  // The stage must read its texture's colour: that sample is what the reflection replaces.
+  const auto& stage = config.tevStages[kind - 1u];
+  if (stage.texMapId == GX_TEXMAP_NULL || stage.texCoordId == GX_TEXCOORD_NULL || stage.texCoordId >= MaxTexCoord) {
+    return -1;
+  }
+  const auto& c = stage.colorPass;
+  const auto tex = [](GXTevColorArg arg) { return arg == GX_CC_TEXC || arg == GX_CC_TEXA; };
+  if (!(tex(c.a) || tex(c.b) || tex(c.c) || tex(c.d))) {
+    return -1;
+  }
+  return static_cast<int>(kind - 1u);
+}
+
+void apply_port_surface_flags(ShaderConfig& config, u8 surfacePbr, bool envProbe, u8 waterReflect) noexcept {
+  if (config.pbr != 0) {
+    return;
+  }
+  if (waterReflect != 0) {
+    // The water: no PBR maps or env probe stages, and no per-pixel lights of its own.
+    config.pbrKind = static_cast<u8>(kPortWaterBit | (waterReflect & kPortSurfacePbrStageMask));
+    if (port_water_stage(config) < 0) {
+      config.pbrKind = 0;
+    }
+    return;
+  }
+  if (surfacePbr == 0 && !envProbe) {
     return;
   }
   // Both predicates need per-pixel lights; wants_per_pixel_light keeps them on for the result.
@@ -445,7 +478,7 @@ ShaderInfo build_shader_info(const ShaderConfig& config) noexcept {
     info.sampledTextures.set(GX_TEXMAP6);
     info.sampledTextures.set(GX_TEXMAP7);
   }
-  if (surfacePbr || port_env_probe_stages(config) != 0) {
+  if (surfacePbr || port_env_probe_stages(config) != 0 || port_water_stage(config) >= 0) {
     // surface_pbr (highlight strength, the environment stages' probe level and weight) and
     // surface_probe (GXSetPBRProbe's view-to-probe rows and weight).
     info.usesSurfacePbr = true;

@@ -340,6 +340,18 @@ void DrawVideoQuality() {
       ImGui::SetItemTooltip("How bright Samus's and the morph ball's reflections are; 100%% is the room as\n"
                             "captured.");
     }
+    // Read each frame by CFluidPlaneCPU::RenderSetup.
+    Changed(ImGui::Checkbox("Water reflections", &sWaterReflections));
+    ImGui::SetItemTooltip("Water surfaces reflect the room around them: faint looking straight down,\n"
+                          "a mirror at a low angle, as real water does (Fresnel). Water without a\n"
+                          "reflection of its own gets one. Not from under the surface.");
+    if (sWaterReflections) {
+      Changed(ImGui::SliderInt("Water blur", &sWaterReflectionBlur, 0, 100, "%d%%", ImGuiSliderFlags_AlwaysClamp));
+      ImGui::SetItemTooltip("0%% is a still mirror; higher softens the reflection, as a rippled surface would.");
+      Changed(ImGui::SliderInt("Water strength", &sWaterReflectionStrength, 0, 200, "%d%%",
+                               ImGuiSliderFlags_AlwaysClamp));
+      ImGui::SetItemTooltip("How bright the water's reflection is; 100%% is the room as captured.");
+    }
   }
   if (sPbrMaps) {
     // Applied by PortVideo::Frame through aurora_set_pbr_highlight, on change.

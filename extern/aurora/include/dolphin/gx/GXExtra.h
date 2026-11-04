@@ -41,6 +41,14 @@ void GXPortSetEnvProbe(GXBool on);
 // A strength below 0 goes back to the look aurora_set_env_probe_look sets for every draw. Ordered
 // with the draws, so models drawn one after another can each have their own look.
 void GXPortSetEnvProbeLook(f32 level, f32 strength);
+// Port extension: the following draws are water, and TEV stage `stage`'s texture sample becomes the
+// live probe (GXCopyProbeFace) seen along the view reflected off the surface, times Schlick's Fresnel
+// for water (F0 0.0204): faint looking straight down, a mirror at grazing angles. The surface's normal
+// comes from its own view-space position (no normal attribute or lit channel is needed; a rippled
+// mesh reflects off its facets). Read through GXSetPBRProbe's matrix and weight at
+// GXPortSetEnvProbeLook's level and strength; until the probe is filled the stage keeps its own
+// texture. A stage that doesn't read its texture's colour, or a negative stage, turns it off.
+void GXPortSetWaterReflection(s32 stage);
 // Aurora extension: distance-field texturing for the following draws (see
 // GX_AURORA_SET_SDF). 0 turns it off.
 void GXSetSDF(u8 edge);

@@ -1551,6 +1551,14 @@ void handle_aurora(ByteReader& reader) noexcept {
     }
     std::memcpy(&params, words, sizeof(params));
     gfx::ssao::record(params);
+  } else if (subCmd == GX_AURORA_PORT_WATER_REFLECTION) {
+    const u8 stage = reader.read<u8>();
+    if (stage > MaxTevStages) {
+      Log.warn("GX_AURORA_PORT_WATER_REFLECTION: invalid stage {}", stage);
+    } else if (g_gxState.waterReflect != stage) {
+      g_gxState.waterReflect = stage;
+      g_gxState.dirty |= DirtyPipeline;
+    }
   } else if (subCmd == GX_AURORA_PORT_ENV_PROBE_LOOK) {
     const f32 level = reader.read<f32>();
     const f32 strength = reader.read<f32>();

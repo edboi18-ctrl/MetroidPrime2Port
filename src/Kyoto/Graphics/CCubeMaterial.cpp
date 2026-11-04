@@ -1023,21 +1023,25 @@ uint CCubeMaterial::PortBeginSurfaceDraw() {
     }
   }
   if (begun != 0) {
-    // The probe is in world space with Y and Z swapped (world Z-up to the cube's Y-up), and the
-    // shader's reflection vector is in view space (right, up, -forward): the rows that take one
-    // to the other, as the MP1 port's CCubeModel builds them for its PBR draws.
-    const CTransform4f& view = CGraphics::GetViewMatrix();
-    const f32 viewToProbe[3][3] = {
-        {view.Get00(), view.Get02(), -view.Get01()},
-        {view.Get20(), view.Get22(), -view.Get21()},
-        {view.Get10(), view.Get12(), -view.Get11()},
-    };
-    GXSetPBRProbe(viewToProbe, liveReflections ? sPortProbeWeight : 0.f);
-    if (!sPortCapturingProbe) {
-      ++sPortProbeDraws;
-    }
+    PortLoadProbe();
   }
   return begun;
+}
+
+void CCubeMaterial::PortLoadProbe() {
+  // The probe is in world space with Y and Z swapped (world Z-up to the cube's Y-up), and the
+  // shader's reflection vector is in view space (right, up, -forward): the rows that take one
+  // to the other, as the MP1 port's CCubeModel builds them for its PBR draws.
+  const CTransform4f& view = CGraphics::GetViewMatrix();
+  const f32 viewToProbe[3][3] = {
+      {view.Get00(), view.Get02(), -view.Get01()},
+      {view.Get20(), view.Get22(), -view.Get21()},
+      {view.Get10(), view.Get12(), -view.Get11()},
+  };
+  GXSetPBRProbe(viewToProbe, PortOverlay::LiveReflections() ? sPortProbeWeight : 0.f);
+  if (!sPortCapturingProbe) {
+    ++sPortProbeDraws;
+  }
 }
 
 void CCubeMaterial::PortEndSurfaceDraw(uint begun) {
