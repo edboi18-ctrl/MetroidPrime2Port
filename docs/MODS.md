@@ -179,7 +179,9 @@ visor, lit by a charge shot's or a missile's flash right next to it) opens a
 `CCubeMaterial::CPortRetailLightingScope`: Aurora's `GXPortSetRetailLighting` (command `0x0076`) keeps its
 draws' GX lighting per vertex whatever Per-pixel lighting says and drops the port's surface modes, and
 `PortBeginSurfaceDraw` skips the PBR maps and the probe. Per-pixel light and a PBR map's specular from
-that close a light made the face glossy and plastic where retail's is soft.
+that close a light made the face glossy and plastic where retail's is soft. Quality > Visor face reflection
+(`face_reflection_strength`, default 60% of retail, 100% under Original Experience) also scales the
+face's additive weight, so it can be toned down or hidden.
 
 **Bloom.** F1 > Video > Quality > Bloom (`bloom`, off by default): `CStateManager::DrawWorld` calls
 Aurora's `GXPortPostProcess`, the Remastered bloom the MP1 port draws (`extern/aurora/lib/gfx/bloom.cpp`:

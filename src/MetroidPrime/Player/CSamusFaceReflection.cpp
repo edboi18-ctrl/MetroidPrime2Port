@@ -189,6 +189,10 @@ void CSamusFaceReflection::Draw(const CStateManager& mgr) const {
         float transFactor = playerState->GetActiveVisor(mgr) == CPlayerState::kPV_Combat
                                 ? playerState->GetVisorTransitionFactor()
                                 : 0.f;
+#ifdef TARGET_PC
+        // Port: Video > Quality > Visor face reflection scales the face's additive weight.
+        transFactor *= static_cast< float >(PortOverlay::FaceReflectionStrength()) / 100.f;
+#endif
         if (transFactor > 0.f) {
           mModelData->Render(mgr, modelXf, nullptr,
                              CModelFlags::Additive(CColor::Black()).DepthCompareUpdate(true, true));

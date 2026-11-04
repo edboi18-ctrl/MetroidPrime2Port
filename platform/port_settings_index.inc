@@ -198,6 +198,7 @@
 {"Video", "Quality", "Quality", "Ambient occlusion strength", "ambient occlusion ao strength darkness intensity"},
 {"Video", "Quality", "Quality", "Ambient occlusion radius", "ambient occlusion ao radius size distance"},
 {"Video", "Quality", "Quality", "Ambient occlusion angle bias", "ambient occlusion ao bias lines edges polygons creases artifacts"},
+{"Video", "Quality", "Quality", "Visor face reflection", "samus face visor reflection helmet flash charge shot missile creepy glossy brightness"},
 {"Video", "Quality", "Quality", "Auto render scale (native)", "resolution internal efb"},
 {"Video", "Quality", "Quality", "EFB scale", "resolution internal supersample render scale"},
 {"Video", "Quality", "Quality", "Dynamic resolution", "dynamic resolution scale performance fps"},

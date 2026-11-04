@@ -2168,6 +2168,7 @@ bool sAmbientOcclusion = false;
 int sAoStrength = PortAo::kStrengthDefault;
 int sAoRadius = PortAo::kRadiusDefault;
 int sAoAngleBias = PortAo::kAngleBiasDefault;
+int sFaceReflectionStrength = 60;
 PortGraphicsBackend::EGraphicsBackend sGraphicsBackend = PortGraphicsBackend::kGraphicsBackend_Auto;
 PortGraphicsBackend::EGraphicsBackend sGraphicsBackendAtStart = PortGraphicsBackend::kGraphicsBackend_Auto;
 bool sOpenGles = false;
@@ -2366,6 +2367,12 @@ int AoRadius() {
 int AoAngleBias() {
   ReadEnv();
   return EnvIntIn("MP2_AO_ANGLE_BIAS", sAoAngleBias, PortAo::kAngleBiasMin, PortAo::kAngleBiasMax);
+}
+
+int FaceReflectionStrength() {
+  ReadEnv();
+  // Original Experience keeps retail's face.
+  return OriginalExperience() ? 100 : EnvIntIn("MP2_FACE_REFLECTION_STRENGTH", sFaceReflectionStrength, 0, 100);
 }
 
 bool OpenGles() {

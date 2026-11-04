@@ -830,6 +830,10 @@ int AoRadius();
 // How far above a surface something must rise to occlude it, 0..60% (the sine of that angle;
 // `MP2_AO_ANGLE_BIAS`; default 30, about 17 degrees): higher hides the shallow folds of low-poly rooms.
 int AoAngleBias();
+// How bright Samus's face reflection in the visor is (a charge shot's or a missile's flash next to
+// a wall), 0..100% of retail (`MP2_FACE_REFLECTION_STRENGTH`, F1 > Video > Quality; default 60, 100
+// under Original Experience). CSamusFaceReflection::Draw scales its additive weight.
+int FaceReflectionStrength();
 // F1 > Video > Compatibility, read when the GPU device is made (so after a restart):
 // OpenGL ES instead of Vulkan (`MP2_OPENGLES`, only where Aurora has the backend), the Adreno
 // storage clamp (-1 auto; Aurora reads `MP2_STORAGE_CLAMP` itself), the Dawn driver workarounds
