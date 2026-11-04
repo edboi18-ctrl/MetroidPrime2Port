@@ -338,7 +338,7 @@ typedef struct {
   f32 depth[4];   // near, far, and the GX z range the world draws in (min, max)
   f32 radius;     // world units
   f32 intensity;  // the estimator's sigma: 0 none
-  f32 bias;       // per unit of view depth
+  f32 bias;       // angle bias: samples rising less than asin(bias) above the surface don't occlude
   f32 fadeStart;
   f32 fadeEnd;
   f32 pad[3];

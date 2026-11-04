@@ -5,8 +5,8 @@
 
 // Port extension: screen-space ambient obscurance over the finished EFB (GXPortAmbientOcclusion), from
 // its depth alone: McGuire, Mara and Luebke's Scalable Ambient Obscurance (HPG 2012) without its depth
-// MIP chain. A half-resolution pass estimates the obscurance at each pixel with the AlchemyAO estimator
-// (the paper's equation 1) over 9 samples on a 7-turn spiral (equations 5 to 8), two 7-tap bilateral
+// MIP chain. A half-resolution pass estimates the obscurance at each pixel with an angle-biased form of the
+// paper's AlchemyAO estimator (see ssao.cpp) over 9 samples on a 7-turn spiral (equations 5 to 8), two 7-tap bilateral
 // passes smooth it, and a full-resolution pass multiplies the frame by it (in linear light), weighting
 // the four nearest half-resolution texels by depth so that no edge bleeds. Only depths in the world's
 // GX z range are touched: nearer is the viewmodel, and the far plane is the sky.
@@ -16,7 +16,7 @@ namespace aurora::gfx::ssao {
 struct Params {
   float frustum[4]; // left, right, top, bottom at a view depth of 1
   float depth[4];   // near, far, and the GX z range the world draws in (min, max)
-  float ao[4];      // radius (world units), intensity (sigma), bias (beta, per unit of depth), fade start
+  float ao[4];      // radius (world units), intensity (sigma), angle bias (sine of the least elevation), fade start
   float misc[4];    // fade end (no obscurance from there on), then 0 (the task sets the rest)
 };
 static_assert(sizeof(Params) == 64);

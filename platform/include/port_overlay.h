@@ -827,6 +827,9 @@ int ActorShadowStrength();
 bool AmbientOcclusion();
 int AoStrength();
 int AoRadius();
+// How far above a surface something must rise to occlude it, 0..60% (the sine of that angle;
+// `MP2_AO_ANGLE_BIAS`; default 30, about 17 degrees): higher hides the shallow folds of low-poly rooms.
+int AoAngleBias();
 // F1 > Video > Compatibility, read when the GPU device is made (so after a restart):
 // OpenGL ES instead of Vulkan (`MP2_OPENGLES`, only where Aurora has the backend), the Adreno
 // storage clamp (-1 auto; Aurora reads `MP2_STORAGE_CLAMP` itself), the Dawn driver workarounds

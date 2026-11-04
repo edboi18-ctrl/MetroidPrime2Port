@@ -2167,6 +2167,7 @@ int sActorShadowStrength = PortActorShadow::kStrengthDefault;
 bool sAmbientOcclusion = false;
 int sAoStrength = PortAo::kStrengthDefault;
 int sAoRadius = PortAo::kRadiusDefault;
+int sAoAngleBias = PortAo::kAngleBiasDefault;
 PortGraphicsBackend::EGraphicsBackend sGraphicsBackend = PortGraphicsBackend::kGraphicsBackend_Auto;
 PortGraphicsBackend::EGraphicsBackend sGraphicsBackendAtStart = PortGraphicsBackend::kGraphicsBackend_Auto;
 bool sOpenGles = false;
@@ -2360,6 +2361,11 @@ int AoStrength() {
 int AoRadius() {
   ReadEnv();
   return EnvIntIn("MP2_AO_RADIUS", sAoRadius, PortAo::kRadiusMin, PortAo::kRadiusMax);
+}
+
+int AoAngleBias() {
+  ReadEnv();
+  return EnvIntIn("MP2_AO_ANGLE_BIAS", sAoAngleBias, PortAo::kAngleBiasMin, PortAo::kAngleBiasMax);
 }
 
 bool OpenGles() {

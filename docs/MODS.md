@@ -209,13 +209,19 @@ after the world and the actors and before the scan visor's markers, the fog plan
 haze, the arm cannon and the HUD. It is McGuire, Mara and Luebke's Scalable Ambient Obscurance (HPG
 2012) without its depth MIP chain: at half the EFB's size, each pixel's view position from the depth
 buffer (reversed Z, the world's GX z range 0.125-1; nearer is the viewmodel, the far plane the sky), its
-face normal from the neighbouring positions, and the AlchemyAO estimator (the paper's equation 1) over 9
-samples on a 7-turn spiral within the radius; two 7-tap bilateral blurs; then the frame multiplied by
+face normal from the neighbouring positions, and an angle-biased occlusion over 9 samples on a 7-turn
+spiral within the radius: each sample counts by how far it rises above the surface, the sine of its
+elevation less the angle bias (Quality > Ambient occlusion angle bias, default 0.3), with a falloff to
+the radius, in place of the paper's equation 1 (AlchemyAO's v.n / v.v, which grows without bound
+towards a fold and drew dark lines along the shallow folds between a low-poly room's facets; HBAO+'s
+bias exists to hide the same low-tessellation artifacts); two 7-tap bilateral blurs; then the frame multiplied by
 it in linear light, the four nearest half-size texels weighted by depth. It fades out from 40 to 80
 units away. A flat surface is never darkened (the estimator's `v . n` is 0 on a plane), so it adds
 contact darkening in creases and under objects on top of the lightmaps' baked shading rather than
-replacing it. `platform/include/port_ao_rules.h` holds the intensity (sigma 0.6 at 100%) and radius
-(1 unit at 100%). It works with MSAA and any render scale, unlike a ReShade AO, which loses the depth
+replacing it. `platform/include/port_ao_rules.h` holds the intensity (sigma 4 at 100%), radius
+(1 unit at 100%) and angle bias, chosen from a simulation of the estimator on analytic folds: a 90-degree
+corner darkens to about 0.47 in the crease, a 45-degree fold to 0.85, a 30-degree one to 0.97, and folds of
+20 degrees or less not at all. It works with MSAA and any render scale, unlike a ReShade AO, which loses the depth
 buffer to MSAA and draws over the HUD.
 
 **No sun shadows.** Aurora's sun cascades (`GXPortSetShadowFrame`) are received only by Remastered's

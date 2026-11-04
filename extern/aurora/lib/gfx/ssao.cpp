@@ -15,8 +15,13 @@
 
 // Screen-space ambient obscurance (see ssao.hpp). M. McGuire, M. Mara, D. Luebke, "Scalable Ambient
 // Obscurance", HPG 2012 (research.nvidia.com/publication/2012-06_scalable-ambient-obscurance):
-//  - eq. 1 (AlchemyAO's estimator): A(C) = max(0, 1 - 2 sigma / s sum max(0, v.n + z_C beta) / (v.v + eps))^k,
-//    v = Q_i - C, here with k = 1 and samples past the radius left out (AlchemyAO's ball);
+//  - each sample's occlusion, in place of eq. 1's (AlchemyAO's) max(0, v.n + z_C beta) / (v.v + eps): its rise
+//    above the surface, n . v/|v| (the sine of its elevation), less an angle bias b, times a falloff to the
+//    radius, max(0, n . v/|v| - b) (1 - v.v / r^2); A = max(0, 1 - sigma / (s (1 - b)) sum). Eq. 1's 1 / v.v
+//    grows without bound towards a fold, so the shallow folds between a low-poly room's facets (10 to 30
+//    degrees) drew dark lines along every edge; samples less than asin(b) above the surface count for
+//    nothing here, as NVIDIA's HBAO+ bias does ("can be used to hide low-tessellation artifacts", "weights
+//    the AO contributions more strongly for samples towards the normal direction");
 //  - eq. 3 and 4: C from the depth at the pixel, its face normal from the neighbouring positions (the
 //    pair with the smaller depth step on each axis, so a silhouette doesn't bend it);
 //  - eq. 5: the screen radius r' = r S' / |z_C|, S' the pixels of 1 unit at depth 1;
@@ -136,10 +141,11 @@ fn fs_ao(in: VertexOutput) -> @location(0) vec4f {
     let v = s4.xyz - c;
     let vv = dot(v, v);
     if (vv < r2) {
-      sum += max(0.0, dot(v, n) + c.z * p.ao.z) / (vv + 0.01);
+      let elevation = dot(v, n) / max(sqrt(vv), 1e-4);
+      sum += max(0.0, elevation - p.ao.z) * (1.0 - vv / r2);
     }
   }
-  let a = max(0.0, 1.0 - 2.0 * p.ao.y / f32(S) * sum);
+  let a = max(0.0, 1.0 - p.ao.y * sum / (f32(S) * max(1.0 - p.ao.z, 1e-3)));
   return vec4f(a, c4.w, 0.0, 0.0);
 }
 

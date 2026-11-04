@@ -398,6 +398,11 @@ void DrawVideoQuality() {
     Changed(ImGui::SliderInt("Ambient occlusion radius", &sAoRadius, PortAo::kRadiusMin, PortAo::kRadiusMax, "%d%%",
                              ImGuiSliderFlags_AlwaysClamp));
     ImGui::SetItemTooltip("How far around a point geometry darkens it: 100%% is about a metre.");
+    Changed(ImGui::SliderInt("Ambient occlusion angle bias", &sAoAngleBias, PortAo::kAngleBiasMin,
+                             PortAo::kAngleBiasMax, "%d%%", ImGuiSliderFlags_AlwaysClamp));
+    ImGui::SetItemTooltip("How steeply something must rise above a surface to darken it. Higher ignores the\n"
+                          "shallow folds between a room's flat polygons (dark lines along their edges);\n"
+                          "lower darkens gentler creases too.");
   }
   // Applied by ApplyRenderScale from Draw, through PortVideo::DrawScale (dynamic resolution's while
   // it has lowered the scale).

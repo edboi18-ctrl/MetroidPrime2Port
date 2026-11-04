@@ -1641,7 +1641,7 @@ void CStateManager::DrawWorld(const CInGameGuiManagerSet& gui) {
       const PortAo::Params ao =
           PortAo::Make(proj.GetLeft(), proj.GetRight(), proj.GetTop(), proj.GetBottom(), proj.GetNear(), proj.GetFar(),
                        CGraphics::GetDepthNear(), CGraphics::GetDepthFar(), PortOverlay::AoStrength(),
-                       PortOverlay::AoRadius());
+                       PortOverlay::AoRadius(), PortOverlay::AoAngleBias());
       static_assert(sizeof(PortAo::Params) == sizeof(GXPortAoParams));
       GXPortAoParams params;
       memcpy(&params, &ao, sizeof(params));

@@ -23,12 +23,14 @@ TEST(GxAmbientOcclusion, SourceHasEveryPassForBothDepthBuffers) {
 }
 
 TEST(GxAmbientOcclusion, SamplesTheSpiralThePaperDoes) {
-  // SAO (HPG 2012) eq. 6 to 8: 9 samples on 7 turns, the XOR hash rotation; eq. 1's 2 sigma / s.
+  // SAO (HPG 2012) eq. 6 to 8: 9 samples on 7 turns, the XOR hash rotation.
   const std::string source = shader_source(1);
   EXPECT_NE(source.find("const S = 9;"), std::string::npos);
   EXPECT_NE(source.find("const TAU = 7.0;"), std::string::npos);
   EXPECT_NE(source.find("(3u * ux) ^ (uy + ux * uy)"), std::string::npos);
-  EXPECT_NE(source.find("1.0 - 2.0 * p.ao.y / f32(S) * sum"), std::string::npos);
+  // The angle-biased per-sample term and its normalisation.
+  EXPECT_NE(source.find("sum += max(0.0, elevation - p.ao.z) * (1.0 - vv / r2);"), std::string::npos);
+  EXPECT_NE(source.find("1.0 - p.ao.y * sum / (f32(S) * max(1.0 - p.ao.z, 1e-3))"), std::string::npos);
 }
 
 TEST(GxAmbientOcclusion, ParamsAreSixteenWords) { EXPECT_EQ(sizeof(Params), 64u); }

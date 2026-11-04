@@ -24,7 +24,11 @@ int main() {
   CHECK(p.depth[0] == 0.2f && p.depth[1] == 750.f && p.depth[2] == 0.125f && p.depth[3] == 1.f);
   CHECK(Near(p.radius, kRadius));
   CHECK(Near(p.intensity, kIntensity));
-  CHECK(p.bias == kBias && p.fadeStart == kFadeStart && p.fadeEnd == kFadeEnd);
+  CHECK(Near(p.bias, float(kAngleBiasDefault) / 100.f) && p.fadeStart == kFadeStart && p.fadeEnd == kFadeEnd);
+  // The angle bias slider, clamped to 0..60%.
+  CHECK(Near(Make(-r, r, t, -t, 0.2f, 750.f, 0.125f, 1.f, 100, 100, 45).bias, 0.45f));
+  CHECK(Near(Make(-r, r, t, -t, 0.2f, 750.f, 0.125f, 1.f, 100, 100, 99).bias, 0.6f));
+  CHECK(Make(-r, r, t, -t, 0.2f, 750.f, 0.125f, 1.f, 100, 100, -3).bias == 0.f);
   CHECK(p.fadeStart < p.fadeEnd);
   // The sliders scale sigma and the radius, clamped to their ranges.
   CHECK(Near(Make(-r, r, t, -t, 0.2f, 750.f, 0.125f, 1.f, 200, 300).intensity, 2.f * kIntensity));
