@@ -546,9 +546,10 @@ Video > Quality and Frame rate:
   Aurora's screen-space ambient obscurance (`GXPortAmbientOcclusion`, `extern/aurora/lib/gfx/ssao.cpp`)
   over the world in `CStateManager::DrawWorld`, before the scan visor's markers, the fog planes, the
   Dark World haze, the arm cannon and the HUD; not in the Dark or Echo visor nor split screen. The
-  world's GX fog (the area's, or the water's with the camera under the surface) is worked out again for
-  each pixel from its depth, and only the surface under the fog is darkened, so the obscurance thins out
-  with the fog as the surface does. Needs a
+  world's GX fog (the camera's area's, or the water's with the camera under the surface; recorded before
+  `CEnvFxManager::Render` sets its own black fog for the rain, snow and underwater flakes, and set around
+  the AO command) is worked out again for each pixel from its depth, and the obscurance is weakened by the
+  fog's share, so it thins out with the fog as the surface does. Needs a
   device with core features (it reads the depth buffer). Env `MP2_AMBIENT_OCCLUSION`, `MP2_AO_STRENGTH`,
   `MP2_AO_RADIUS`, `MP2_AO_ANGLE_BIAS`.
 - `face_pbr_strength` (0..100, percent; default 40): Quality > Visor face PBR strength (shown while PBR maps

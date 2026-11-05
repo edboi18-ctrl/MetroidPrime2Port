@@ -1550,10 +1550,10 @@ void handle_aurora(ByteReader& reader) noexcept {
       word = reader.read<u32>();
     }
     std::memcpy(&params, words, sizeof(params));
-    // The fog the world was just drawn with: the composite keeps its share of each pixel.
+    // The fog the world was drawn with (the game sets it around the command): the composite weakens
+    // the obscurance by its share of each pixel.
     const auto& state = g_gxState.fog;
     const gfx::ssao::Fog fog{
-        .color = {state.color.x(), state.color.y(), state.color.z(), state.color.w()},
         .a = state.a,
         .b = state.b,
         .c = state.c,

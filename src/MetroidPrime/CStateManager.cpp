@@ -1606,6 +1606,15 @@ void CStateManager::DrawWorld(const CInGameGuiManagerSet& gui) {
   }
 
 #ifdef TARGET_PC
+  // Port: the fog the world was just drawn with, for the ambient occlusion below. The areas are drawn
+  // with the camera's own area last (area_sorter), so this is its fog, or the camera's (the water's
+  // with the camera under the surface). The env effects set their own black fog for the rain, snow
+  // and underwater flakes (CEnvFxManager::SetupSnowTevs and the like) and leave it set.
+  GXFogType portWorldFogType;
+  float portWorldFog[4];
+  GXColor portWorldFogColor;
+  CGX::GetFog(&portWorldFogType, &portWorldFog[0], &portWorldFog[1], &portWorldFog[2], &portWorldFog[3],
+              &portWorldFogColor);
   if (!portCollisionOnly)
 #endif
   {
@@ -1645,7 +1654,16 @@ void CStateManager::DrawWorld(const CInGameGuiManagerSet& gui) {
       static_assert(sizeof(PortAo::Params) == sizeof(GXPortAoParams));
       GXPortAoParams params;
       memcpy(&params, &ao, sizeof(params));
+      // Aurora takes the fog current at the command as the world's: the world's, then back to what
+      // the env effects left for what follows, as retail has it.
+      GXFogType envFogType;
+      float envFog[4];
+      GXColor envFogColor;
+      CGX::GetFog(&envFogType, &envFog[0], &envFog[1], &envFog[2], &envFog[3], &envFogColor);
+      CGX::SetFog(portWorldFogType, portWorldFog[0], portWorldFog[1], portWorldFog[2], portWorldFog[3],
+                  portWorldFogColor);
       GXPortAmbientOcclusion(&params);
+      CGX::SetFog(envFogType, envFog[0], envFog[1], envFog[2], envFog[3], envFogColor);
     }
   }
 #endif

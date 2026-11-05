@@ -31,10 +31,11 @@
 // The paper's z MIP chain (for radii far beyond the blur) is left out: the radius here is a metre or two.
 // The obscurance is computed at half the EFB's size and drawn over the frame at full size. The EFB holds
 // sRGB-encoded colour (as bloom.cpp reads it), so the frame is decoded, multiplied and encoded again.
-// The world's GX fog is already in the frame, mixed in the encoded values (lib/gx/shader.cpp: prev =
-// mix(prev, fog colour, f)), so the composite works out f again from the pixel's window z and the fog
-// the world was drawn with, takes the fog colour's share back out, darkens the surface left and mixes
-// the fog back over it: a pixel all fog is not darkened at all, as the surface under it would not show.
+// The world's GX fog is already in the frame (lib/gx/shader.cpp: prev = mix(prev, fog colour, f)), so the
+// composite works out f again from the pixel's window z and the fog the world was drawn with, and
+// weakens the obscurance to 1 - f of itself: a pixel all fog is not darkened, as the surface under it
+// does not show. Only the obscurance's strength depends on the fog, never the colour, so a fog that
+// differs from a pixel's own (another area's) can't recolour it.
 namespace aurora::gfx::ssao {
 namespace {
 Module Log("aurora::gfx::ssao");
@@ -52,8 +53,7 @@ struct Params {
   depth: vec4f,
   ao: vec4f,
   misc: vec4f,
-  // The GX fog (ssao::Fog): its colour, then a, b, c and the GXFogType.
-  fog_color: vec4f,
+  // The GX fog (ssao::Fog): a, b, c and the GXFogType.
   fog_a: f32,
   fog_b: f32,
   fog_c: f32,
@@ -264,15 +264,10 @@ fn fs_composite(in: VertexOutput) -> @location(0) vec4f {
   }
   let a = select(1.0, sum / total, total > 0.0);
   let fade = 1.0 - clamp((depth - p.ao.w) / max(p.misc.x - p.ao.w, 1e-3), 0.0, 1.0);
-  let vis = mix(1.0, a, fade);
-  // The frame is surface (1 - fz) + fog colour fz: only the surface is darkened.
+  // The fog's share of the pixel hides that much of the obscurance.
   let fz = fog_amount(window_z(at));
-  if (fz >= 0.999) {
-    return f;
-  }
-  let fog = clamp(p.fog_color.rgb, vec3f(0.0), vec3f(1.0));
-  let surface = clamp((f.rgb - fog * fz) / (1.0 - fz), vec3f(0.0), vec3f(1.0));
-  return vec4f(mix(srgb_enc(srgb_dec(surface) * vis), fog, fz), f.a);
+  let vis = mix(1.0, a, fade * (1.0 - fz));
+  return vec4f(srgb_enc(srgb_dec(f.rgb) * vis), f.a);
 }
 )";
 
@@ -303,7 +298,7 @@ struct Uniforms {
   Params params;
   Fog fog;
 };
-static_assert(sizeof(Uniforms) == 96);
+static_assert(sizeof(Uniforms) == 80);
 std::array<Uniforms, RecordedSlots> g_recorded;
 uint32_t g_nextSlot = 0;
 

@@ -338,9 +338,9 @@ void GXPortVolumetricFogEnd(void);
 // world's GX z range (depth[2] to depth[3]) are darkened where nearby geometry hides them, by the
 // obscurance computed at half size and smoothed along depth edges; nearer (the viewmodel) and the far
 // plane are left alone, and the effect fades out between fade start and end (view depth). The GX fog
-// current when the command is processed is taken as the world's: the fog colour's share of each pixel
-// is kept and only the surface under it is darkened (so dense fog, underwater above all, hides it as
-// it hides the surface). Ends the current pass. False when it could not be recorded (no core features, the HDR scene, draw-id view).
+// current when the command is processed is taken as the world's (set it to the world's around the
+// call if something drew with another since): the obscurance is weakened by the fog's share of each
+// pixel, so dense fog, underwater above all, hides it as it hides the surface. Ends the current pass. False when it could not be recorded (no core features, the HDR scene, draw-id view).
 // View space is GX's (x right, y up, z towards the camera).
 typedef struct {
   f32 frustum[4]; // left, right, top, bottom at a view depth of 1

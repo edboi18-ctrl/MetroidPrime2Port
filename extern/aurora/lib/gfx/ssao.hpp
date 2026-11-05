@@ -8,9 +8,9 @@
 // MIP chain. A half-resolution pass estimates the obscurance at each pixel with an angle-biased form of the
 // paper's AlchemyAO estimator (see ssao.cpp) over 9 samples on a 7-turn spiral (equations 5 to 8), two 7-tap bilateral
 // passes smooth it, and a full-resolution pass multiplies the frame by it (in linear light), weighting
-// the four nearest half-resolution texels by depth so that no edge bleeds, and keeping the GX fog's share
-// of each pixel as it was. Only depths in the world's GX z range are touched: nearer is the viewmodel,
-// and the far plane is the sky.
+// the four nearest half-resolution texels by depth so that no edge bleeds, and weakened by the GX fog
+// over each pixel. Only depths in the world's GX z range are touched: nearer is the viewmodel, and the
+// far plane is the sky.
 namespace aurora::gfx::ssao {
 
 // The task's uniform, word for word. View space is GX's: x right, y up, z towards the camera.
@@ -23,16 +23,15 @@ struct Params {
 static_assert(sizeof(Params) == 64);
 
 // The GX fog the world was drawn with (g_gxState.fog when the command is processed; GXSetFog's
-// coefficients). The composite leaves the fog colour's share of each pixel alone and darkens only the
-// surface under it, so the obscurance fades with the fog as the surface does (underwater above all).
+// coefficients). The composite weakens the obscurance by as much as the fog covers each pixel, so it
+// fades with the fog as the surface under it does (underwater above all).
 struct Fog {
-  float color[4];
   float a;
   float b;
   float c;
   uint32_t type; // the GXFogType; GX_FOG_NONE for none
 };
-static_assert(sizeof(Fog) == 32);
+static_assert(sizeof(Fog) == 16);
 
 // Registers the encoder task (game thread); false if it could not be (no core features: the passes
 // read the depth buffer with textureLoad).
