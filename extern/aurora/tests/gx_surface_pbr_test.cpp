@@ -188,7 +188,7 @@ TEST(GxSurfacePbr, WaterRipplesTipTheNormal) {
               std::string::npos);
   }
   EXPECT_NE(source.find("let pr_dp2perp = cross(-pw_dy, pw_n);"), std::string::npos);
-  EXPECT_NE(source.find("pw_n = normalize(pw_n - pr_g * clamp(ubuf.surface_pbr.w, 0.0, 8.0));"), std::string::npos);
+  EXPECT_NE(source.find("pw_n = normalize(pw_n - pr_g * clamp(ubuf.surface_pbr.w, 0.0, 8.0) - pw_wg);"), std::string::npos);
   // After the layers' coordinates and the facet normal, before the stages and the blend.
   EXPECT_GT(source.find("let pr0_uv = tex0_uv;"), source.find("var tex1_uv = "));
   EXPECT_GT(source.find("let pr0_uv = tex0_uv;"), source.find("let pw_ng = pw_n;"));
