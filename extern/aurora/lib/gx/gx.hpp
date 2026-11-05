@@ -420,6 +420,7 @@ struct GXState {
   u8 surfacePbr = 0; // GX_AURORA_PORT_SURFACE_PBR: the relit TEV stage + 1 (GXPortSetSurfacePBR), 0 off
   u8 waterReflect = 0; // GX_AURORA_PORT_WATER_REFLECTION: the reflecting TEV stage + 1, 0 off
   f32 waterRipples = 0.f; // GX_AURORA_PORT_WATER_RIPPLES: the ripples' slope scale, 0 off
+  bool blockingDraws = false; // GX_AURORA_PORT_BLOCKING_DRAWS: draws wait for their pipeline
   f32 surfacePbrStrength = 1.f; // GX_AURORA_PORT_SURFACE_PBR_STRENGTH: 0 the stage's own result, 1 full PBR
   bool envProbe = false; // GX_AURORA_PORT_ENV_PROBE: environment-mapped stages read the probe (GXPortSetEnvProbe)
   // GX_AURORA_PORT_ENV_PROBE_LOOK (GXPortSetEnvProbeLook): x the probe level, y the strength; y below 0

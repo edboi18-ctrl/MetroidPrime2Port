@@ -221,7 +221,7 @@ Statuses:
 | Sections | debug.cpp:148-172: Cheats, Camera, Rendering, Audio backends, Sounds playing | debug.cpp: Game, Camera (with Photo), Rendering, Audio backends, Sounds playing, Console; Cheats stays its own page (`DrawCheatsSection()` is the call for Debug) | DIFF: Cheats not in Debug yet (package 2) |
 | Free camera / Freeze / Show Samus / Speed | cheats.cpp:301-319 | debug.cpp:22-41 | SAME |
 | Collision combo | cheats.cpp:341-346 | cheats.cpp DrawRendering | DONE: PortCollisionView (off/overlay/only), hooks in CStateManager::DrawWorld |
-| Frame statistics | cheats.cpp:348-352 | cheats.cpp `DrawRendering` (fps, draws, passes, buffers, textures, pipelines; no PBR or room-geometry lines) | DIFF: PBR and room-geometry counters are MP1's |
+| Frame statistics | cheats.cpp:348-352 | cheats.cpp `DrawRendering` (fps, draws, passes, buffers, textures, pipelines, the sorted buckets' left-out draws and retail's water drops as MP1's; no PBR or room-geometry lines) | DIFF: PBR and room-geometry counters are MP1's |
 | Streamed audio / MusyX audio | audio.cpp:26,30 | audio.cpp `DrawAudio` | SAME |
 | Sounds playing (Freeze list, Unmute all) | audio.cpp:111,161 | audio.cpp `DrawVoices` | SAME |
 | Remastered debug | remastered.cpp | — | MP1-ONLY: Remastered |

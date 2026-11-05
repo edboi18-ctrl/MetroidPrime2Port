@@ -690,6 +690,12 @@ void CFluidPlaneCPU::Render(const CStateManager& mgr, float alpha, const CAABox&
   }
   const CScriptWater* water = TCastToConstPtr< CScriptWater >(mgr.GetObjectById(waterId));
   if (HasColorMap() || HasLightMap() || HasEnvMap() || HasGlossMap()) {
+#ifdef TARGET_PC
+    // Port: the water waits for its pipeline instead of being left out while a variant of its shader
+    // builds (a new fog, blend, reflection or ripple combination), which showed as the surface
+    // flickering out for a few frames. The first frame that needs a new one stalls instead.
+    GXPortSetBlockingDraws(GX_TRUE);
+#endif
     RenderSetup(mgr, alpha, xf, areaXf, bounds, water);
     CGX::ResetVtxDescv();
     CGX::SetVtxDesc(GX_VA_POS, GX_DIRECT);
@@ -706,6 +712,9 @@ void CFluidPlaneCPU::Render(const CStateManager& mgr, float alpha, const CAABox&
       GXSetVtxAttrFmt(GX_VTXFMT0, GX_VA_POS, GX_POS_XYZ, GX_F32, 0);
     }
     RenderCleanup();
+#ifdef TARGET_PC
+    GXPortSetBlockingDraws(GX_FALSE);
+#endif
   }
 }
 

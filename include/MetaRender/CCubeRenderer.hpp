@@ -307,6 +307,14 @@ public:
   const CTexture& GetAlphaMaskRamp() const { return mAlphaMaskRamp; }
   int GetMaterialMode() const { return mCurrentMaterialMode; }
   static CCubeRenderer* That() { return sRenderer; }
+#ifdef TARGET_PC
+  // Port: transparent draws the sorted buckets had no room for (Buckets in CCubeRenderer.cpp), in
+  // all since start and the most in one sort. Shown in F1 > Rendering > Frame statistics.
+  static uint sPortSortedDropped;
+  static uint sPortSortedDroppedMost;
+  // Water surfaces (planes) retail's 128-draw buckets would have left out, which now draw.
+  static uint sPortRetailPlaneDrops;
+#endif
 
 private:
   struct SGeometryTag {};

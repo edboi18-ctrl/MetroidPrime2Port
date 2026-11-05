@@ -67,13 +67,33 @@ void* NoiseTextureData(uint seed, size_t bytes) {
 
 // Reconstructed against the G2ME01 renderer; remaining compiler differences keep this NonMatching.
 CCubeRenderer* CCubeRenderer::sRenderer = nullptr;
+#ifdef TARGET_PC
+uint CCubeRenderer::sPortSortedDropped = 0;
+uint CCubeRenderer::sPortSortedDroppedMost = 0;
+uint CCubeRenderer::sPortRetailPlaneDrops = 0;
+#endif
 
 static CModelFlags skNormalFlag = CModelFlags::Normal();
 static CModelFlags skNormalFlagNoUpdate = CModelFlags::Normal().DepthCompareUpdate(true, false);
 
 namespace Buckets {
+#ifdef TARGET_PC
+// Retail holds 512 transparent draws a sort, 128 to a bucket and 8 planes (water surfaces), and
+// quietly leaves out whatever doesn't fit. A plane goes into its bucket last, after the draws sorted
+// there (Sort), so a full bucket left the water out for a frame now and then, more often with the
+// port's wider view than retail's 4:3. Here every bucket can hold all the draws and planes there can
+// be, so none overflows, with room for four times retail's draws (MP1 port 00d5bf967). About 1 MiB,
+// so CStateManager::DrawWorld keeps it off the stack.
+static const int kPortSortedDraws = 2048;
+typedef rstl::reserved_vector< CDrawable, kPortSortedDraws > DrawableList;
+typedef rstl::reserved_vector< CDrawable*, kPortSortedDraws + 8 > Bucket;
+static uint sPortDropped = 0;
+#define PORT_SORTED_DROP() ++sPortDropped
+#else
 typedef rstl::reserved_vector< CDrawable, 512 > DrawableList;
 typedef rstl::reserved_vector< CDrawable*, 128 > Bucket;
+#define PORT_SORTED_DROP()
+#endif
 typedef rstl::reserved_vector< Bucket, 50 > BucketList;
 typedef rstl::reserved_vector< CDrawablePlaneObject, 8 > PlaneList;
 typedef rstl::reserved_vector< ushort, 8 > PlaneBucketList;
@@ -209,6 +229,7 @@ void Buckets::Insert(const CVector3f& pos, const CAABox& bounds, EDrawableType t
                      const void* data, const CPlane& plane, ushort extraSort, bool alpha) {
   DrawableList& list = *sData;
   if (list.size() == list.capacity()) {
+    PORT_SORTED_DROP();
     return;
   }
 
@@ -226,6 +247,7 @@ void Buckets::InsertPlaneObject(float closeDistance, float farDistance, const CA
                                 EDrawableType type, const void* data) {
   PlaneList& planes = *sPlaneObjectData;
   if (planes.size() == planes.capacity()) {
+    PORT_SORTED_DROP();
     return;
   }
 
@@ -330,6 +352,8 @@ void Buckets::Sort() {
     Bucket& bucket = (*sBuckets)[slot];
     if (bucket.size() < bucket.capacity()) {
       bucket.push_back(drawable);
+    } else {
+      PORT_SORTED_DROP();
     }
   }
   for (int i = sBuckets->size() - 1; i >= 0; --i) {
@@ -342,13 +366,29 @@ void Buckets::Sort() {
   for (ushort* plane = planeBuckets.end() - 1; plane != planeBuckets.begin() - 1; --plane) {
     CDrawablePlaneObject& planeObject = planeData[*plane];
     Bucket& bucket = (*sBuckets)[planeObject.GetBucketIndex()];
+#ifdef TARGET_PC
+    if (bucket.size() >= 128) {
+      ++CCubeRenderer::sPortRetailPlaneDrops;
+    }
+#endif
     if (bucket.size() < bucket.capacity()) {
       bucket.push_back(&planeObject);
+    } else {
+      PORT_SORTED_DROP();
     }
   }
 }
 
 void Buckets::Clear() {
+#ifdef TARGET_PC
+  if (sPortDropped != 0) {
+    CCubeRenderer::sPortSortedDropped += sPortDropped;
+    if (sPortDropped > CCubeRenderer::sPortSortedDroppedMost) {
+      CCubeRenderer::sPortSortedDroppedMost = sPortDropped;
+    }
+    sPortDropped = 0;
+  }
+#endif
   sData->clear();
   sBucketIndex.clear();
   sPlaneObjectData->clear();

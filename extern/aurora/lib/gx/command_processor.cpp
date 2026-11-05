@@ -781,8 +781,10 @@ static void push_gx_draw(GXPrimitive prim, GXVtxFmt fmt, u16 vtxCount, gfx::Rang
     // A frame switches pipelines hundreds of times between a few hundred configs. The config's
     // hash is the pipeline's ref, so a config seen before reuses its shader info and shadow
     // pipeline without the second lookup (shader info depends on the config alone). With blocking
-    // pipelines the lookup must still happen, since it is what waits for this draw's pipeline.
-    const bool blocking = blocking_pipelines();
+    // pipelines the lookup must still happen, since it is what waits for this draw's pipeline (the
+    // memo's touch_pipeline is true for one still being built, too). GXPortSetBlockingDraws asks it
+    // for the draws in between.
+    const bool blocking = blocking_pipelines() || state.blockingDraws;
     const gfx::PipelineRef ref = xxh3_hash(cache.config, static_cast<HashType>(gfx::ShaderType::GX));
     auto memoIt = blocking ? sPipelineMemo.end() : sPipelineMemo.find(ref);
     if (memoIt != sPipelineMemo.end() && gfx::touch_pipeline(ref) &&
@@ -1573,6 +1575,13 @@ void handle_aurora(ByteReader& reader) noexcept {
       Log.warn("GX_AURORA_PORT_WATER_REFLECTION: invalid stage {}", stage);
     } else if (g_gxState.waterReflect != stage) {
       g_gxState.waterReflect = stage;
+      g_gxState.dirty |= DirtyPipeline;
+    }
+  } else if (subCmd == GX_AURORA_PORT_BLOCKING_DRAWS) {
+    const bool on = reader.read<u8>() != 0;
+    if (g_gxState.blockingDraws != on) {
+      g_gxState.blockingDraws = on;
+      // The next draw looks its pipeline up again, this time waiting for it.
       g_gxState.dirty |= DirtyPipeline;
     }
   } else if (subCmd == GX_AURORA_PORT_WATER_RIPPLES) {

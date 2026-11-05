@@ -1517,7 +1517,15 @@ void CStateManager::PortCaptureProbeFace() {
 
 void CStateManager::DrawWorld(const CInGameGuiManagerSet& gui) {
   CScopedProfiler profile(rstl::string_l("*TotalDrawWorld"), true);
+#ifdef TARGET_PC
+  // Port: the sorted buckets are bigger on PC (CCubeRenderer.cpp's Buckets, about 1 MiB): too much
+  // for the stack (a Windows thread's is 1 MiB in all), so they live in one block made at first use.
+  // DrawWorld doesn't nest (ReleaseRendererWorkspace at its end), so one block serves every call.
+  static void* sPortRendererWorkspace = malloc(GetRendererWorkspaceSize());
+  SetRendererWorkspace(sPortRendererWorkspace);
+#else
   SetRendererWorkspace(alloca(GetRendererWorkspaceSize()));
+#endif
 
   const CPlayerState::EPlayerVisor visor = mPlayerState->GetActiveVisor(*this);
   #ifdef TARGET_PC

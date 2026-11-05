@@ -525,6 +525,13 @@ Video > Quality and Frame rate:
   looking straight down, 9% at a pool 4 m away from standing height, all of it at a grazing angle).
   Not with the camera under the surface, nor in split screen. Env
   `MP2_WATER_REFLECTIONS`, `MP2_WATER_REFLECTION_BLUR`, `MP2_WATER_REFLECTION_STRENGTH`.
+- Water and the sorted buckets (no setting): water surfaces wait for their pipeline to be built
+  (`GXPortSetBlockingDraws` around `CFluidPlaneCPU::Render`) instead of being left out of the frames
+  a new variant takes to build, and on PC every sorted bucket (`CCubeRenderer.cpp`'s `Buckets`) holds
+  every transparent draw there can be (2048, four times retail's 512), so a full bucket no longer
+  leaves the water out (retail put each water plane into its bucket last and dropped it when the
+  bucket held 128). F1 > Debug > Rendering > Frame statistics shows the pipelines still building, the
+  transparent draws left out (should stay 0) and how often retail's buckets would have dropped water.
 - `water_ripples` (0..400, percent; default 100): Quality > Water ripples (shown with Water reflections).
   The reflection comes off a rippled surface: `CFluidPlaneCPU::RenderSetup` loads the water's gloss map
   (else its colour warp map, else its colour map) at `GX_TEXMAP7`, and Aurora

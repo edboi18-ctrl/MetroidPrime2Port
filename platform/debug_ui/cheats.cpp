@@ -13,6 +13,7 @@
 #include <aurora/gfx.h>
 
 #include "Kyoto/Text/CStringTable.hpp"
+#include "MetaRender/CCubeRenderer.hpp"
 #include "MetroidPrime/CHealthInfo.hpp"
 #include "MetroidPrime/CMemoryCard.hpp"
 #include "MetroidPrime/Player/CGameState.hpp"
@@ -183,7 +184,16 @@ void DrawRendering() {
         ImGui::Text("kept on the GPU %.1f of %u MiB", aurora_get_resident_geometry_used() / 1048576.f, resident);
       }
       ImGui::Text("pipelines %u made, %u waiting", stats->createdPipelines, stats->queuedPipelines);
+      ImGui::SetItemTooltip("Waiting: shaders still being built. A draw whose shader isn't built yet is\n"
+                            "left out of the frame (water waits for its own instead).");
     }
+    ImGui::Text("transparent draws left out: %u since start, at most %u at once", CCubeRenderer::sPortSortedDropped,
+                CCubeRenderer::sPortSortedDroppedMost);
+    ImGui::SetItemTooltip("Should stay 0. The sorted buckets that draw water, glass and effects\n"
+                          "leave out what doesn't fit.");
+    ImGui::Text("water frames retail's buckets would have dropped: %u", CCubeRenderer::sPortRetailPlaneDrops);
+    ImGui::SetItemTooltip("Times a water surface's bucket held retail's 128 draws, when the original\n"
+                          "renderer left the water out for that frame. The port's bigger buckets draw it.");
     AuroraTextureStats textures{};
     aurora_get_texture_stats(&textures);
     ImGui::Text("textures %u, %.0f MiB; render targets %u, %.0f MiB; lighting %u, %.0f MiB", textures.count[0],

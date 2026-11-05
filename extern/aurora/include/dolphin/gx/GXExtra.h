@@ -63,6 +63,11 @@ void GXPortSetWaterReflection(s32 stage);
 // over a texel either side, in the mip the pixel reads, times `strength` (0 off; 1 is a slope equal to
 // that change). Clamped to 0..8.
 void GXPortSetWaterRipples(f32 strength);
+// Port extension: while on, the following draws wait for their pipeline to be built (moved to the
+// front of the build queue) instead of being left out of the frames the build takes, as Aurora does
+// for any other draw. For the few draws whose absence shows, like a water surface that would flicker
+// out while a variant of its shader builds; the first frame that needs it stalls instead.
+void GXPortSetBlockingDraws(GXBool on);
 // Aurora extension: distance-field texturing for the following draws (see
 // GX_AURORA_SET_SDF). 0 turns it off.
 void GXSetSDF(u8 edge);

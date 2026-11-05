@@ -3015,6 +3015,25 @@ TEST_F(GXFifoTest, PortWaterRipples_DecodesClamped) {
   EXPECT_FLOAT_EQ(g_gxState.waterRipples, 0.f);
 }
 
+// GXPortSetBlockingDraws: the flag reaches the state the draw's pipeline lookup reads, and a change
+// makes the next draw look its pipeline up again.
+TEST_F(GXFifoTest, PortBlockingDraws_Decodes) {
+  GXPortSetBlockingDraws(GX_TRUE);
+  auto bytes = capture_fifo();
+  EXPECT_TRUE(has_aurora_cmd(bytes, GX_AURORA_PORT_BLOCKING_DRAWS));
+
+  reset_gx_state();
+  EXPECT_FALSE(g_gxState.blockingDraws);
+  g_gxState.dirty = 0;
+  decode_fifo(bytes);
+  EXPECT_TRUE(g_gxState.blockingDraws);
+  EXPECT_NE(g_gxState.dirty & aurora::gx::DirtyPipeline, 0);
+
+  GXPortSetBlockingDraws(GX_FALSE);
+  decode_fifo(capture_fifo());
+  EXPECT_FALSE(g_gxState.blockingDraws);
+}
+
 // --- GXLoadLightObjImm (XF 0x600-0x67F) ---
 
 TEST_F(GXFifoTest, LoadLightObjImm_Light0_BasicColor) {
