@@ -33,7 +33,21 @@ TEST(GxAmbientOcclusion, SamplesTheSpiralThePaperDoes) {
   EXPECT_NE(source.find("1.0 - p.ao.y * sum / (f32(S) * max(1.0 - p.ao.z, 1e-3))"), std::string::npos);
 }
 
-TEST(GxAmbientOcclusion, ParamsAreSixteenWords) { EXPECT_EQ(sizeof(Params), 64u); }
+TEST(GxAmbientOcclusion, CompositeKeepsTheFogsShare) {
+  // The fog curve is lib/gx/shader.cpp's, from the same window z; only the surface under it is darkened.
+  const std::string source = shader_source(1);
+  EXPECT_NE(source.find("base = p.fog_a / (p.fog_b - z);"), std::string::npos);
+  EXPECT_NE(source.find("case 7u: { fz = exp2(-8.0 * (1.0 - f) * (1.0 - f)); }"), std::string::npos);
+  EXPECT_NE(source.find("let fz = fog_amount(window_z(at));"), std::string::npos);
+  EXPECT_NE(source.find("let surface = clamp((f.rgb - fog * fz) / (1.0 - fz), vec3f(0.0), vec3f(1.0));"),
+            std::string::npos);
+  EXPECT_NE(source.find("return vec4f(mix(srgb_enc(srgb_dec(surface) * vis), fog, fz), f.a);"), std::string::npos);
+}
+
+TEST(GxAmbientOcclusion, ParamsAreSixteenWords) {
+  EXPECT_EQ(sizeof(Params), 64u);
+  EXPECT_EQ(sizeof(Fog), 32u);
+}
 
 } // namespace
 } // namespace aurora::gfx::ssao

@@ -900,26 +900,44 @@ static std::string port_env_probe(u32 stages) {
   return out;
 }
 
-// GXPortSetWaterReflection (pbr 0, pbrKind = kPortWaterBit | stage + 1; port_water_stage): the stage's
-// texture sample is the live probe along the view reflected off the water's facet, times Schlick's
-// Fresnel for water, F = F0 + (1 - F0)(1 - cos)^5 with F0 = ((1.333 - 1) / (1.333 + 1))^2 = 0.0204
-// (n of water 1.333 at 589 nm). The stage's own combine (the gloss mask, the base colour it adds)
-// stays as it was.
+// GXPortSetWaterReflection (pbr 0, pbrKind = kPortWaterBit | stage + 1; port_water_stage): once the
+// probe is filled, the stage's texture (retail's painted environment map, or the black one the port
+// adds) reads black, so the stage passes the water's colour on without it.
 static std::string port_water_reflection(u32 stage) {
   return fmt::format(R"""(
-    // GXPortSetWaterReflection: TEV stage {0} reflects the live probe off the water
+    // GXPortSetWaterReflection: TEV stage {0}'s painted reflection gives way to the live probe
     if (ubuf.surface_probe[0].w > 0.0) {{
-        let pw{0}_v = select(vec3f(0.0, 0.0, -1.0), normalize(in.pw_pos), dot(in.pw_pos, in.pw_pos) > 1e-12);
-        let pw{0}_r = reflect(pw{0}_v, pw_n);
-        let pw{0}_d = ubuf.surface_probe[0].xyz * pw{0}_r.x + ubuf.surface_probe[1].xyz * pw{0}_r.y +
-                      ubuf.surface_probe[2].xyz * pw{0}_r.z;
-        let pw{0}_c = textureSampleLevel(pbr_cube, pbr_cube_samp, pw{0}_d, ubuf.surface_pbr.y).rgb;
-        let pw{0}_cos = clamp(dot(-pw{0}_v, pw_n), 0.0, 1.0);
-        let pw{0}_f = 0.0204 + 0.9796 * pow(1.0 - pw{0}_cos, 5.0);
-        sampled{0} = vec4f(mix(sampled{0}.rgb, pw{0}_c * (pw{0}_f * max(ubuf.surface_pbr.z, 0.0)),
-                               clamp(ubuf.surface_probe[0].w, 0.0, 1.0)), sampled{0}.a);
+        sampled{0} = vec4f(vec3f(0.0), sampled{0}.a);
     }})""",
                      stage);
+}
+
+// GXPortSetWaterReflection, after the last TEV stage: the live probe along the view reflected off the
+// water's facet, blended over the water by Schlick's Fresnel for water, F = F0 + (1 - F0)(1 - cos)^5 with
+// F0 = ((1.333 - 1) / (1.333 + 1))^2 = 0.0204 (n of water 1.333 at 589 nm), times the strength
+// (GXPortSetEnvProbeLook) and the probe's weight: the surface shows F of the reflection R and 1 - F of
+// what the water lets through. Retail draws the water W at alpha a over what lies behind (B), so that
+// is a W + (1 - a) B; with the reflection, F R + (1 - F)(a W + (1 - a) B), which the same blend
+// (SRCALPHA, INVSRCALPHA) gives from alpha a' = a + F (1 - a) and colour (F R + (1 - F) a W) / a'.
+// Opaque water (a = 1) is F R + (1 - F) W. The display-referred colours are mixed, as GX blends them,
+// before the fog, which then fogs the reflection with the water.
+static std::string port_water_blend() {
+  return R"""(
+    // GXPortSetWaterReflection: the live probe reflected off the water, blended over it by Fresnel
+    if (ubuf.surface_probe[0].w > 0.0) {
+        let pw_v = select(vec3f(0.0, 0.0, -1.0), normalize(in.pw_pos), dot(in.pw_pos, in.pw_pos) > 1e-12);
+        let pw_r = reflect(pw_v, pw_n);
+        let pw_d = ubuf.surface_probe[0].xyz * pw_r.x + ubuf.surface_probe[1].xyz * pw_r.y +
+                   ubuf.surface_probe[2].xyz * pw_r.z;
+        let pw_rc = textureSampleLevel(pbr_cube, pbr_cube_samp, pw_d, ubuf.surface_pbr.y).rgb;
+        let pw_cos = clamp(dot(-pw_v, pw_n), 0.0, 1.0);
+        let pw_f = 0.0204 + 0.9796 * pow(1.0 - pw_cos, 5.0);
+        let pw_fe = clamp(pw_f * max(ubuf.surface_pbr.z, 0.0) * clamp(ubuf.surface_probe[0].w, 0.0, 1.0), 0.0, 1.0);
+        let pw_a = clamp(prev.a, 0.0, 1.0);
+        let pw_a2 = pw_a + pw_fe * (1.0 - pw_a);
+        prev = vec4f((pw_rc * pw_fe + clamp(prev.rgb, vec3f(0.0), vec3f(1.0)) * (pw_a * (1.0 - pw_fe))) /
+                         max(pw_a2, 1e-4), pw_a2);
+    })""";
 }
 
 // GXPortSetSurfacePBR (pbr 0, pbrKind = stage + 1; port_surface_pbr_stage says when it applies):
@@ -3542,6 +3560,9 @@ std::string build_shader_source(const ShaderConfig& config) noexcept {
   }
   if (lastStage.alphaOp.outReg != 0) {
     fragmentFn += fmt::format("\n    prev.a = {0}.a;", regName[lastStage.alphaOp.outReg]);
+  }
+  if (port_water_stage(config) >= 0) {
+    fragmentFn += port_water_blend();
   }
 
   if (info.loadsTevReg.test(0)) {

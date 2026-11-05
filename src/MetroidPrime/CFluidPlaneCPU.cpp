@@ -331,10 +331,11 @@ void CFluidPlaneCPU::RenderSetup(const CStateManager& mgr, float alpha, const CT
           ? 0
           : HasEnvMap();
 #ifdef TARGET_PC
-  // Port: Live reflections > Water reflections. The surface's environment stage reflects the live
-  // probe instead of its painted map (GXPortSetWaterReflection), still masked by the gloss and lit
-  // by the lightmap as retail combines it. Water without an environment map keeps its own stages and
-  // gets one more, last, adding the reflection on top. Not with the camera under the surface (retail
+  // Port: Live reflections > Water reflections (GXPortSetWaterReflection). The surface's environment
+  // stage drops its painted map, and Aurora blends the live probe, reflected off the surface, over the
+  // finished water by water's Fresnel, raising the water's alpha to match (lib/gx/shader.cpp's
+  // port_water_blend). Water without an environment map keeps its own stages and gets one more, last,
+  // that passes the colour on (it only marks the draw). Not with the camera under the surface (retail
   // drops the env map there too) nor in split screen.
   const bool portWaterReflect =
       PortOverlay::LiveReflections() && PortOverlay::WaterReflections() && !mgr.IsMultiplayer() &&
@@ -403,7 +404,7 @@ void CFluidPlaneCPU::RenderSetup(const CStateManager& mgr, float alpha, const CT
   }
 #ifdef TARGET_PC
   else if (portAddedEnv) {
-    // Black until the probe is filled: the added stage adds nothing before then.
+    // Black: the added stage adds nothing, before the probe is filled or after.
     texMapIds[6] = static_cast< GXTexMapID >(nextTexMap);
     zeroTexture.Load(static_cast< GXTexMapID >(nextTexMap++), CTexture::kCM_Repeat);
     texCoordIds[6] = GX_TEXCOORD0;
@@ -636,8 +637,8 @@ void CFluidPlaneCPU::RenderSetup(const CStateManager& mgr, float alpha, const CT
   }
 #ifdef TARGET_PC
   if (portAddedEnv) {
-    // PREV = reflection + PREV: the water as retail draws it, with the room's reflection on top. The
-    // stage reads the black texture until the probe is filled, so it adds nothing before then.
+    // PREV = black + PREV: the water as retail draws it. The stage marks the draw for the reflection
+    // Aurora blends over it once the last stage has run.
     portWaterStage = stage;
     CGX::SetTevOrder(static_cast< GXTevStageID >(stage), texCoordIds[6], texMapIds[6], GX_COLOR_NULL);
     CGX::SetTevColorIn(static_cast< GXTevStageID >(stage), GX_CC_ZERO, GX_CC_TEXC, GX_CC_ONE, GX_CC_CPREV);

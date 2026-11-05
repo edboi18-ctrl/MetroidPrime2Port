@@ -2320,7 +2320,7 @@ int WaterReflectionBlur() {
 
 int WaterReflectionStrength() {
   ReadEnv();
-  return EnvIntIn("MP2_WATER_REFLECTION_STRENGTH", sWaterReflectionStrength, 0, 200);
+  return EnvIntIn("MP2_WATER_REFLECTION_STRENGTH", sWaterReflectionStrength, 0, 400);
 }
 
 bool Bloom() {

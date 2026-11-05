@@ -514,11 +514,16 @@ Video > Quality and Frame rate:
   around her (`CCubeMaterial::CPortEnvProbeScope`) instead of the camera. Env `MP2_BODY_REFLECTIONS`,
   `MP2_BODY_REFLECTION_BLUR`, `MP2_BODY_REFLECTION_STRENGTH`.
 - `water_reflections` (on by default), `water_reflection_blur` (0..100, percent; default 10) and
-  `water_reflection_strength` (0..200, percent; default 100): Quality > Water reflections / Water blur /
-  Water strength (shown while Live reflections is on). `CFluidPlaneCPU::RenderSetup` makes the water's
-  environment stage (or, for water without an environment map, a stage built as retail builds one)
-  reflect the live probe along the view reflected off the surface, times Schlick's Fresnel for water
-  (`GXPortSetWaterReflection`). Not with the camera under the surface, nor in split screen. Env
+  `water_reflection_strength` (0..400, percent; default 100): Quality > Water reflections / Water blur /
+  Water strength (shown while Live reflections is on). `CFluidPlaneCPU::RenderSetup` marks the water's
+  environment stage (or, for water without an environment map, one more stage it adds last)
+  (`GXPortSetWaterReflection`): that stage's painted reflection is dropped, and the live probe along the
+  view reflected off the surface is blended over the finished water by Schlick's Fresnel for water,
+  F = 0.0204 + 0.9796 (1 - cos)^5, times the strength (at most the whole surface). The water's alpha is
+  raised to match, so translucent water shows the reflection at full weight rather than at its own
+  alpha: F of the reflection over (1 - F) of what retail draws. 100% is real water's share (about 2%
+  looking straight down, 9% at a pool 4 m away from standing height, all of it at a grazing angle).
+  Not with the camera under the surface, nor in split screen. Env
   `MP2_WATER_REFLECTIONS`, `MP2_WATER_REFLECTION_BLUR`, `MP2_WATER_REFLECTION_STRENGTH`.
 - `bloom` (off by default), `bloom_strength` (0..200, percent; default 100) and `bloom_threshold`
   (50..95, percent of display white; default 90): Quality > Bloom / Bloom strength / Bloom threshold,
@@ -540,7 +545,10 @@ Video > Quality and Frame rate:
   radius / angle bias,
   Aurora's screen-space ambient obscurance (`GXPortAmbientOcclusion`, `extern/aurora/lib/gfx/ssao.cpp`)
   over the world in `CStateManager::DrawWorld`, before the scan visor's markers, the fog planes, the
-  Dark World haze, the arm cannon and the HUD; not in the Dark or Echo visor nor split screen. Needs a
+  Dark World haze, the arm cannon and the HUD; not in the Dark or Echo visor nor split screen. The
+  world's GX fog (the area's, or the water's with the camera under the surface) is worked out again for
+  each pixel from its depth, and only the surface under the fog is darkened, so the obscurance thins out
+  with the fog as the surface does. Needs a
   device with core features (it reads the depth buffer). Env `MP2_AMBIENT_OCCLUSION`, `MP2_AO_STRENGTH`,
   `MP2_AO_RADIUS`, `MP2_AO_ANGLE_BIAS`.
 - `face_pbr_strength` (0..100, percent; default 40): Quality > Visor face PBR strength (shown while PBR maps

@@ -118,8 +118,9 @@ ShaderConfig water_config() {
   return config;
 }
 
-// GXPortSetWaterReflection: the env stage's sample is the probe off the water's facet, times water's
-// Fresnel, with no lit channel, normal attribute or per-pixel lights.
+// GXPortSetWaterReflection: the env stage's painted sample gives way, and the probe off the water's facet
+// is blended over the finished water by water's Fresnel (alpha corrected), with no lit channel, normal
+// attribute or per-pixel lights.
 TEST(GxSurfacePbr, WaterStageReflectsTheProbe) {
   auto config = water_config();
   apply_port_surface_flags(config, 0, false, 4);
@@ -134,15 +135,22 @@ TEST(GxSurfacePbr, WaterStageReflectsTheProbe) {
   const auto info = build_shader_info(config);
   EXPECT_TRUE(info.usesSurfacePbr);
   const std::string source = build_shader_source(config);
-  EXPECT_NE(source.find("TEV stage 3 reflects the live probe off the water"), std::string::npos) << source;
+  EXPECT_NE(source.find("TEV stage 3's painted reflection gives way to the live probe"), std::string::npos) << source;
+  EXPECT_NE(source.find("sampled3 = vec4f(vec3f(0.0), sampled3.a);"), std::string::npos);
+  EXPECT_NE(source.find("the live probe reflected off the water, blended over it by Fresnel"), std::string::npos);
   EXPECT_NE(source.find("pw_pos: vec3f,"), std::string::npos);
   EXPECT_NE(source.find("out.pw_pos = mv_pos;"), std::string::npos);
   EXPECT_NE(source.find("let pw_dx = dpdx(in.pw_pos);"), std::string::npos);
   EXPECT_NE(source.find("var pbr_cube: texture_cube<f32>;"), std::string::npos);
-  EXPECT_NE(source.find("let pw3_f = 0.0204 + 0.9796 * pow(1.0 - pw3_cos, 5.0);"), std::string::npos);
-  // The facet normal is taken before anything branches, and the sample replaced before the stages run.
+  EXPECT_NE(source.find("let pw_f = 0.0204 + 0.9796 * pow(1.0 - pw_cos, 5.0);"), std::string::npos);
+  EXPECT_NE(source.find("let pw_a2 = pw_a + pw_fe * (1.0 - pw_a);"), std::string::npos);
+  EXPECT_NE(source.find("prev = vec4f((pw_rc * pw_fe + clamp(prev.rgb, vec3f(0.0), vec3f(1.0)) * (pw_a * (1.0 - pw_fe))) /"),
+            std::string::npos);
+  // The facet normal is taken before anything branches, the sample cleared before the stages run, and
+  // the reflection blended once the last stage has run.
   EXPECT_LT(source.find("let pw_dx = dpdx(in.pw_pos);"), source.find("// TEV stage 0"));
-  EXPECT_LT(source.find("sampled3 = vec4f(mix(sampled3.rgb, pw3_c"), source.find("// TEV stage 0"));
+  EXPECT_LT(source.find("sampled3 = vec4f(vec3f(0.0), sampled3.a);"), source.find("// TEV stage 0"));
+  EXPECT_GT(source.find("let pw_a2 = pw_a + pw_fe * (1.0 - pw_a);"), source.find("// TEV stage 3"));
   EXPECT_EQ(source.find("pp_nrm"), std::string::npos);
   EXPECT_EQ(source.find("pbrs_"), std::string::npos);
 }

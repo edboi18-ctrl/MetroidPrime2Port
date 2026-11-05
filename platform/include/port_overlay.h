@@ -802,8 +802,8 @@ int BodyReflectionBlur();
 int BodyReflectionStrength();
 // Water surfaces reflect the live probe too (F1 > Video > Quality, shown with Live reflections;
 // CFluidPlaneCPU::RenderSetup, GXPortSetWaterReflection): on by default (`MP2_WATER_REFLECTIONS`),
-// with their own blur 0..100% (`MP2_WATER_REFLECTION_BLUR`; default 10) and strength 0..200%
-// (`MP2_WATER_REFLECTION_STRENGTH`; default 100).
+// with their own blur 0..100% (`MP2_WATER_REFLECTION_BLUR`; default 10) and strength 0..400%
+// (`MP2_WATER_REFLECTION_STRENGTH`; default 100: real water's Fresnel share, scaled).
 bool WaterReflections();
 int WaterReflectionBlur();
 int WaterReflectionStrength();

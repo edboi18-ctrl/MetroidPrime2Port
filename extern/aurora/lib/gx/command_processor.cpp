@@ -1550,7 +1550,16 @@ void handle_aurora(ByteReader& reader) noexcept {
       word = reader.read<u32>();
     }
     std::memcpy(&params, words, sizeof(params));
-    gfx::ssao::record(params);
+    // The fog the world was just drawn with: the composite keeps its share of each pixel.
+    const auto& state = g_gxState.fog;
+    const gfx::ssao::Fog fog{
+        .color = {state.color.x(), state.color.y(), state.color.z(), state.color.w()},
+        .a = state.a,
+        .b = state.b,
+        .c = state.c,
+        .type = static_cast<u32>(state.type),
+    };
+    gfx::ssao::record(params, fog);
   } else if (subCmd == GX_AURORA_PORT_SURFACE_PBR_STRENGTH) {
     const f32 strength = reader.read<f32>();
     const f32 clamped = strength >= 0.f ? (strength <= 1.f ? strength : 1.f) : 0.f; // NaN -> 0

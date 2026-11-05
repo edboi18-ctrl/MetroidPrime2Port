@@ -421,7 +421,7 @@ void shutdown() {}
 
 namespace aurora::gfx::ssao {
 bool ensure_task() { return false; }
-bool record(const Params& params) { return false; }
+bool record(const Params& params, const Fog& fog) { return false; }
 void shutdown() {}
 } // namespace aurora::gfx::ssao
 

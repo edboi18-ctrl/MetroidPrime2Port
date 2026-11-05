@@ -31,6 +31,10 @@
 // The paper's z MIP chain (for radii far beyond the blur) is left out: the radius here is a metre or two.
 // The obscurance is computed at half the EFB's size and drawn over the frame at full size. The EFB holds
 // sRGB-encoded colour (as bloom.cpp reads it), so the frame is decoded, multiplied and encoded again.
+// The world's GX fog is already in the frame, mixed in the encoded values (lib/gx/shader.cpp: prev =
+// mix(prev, fog colour, f)), so the composite works out f again from the pixel's window z and the fog
+// the world was drawn with, takes the fog colour's share back out, darkens the surface left and mixes
+// the fog back over it: a pixel all fog is not darkened at all, as the surface under it would not show.
 namespace aurora::gfx::ssao {
 namespace {
 Module Log("aurora::gfx::ssao");
@@ -48,6 +52,12 @@ struct Params {
   depth: vec4f,
   ao: vec4f,
   misc: vec4f,
+  // The GX fog (ssao::Fog): its colour, then a, b, c and the GXFogType.
+  fog_color: vec4f,
+  fog_a: f32,
+  fog_b: f32,
+  fog_c: f32,
+  fog_kind: u32,
 };
 
 @group(0) @binding(0) var<uniform> p: Params;
@@ -66,11 +76,16 @@ fn vs_main(@builtin(vertex_index) i: u32) -> VertexOutput {
   return out;
 }
 
-// The view depth (positive, in world units) at a full-size pixel; 0 outside the world's depth range
-// (the viewmodel nearer, the sky at the far plane). Reversed Z, as volfog.cpp reads it.
-fn view_depth(at: vec2i) -> f32 {
+// GX's window z at a full-size pixel (reversed Z, as volfog.cpp reads it): the z the fog was computed from.
+fn window_z(at: vec2i) -> f32 {
   let size = vec2i(textureDimensions(depthTex));
-  let z = 1.0 - textureLoad(depthTex, clamp(at, vec2i(0), size - vec2i(1)), 0);
+  return 1.0 - textureLoad(depthTex, clamp(at, vec2i(0), size - vec2i(1)), 0);
+}
+
+// The view depth (positive, in world units) at a full-size pixel; 0 outside the world's depth range
+// (the viewmodel nearer, the sky at the far plane).
+fn view_depth(at: vec2i) -> f32 {
+  let z = window_z(at);
   if (z < p.depth.z || z >= p.depth.w - 1e-6) {
     return 0.0;
   }
@@ -198,6 +213,30 @@ fn srgb_dec(c: vec3f) -> vec3f {
   return select(pow((e + 0.055) / 1.055, vec3f(2.4)), e / 12.92, e <= vec3f(0.04045));
 }
 
+// How much of a pixel at window z the GX fog colour makes up, as lib/gx/shader.cpp's fog computes it
+// (without the range adjustment, which the game leaves off).
+fn fog_amount(z: f32) -> f32 {
+  if ((p.fog_kind & 7u) == 0u) {
+    return 0.0; // GX_FOG_NONE
+  }
+  var base: f32;
+  if ((p.fog_kind & 8u) != 0u) {
+    base = p.fog_a * z;
+  } else {
+    base = p.fog_a / (p.fog_b - z);
+  }
+  let f = clamp(base - p.fog_c, 0.0, 1.0);
+  var fz = f; // GX_FOG_PERSP_LIN, GX_FOG_ORTHO_LIN
+  switch p.fog_kind & 7u {
+    case 4u: { fz = 1.0 - exp2(-8.0 * f); }
+    case 5u: { fz = 1.0 - exp2(-8.0 * f * f); }
+    case 6u: { fz = exp2(-8.0 * (1.0 - f)); }
+    case 7u: { fz = exp2(-8.0 * (1.0 - f) * (1.0 - f)); }
+    default: {}
+  }
+  return clamp(fz, 0.0, 1.0);
+}
+
 @fragment
 fn fs_composite(in: VertexOutput) -> @location(0) vec4f {
   let at = vec2i(floor(in.pos.xy));
@@ -226,7 +265,14 @@ fn fs_composite(in: VertexOutput) -> @location(0) vec4f {
   let a = select(1.0, sum / total, total > 0.0);
   let fade = 1.0 - clamp((depth - p.ao.w) / max(p.misc.x - p.ao.w, 1e-3), 0.0, 1.0);
   let vis = mix(1.0, a, fade);
-  return vec4f(srgb_enc(srgb_dec(f.rgb) * vis), f.a);
+  // The frame is surface (1 - fz) + fog colour fz: only the surface is darkened.
+  let fz = fog_amount(window_z(at));
+  if (fz >= 0.999) {
+    return f;
+  }
+  let fog = clamp(p.fog_color.rgb, vec3f(0.0), vec3f(1.0));
+  let surface = clamp((f.rgb - fog * fz) / (1.0 - fz), vec3f(0.0), vec3f(1.0));
+  return vec4f(mix(srgb_enc(srgb_dec(surface) * vis), fog, fz), f.a);
 }
 )";
 
@@ -252,7 +298,13 @@ struct State {
   wgpu::TextureView dummy;
 };
 State g_state;
-std::array<Params, RecordedSlots> g_recorded;
+// The task's uniform: the command's words, then the fog.
+struct Uniforms {
+  Params params;
+  Fog fog;
+};
+static_assert(sizeof(Uniforms) == 96);
+std::array<Uniforms, RecordedSlots> g_recorded;
 uint32_t g_nextSlot = 0;
 
 wgpu::ShaderModule make_module(const char* label, const std::string& code) {
@@ -284,7 +336,7 @@ void ensure_pipelines(wgpu::TextureFormat format, uint32_t samples) {
       wgpu::BindGroupLayoutEntry{
           .binding = 0,
           .visibility = wgpu::ShaderStage::Fragment,
-          .buffer = {.type = wgpu::BufferBindingType::Uniform, .minBindingSize = sizeof(Params)},
+          .buffer = {.type = wgpu::BufferBindingType::Uniform, .minBindingSize = sizeof(Uniforms)},
       },
       wgpu::BindGroupLayoutEntry{
           .binding = 1,
@@ -370,7 +422,7 @@ void ensure_shared() {
   const wgpu::BufferDescriptor bufferDescriptor{
       .label = "Ambient Occlusion Uniforms",
       .usage = wgpu::BufferUsage::Uniform | wgpu::BufferUsage::CopyDst,
-      .size = sizeof(Params),
+      .size = sizeof(Uniforms),
   };
   for (auto& uniforms : g_state.uniforms) {
     uniforms = g_device.CreateBuffer(&bufferDescriptor);
@@ -409,7 +461,7 @@ void encode(const EncoderTaskContext& ctx, const wgpu::CommandEncoder& cmd, cons
     return;
   }
   std::memcpy(&slot, payload, sizeof(slot));
-  const Params& params = g_recorded[slot % g_recorded.size()];
+  const Uniforms& params = g_recorded[slot % g_recorded.size()];
   const auto efb = webgpu::efb_targets();
   const auto& source = webgpu::present_source();
   const uint32_t samples = webgpu::g_graphicsConfig.msaaSamples > 1 ? webgpu::g_graphicsConfig.msaaSamples : 1;
@@ -433,7 +485,7 @@ void encode(const EncoderTaskContext& ctx, const wgpu::CommandEncoder& cmd, cons
 
   const auto group = [&](const wgpu::TextureView& srcView, const wgpu::TextureView& aoView) {
     const std::array entries{
-        wgpu::BindGroupEntry{.binding = 0, .buffer = uniforms, .size = sizeof(Params)},
+        wgpu::BindGroupEntry{.binding = 0, .buffer = uniforms, .size = sizeof(Uniforms)},
         wgpu::BindGroupEntry{.binding = 1, .textureView = efb.depth.view},
         wgpu::BindGroupEntry{.binding = 2, .textureView = srcView},
         wgpu::BindGroupEntry{.binding = 3, .textureView = aoView},
@@ -469,7 +521,7 @@ bool ensure_task() {
   return true;
 }
 
-bool record(const Params& params) {
+bool record(const Params& params, const Fog& fog) {
   if (g_state.task == InvalidEncoderTask) {
     return false;
   }
@@ -482,7 +534,7 @@ bool record(const Params& params) {
     return false;
   }
   const uint32_t slot = g_nextSlot++ % g_recorded.size();
-  g_recorded[slot] = params;
+  g_recorded[slot] = {params, fog};
   return record_encoder_task(g_state.task, &slot, sizeof(slot));
 }
 

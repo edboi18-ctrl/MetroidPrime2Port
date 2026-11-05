@@ -388,8 +388,8 @@ extern "C" {
 // Port extension: the probe level and strength the following draws' environment stages read
 // (GXPortSetEnvProbeLook). Payload: f32 level, f32 strength (below 0: aurora_set_env_probe_look's).
 #define GX_AURORA_PORT_ENV_PROBE_LOOK 0x0074
-// Port extension: the following draws' TEV stage reflects the live probe off the water
-// (GXPortSetWaterReflection). Payload: u8 stage + 1, 0 off.
+// Port extension: the following draws are water, their TEV stage's painted reflection giving way to the
+// live probe blended over them (GXPortSetWaterReflection). Payload: u8 stage + 1, 0 off.
 #define GX_AURORA_PORT_WATER_REFLECTION 0x0075
 // Port extension: how much of the PBR maps' lighting the following draws take (GXPortSetSurfacePBRStrength).
 // Payload: f32 strength.

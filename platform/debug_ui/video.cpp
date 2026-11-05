@@ -348,9 +348,10 @@ void DrawVideoQuality() {
     if (sWaterReflections) {
       Changed(ImGui::SliderInt("Water blur", &sWaterReflectionBlur, 0, 100, "%d%%", ImGuiSliderFlags_AlwaysClamp));
       ImGui::SetItemTooltip("0%% is a still mirror; higher softens the reflection, as a rippled surface would.");
-      Changed(ImGui::SliderInt("Water strength", &sWaterReflectionStrength, 0, 200, "%d%%",
+      Changed(ImGui::SliderInt("Water strength", &sWaterReflectionStrength, 0, 400, "%d%%",
                                ImGuiSliderFlags_AlwaysClamp));
-      ImGui::SetItemTooltip("How bright the water's reflection is; 100%% is the room as captured.");
+      ImGui::SetItemTooltip("How much of the surface the reflection covers. 100%% is real water's share (its\n"
+                            "Fresnel); higher turns it towards a mirror sooner, up to the whole surface.");
     }
   }
   if (sPbrMaps) {

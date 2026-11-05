@@ -45,13 +45,16 @@ void GXPortSetEnvProbe(GXBool on);
 // A strength below 0 goes back to the look aurora_set_env_probe_look sets for every draw. Ordered
 // with the draws, so models drawn one after another can each have their own look.
 void GXPortSetEnvProbeLook(f32 level, f32 strength);
-// Port extension: the following draws are water, and TEV stage `stage`'s texture sample becomes the
-// live probe (GXCopyProbeFace) seen along the view reflected off the surface, times Schlick's Fresnel
-// for water (F0 0.0204): faint looking straight down, a mirror at grazing angles. The surface's normal
-// comes from its own view-space position (no normal attribute or lit channel is needed; a rippled
-// mesh reflects off its facets). Read through GXSetPBRProbe's matrix and weight at
-// GXPortSetEnvProbeLook's level and strength; until the probe is filled the stage keeps its own
-// texture. A stage that doesn't read its texture's colour, or a negative stage, turns it off.
+// Port extension: the following draws are water. Once the probe is filled, TEV stage `stage`'s texture
+// sample (the painted reflection) reads black, and after the last stage the live probe (GXCopyProbeFace)
+// seen along the view reflected off the surface is blended over the water by Schlick's Fresnel for
+// water (F0 0.0204) times the strength: faint looking straight down, a mirror at grazing angles. The
+// water's alpha is raised to match (a + F (1 - a)), so a SRCALPHA / INVSRCALPHA blend shows F of the
+// reflection over 1 - F of the water as drawn. The surface's normal comes from its own view-space
+// position (no normal attribute or lit channel is needed; a rippled mesh reflects off its facets).
+// Read through GXSetPBRProbe's matrix and weight at GXPortSetEnvProbeLook's level and strength; until
+// the probe is filled the stage keeps its own texture. A stage that doesn't read its texture's colour,
+// or a negative stage, turns it off.
 void GXPortSetWaterReflection(s32 stage);
 // Aurora extension: distance-field texturing for the following draws (see
 // GX_AURORA_SET_SDF). 0 turns it off.
@@ -334,8 +337,10 @@ void GXPortVolumetricFogEnd(void);
 // (lib/gfx/ssao.cpp: Scalable Ambient Obscurance, McGuire, Mara and Luebke, HPG 2012). Pixels in the
 // world's GX z range (depth[2] to depth[3]) are darkened where nearby geometry hides them, by the
 // obscurance computed at half size and smoothed along depth edges; nearer (the viewmodel) and the far
-// plane are left alone, and the effect fades out between fade start and end (view depth). Ends the
-// current pass. False when it could not be recorded (no core features, the HDR scene, draw-id view).
+// plane are left alone, and the effect fades out between fade start and end (view depth). The GX fog
+// current when the command is processed is taken as the world's: the fog colour's share of each pixel
+// is kept and only the surface under it is darkened (so dense fog, underwater above all, hides it as
+// it hides the surface). Ends the current pass. False when it could not be recorded (no core features, the HDR scene, draw-id view).
 // View space is GX's (x right, y up, z towards the camera).
 typedef struct {
   f32 frustum[4]; // left, right, top, bottom at a view depth of 1
