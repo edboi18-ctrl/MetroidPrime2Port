@@ -421,6 +421,10 @@ struct GXState {
   u8 waterReflect = 0; // GX_AURORA_PORT_WATER_REFLECTION: the reflecting TEV stage + 1, 0 off
   f32 waterRipples = 0.f; // GX_AURORA_PORT_WATER_RIPPLES: the ripples' slope scale, 0 off
   bool blockingDraws = false; // GX_AURORA_PORT_BLOCKING_DRAWS: draws wait for their pipeline
+  // GX_AURORA_PORT_WATER_WAVES (GXPortSetWaterWaves): the rows the rippled water's water_waves
+  // uniform takes, and how many waves they hold.
+  std::array<Vec4<float>, GX_PORT_WATER_WAVE_ROWS> waterWaves{};
+  u8 waterWaveCount = 0;
   f32 surfacePbrStrength = 1.f; // GX_AURORA_PORT_SURFACE_PBR_STRENGTH: 0 the stage's own result, 1 full PBR
   bool envProbe = false; // GX_AURORA_PORT_ENV_PROBE: environment-mapped stages read the probe (GXPortSetEnvProbe)
   // GX_AURORA_PORT_ENV_PROBE_LOOK (GXPortSetEnvProbeLook): x the probe level, y the strength; y below 0
@@ -746,7 +750,7 @@ struct ShaderInfo {
   bool actorDecal : 1 = false;    // actor_decal: group 2 uses the shadow layout with the actor maps
   bool usesHdrTone : 1 = false;   // sceneHdr without pbr: hdr_tone (pbrTone) and hdr_tev_blend
   bool usesSurfacePbr : 1 = false; // port_surface_pbr_stage or port_env_probe_stages: surface_pbr, surface_probe
-  bool usesWaterRipples : 1 = false; // port_water_ripples: surface_pbr.w is the ripples' strength
+  bool usesWaterRipples : 1 = false; // port_water_ripples: surface_pbr.w is the ripples' strength, water_waves the waves
   bool usesTevKonst : 1 = false; // a stage reads a konst input: the tev_konst uniform
   bool usesAlphaRef : 1 = false;  // an alpha compare reference is AlphaRefUniform: the alpha_ref uniform
 };

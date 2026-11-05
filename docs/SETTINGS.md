@@ -541,6 +541,16 @@ Video > Quality and Frame rate:
   pixel reads, through Schüler's cotangent frame) times the strength, before it reflects the probe and
   sets the Fresnel; distant water, read from smaller mips, calms instead of shimmering. 0% is the flat
   surface. Env `MP2_WATER_RIPPLES`.
+- `water_waves` (0..400, percent; default 100; 0 off): Quality > Water waves (shown with Water
+  reflections). Retail MP2 marks a shot, a bomb or Samus hitting the water with a splash effect only;
+  the port also starts a ring of waves there (`CFluidPlaneManager::CreateSplash`, past its 0.4 s
+  cooldown, eight at a time, `platform/include/port_water_waves.h`). Each ring is a packet of
+  deep-water waves (w^2 = g k): the crests run outwards at sqrt(g / k) through a ring spreading at
+  half that, 0.5 m long for the smallest splash to 1.2 m for the largest, 1.5 to 6 cm tall at 100%,
+  dying away over 4 s and thinning as it spreads. `CFluidPlaneCPU::RenderSetup` hands Aurora the rings
+  on that surface (`GXPortSetWaterWaves`), which tip the water's normal by their slope as the ripples
+  do, so they show in the reflection and its Fresnel (not in the water's own texture). Env
+  `MP2_WATER_WAVES`.
 - `bloom` (off by default), `bloom_strength` (0..200, percent; default 100) and `bloom_threshold`
   (50..95, percent of display white; default 90): Quality > Bloom / Bloom strength / Bloom threshold,
   Aurora's Remastered bloom (`GXPortPostProcess`) over the world, drawn in `CStateManager::DrawWorld`

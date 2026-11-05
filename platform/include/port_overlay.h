@@ -811,6 +811,9 @@ bool WaterReflections();
 int WaterReflectionBlur();
 int WaterReflectionStrength();
 int WaterRipples();
+// Rings of waves where shots, bombs and Samus splash into the water (`MP2_WATER_WAVES`, F1 > Video >
+// Quality > Water waves, 0..400%, default 100; 0 off): port_water_waves.h, GXPortSetWaterWaves.
+int WaterWaves();
 // Bloom over the world, under the visors and the HUD (`MP2_BLOOM`, F1 > Video > Quality; off by
 // default): Aurora's Remastered bloom (GXPortPostProcess) with the port's own curve and tints
 // (port_bloom_rules.h). Strength 0..200% (`MP2_BLOOM_STRENGTH`; default 100) and the brightness it

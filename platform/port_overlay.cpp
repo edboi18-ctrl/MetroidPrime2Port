@@ -17,6 +17,7 @@
 #include "port_actor_shadow_rules.h"
 #include "port_ao_rules.h"
 #include "port_bloom_rules.h"
+#include "port_water_waves.h"
 #include "port_logfile.h"
 #include "port_mouse.h"
 #include "port_radial.h"
@@ -2160,6 +2161,7 @@ bool sWaterReflections = true;
 int sWaterReflectionBlur = 10;
 int sWaterReflectionStrength = 100;
 int sWaterRipples = 100;
+int sWaterWaves = PortWaterWaves::kStrengthDefault;
 bool sBloom = false;
 int sBloomStrength = PortBloom::kStrengthDefault;
 int sBloomThreshold = PortBloom::kThresholdDefault;
@@ -2327,6 +2329,11 @@ int WaterReflectionStrength() {
 int WaterRipples() {
   ReadEnv();
   return EnvIntIn("MP2_WATER_RIPPLES", sWaterRipples, 0, 400);
+}
+
+int WaterWaves() {
+  ReadEnv();
+  return EnvIntIn("MP2_WATER_WAVES", sWaterWaves, PortWaterWaves::kStrengthMin, PortWaterWaves::kStrengthMax);
 }
 
 bool Bloom() {

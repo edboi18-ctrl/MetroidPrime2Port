@@ -48,6 +48,10 @@ public:
 #ifdef TARGET_PC
   // Port: seconds the draw reads behind the last Update between ticks (smooth frames), else 0.
   static float PortPresentLag();
+  // Port: GXPortSetWaterWaves' rows for the splash rings on a surface (port_water_waves.h's Pack);
+  // the splashes are kept by CreateSplash and aged by Update. Returns the count.
+  static int PortPackWaves(const float view[3][4], float minX, float minY, float maxX, float maxY,
+                           float surfaceZ, int strengthPercent, float rows[17][4]);
 #endif
 
   static CFluidProfile sProfile;

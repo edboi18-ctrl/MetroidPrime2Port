@@ -1577,6 +1577,26 @@ void handle_aurora(ByteReader& reader) noexcept {
       g_gxState.waterReflect = stage;
       g_gxState.dirty |= DirtyPipeline;
     }
+  } else if (subCmd == GX_AURORA_PORT_WATER_WAVES) {
+    std::array<Vec4<float>, GX_PORT_WATER_WAVE_ROWS> waves{};
+    for (auto& row : waves) {
+      const f32 x = reader.read<f32>();
+      const f32 y = reader.read<f32>();
+      const f32 z = reader.read<f32>();
+      const f32 w = reader.read<f32>();
+      row = {x, y, z, w};
+    }
+    const f32 requested = waves[0].x();
+    const u8 count = requested >= 1.f ? static_cast<u8>(std::min(requested, f32(GX_PORT_WATER_WAVES))) : 0; // NaN -> 0
+    waves[0] = {static_cast<f32>(count), 0.f, 0.f, 0.f};
+    if ((g_gxState.waterWaveCount > 0) != (count > 0)) {
+      g_gxState.dirty |= DirtyPipeline;
+    }
+    if (g_gxState.waterWaveCount != count || g_gxState.waterWaves != waves) {
+      g_gxState.waterWaves = waves;
+      g_gxState.waterWaveCount = count;
+      g_gxState.dirty |= DirtyUniform;
+    }
   } else if (subCmd == GX_AURORA_PORT_BLOCKING_DRAWS) {
     const bool on = reader.read<u8>() != 0;
     if (g_gxState.blockingDraws != on) {

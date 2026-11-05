@@ -196,6 +196,26 @@ TEST(GxSurfacePbr, WaterRipplesTipTheNormal) {
   EXPECT_LT(source.find("pw_n = normalize(pw_n - pr_g"), source.find("var pw_r = reflect(pw_v, pw_n);"));
 }
 
+// GXPortSetWaterWaves: the rippled variant carries the rings (water_waves), each tipping the normal
+// by its slope across the surface, after the texture's layers.
+TEST(GxSurfacePbr, WaterWavesTipTheNormal) {
+  auto config = water_config();
+  apply_port_surface_flags(config, 0, false, 4, true);
+  const auto info = build_shader_info(config);
+  ASSERT_TRUE(info.usesWaterRipples);
+  const std::string source = build_shader_source(config);
+  EXPECT_NE(source.find("water_waves: array<vec4f, 17>"), std::string::npos);
+  EXPECT_NE(source.find("let pw_wn = u32(ubuf.water_waves[0].x);"), std::string::npos);
+  EXPECT_NE(source.find("let pw_wdn = pw_wd - pw_ng * dot(pw_wd, pw_ng);"), std::string::npos);
+  EXPECT_NE(source.find("let pw_wdh = pw_wc.w * pw_wenv * (pw_wq.x * cos(pw_wph) - 2.0 * pw_wx / pw_ws2 * sin(pw_wph));"),
+            std::string::npos);
+  EXPECT_NE(source.find("pw_n = normalize(pw_n - pr_g * clamp(ubuf.surface_pbr.w, 0.0, 8.0) - pw_wg);"),
+            std::string::npos);
+  EXPECT_GT(source.find("let pw_wn = "), source.find("let pr1_uv = tex1_uv;"));
+  // The uniform: surface_pbr, surface_probe, then the waves.
+  EXPECT_LT(source.find("surface_probe: mat3x4f"), source.find("water_waves: array<vec4f, 17>"));
+}
+
 TEST(GxSurfacePbr, WaterRipplesNeedTheirLayers) {
   {
     // TEXCOORD1 isn't generated from the position: no ripples, the reflection stays.

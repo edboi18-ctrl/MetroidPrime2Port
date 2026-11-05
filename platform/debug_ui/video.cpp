@@ -7,6 +7,7 @@
 #include "port_actor_shadow_rules.h"
 #include "port_ao_rules.h"
 #include "port_bloom_rules.h"
+#include "port_water_waves.h"
 #include "port_gpu_driver.h"
 #include "port_input_remap_ui.h"
 #include "port_overlay.h"
@@ -355,6 +356,11 @@ void DrawVideoQuality() {
       Changed(ImGui::SliderInt("Water ripples", &sWaterRipples, 0, 400, "%d%%", ImGuiSliderFlags_AlwaysClamp));
       ImGui::SetItemTooltip("How much the water's own scrolling texture ripples its reflection. 0%% is a\n"
                             "flat surface; higher tips the reflection further as the layers drift.");
+      Changed(ImGui::SliderInt("Water waves", &sWaterWaves, PortWaterWaves::kStrengthMin, PortWaterWaves::kStrengthMax,
+                               "%d%%", ImGuiSliderFlags_AlwaysClamp));
+      ImGui::SetItemTooltip("Shots, bombs and Samus splashing into the water send out rings of waves that\n"
+                            "ripple its reflection, as well as the splash effect. 0%% is off; higher\n"
+                            "makes the waves taller.");
     }
   }
   if (sPbrMaps) {

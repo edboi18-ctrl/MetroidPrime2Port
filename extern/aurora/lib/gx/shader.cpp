@@ -979,8 +979,25 @@ static std::string port_water_ripples_code() {
         pr_g += (pr{0}_t * pr{0}_hu + pr{0}_b * pr{0}_hv) * pr{0}_s;)""",
                        k);
   }
+  // GXPortSetWaterWaves: each splash's ring, h = a exp(-((r - R) / s)^2) sin(k r - w t) at r across the
+  // surface from its centre; its slope dh/dr along the outward direction, which needs no derivatives.
   out += R"""(
-        pw_n = normalize(pw_n - pr_g * clamp(ubuf.surface_pbr.w, 0.0, 8.0));
+        var pw_wg = vec3f(0.0);
+        let pw_wn = u32(ubuf.water_waves[0].x);
+        for (var pw_wi = 0u; pw_wi < pw_wn; pw_wi++) {
+            let pw_wc = ubuf.water_waves[1u + 2u * pw_wi];
+            let pw_wq = ubuf.water_waves[2u + 2u * pw_wi];
+            let pw_wd = in.pw_pos - pw_wc.xyz;
+            let pw_wdn = pw_wd - pw_ng * dot(pw_wd, pw_ng);
+            let pw_wr = length(pw_wdn);
+            let pw_wx = pw_wr - pw_wq.z;
+            let pw_ws2 = max(pw_wq.w * pw_wq.w, 1e-6);
+            let pw_wenv = exp(-(pw_wx * pw_wx) / pw_ws2);
+            let pw_wph = pw_wq.x * pw_wr - pw_wq.y;
+            let pw_wdh = pw_wc.w * pw_wenv * (pw_wq.x * cos(pw_wph) - 2.0 * pw_wx / pw_ws2 * sin(pw_wph));
+            pw_wg += pw_wdn * (pw_wdh / max(pw_wr, 1e-3));
+        }
+        pw_n = normalize(pw_n - pr_g * clamp(ubuf.surface_pbr.w, 0.0, 8.0) - pw_wg);
     })""";
   return out;
 }
@@ -4395,6 +4412,9 @@ fn vf_apply_hdr(c: vec4f, fog: vec4f, w: f32) -> vec4f {
   if (info.usesSurfacePbr) {
     uniBufAttrs += "\n    surface_pbr: vec4f, // x: highlight strength, y: env stages' probe level, z: their reflection strength, w: PBR strength";
     uniBufAttrs += "\n    surface_probe: mat3x4f, // GXSetPBRProbe: view to probe rows, weight in [0].w";
+    if (info.usesWaterRipples) {
+      uniBufAttrs += fmt::format("\n    water_waves: array<vec4f, {}>, // GXPortSetWaterWaves", GX_PORT_WATER_WAVE_ROWS);
+    }
   }
   if (info.usesPTTexMtx.any()) {
     uniBufAttrs += fmt::format("\n    postmtx: array<mat3x4f, {}>,", MaxPTTexMtx);

@@ -68,6 +68,15 @@ void GXPortSetWaterRipples(f32 strength);
 // for any other draw. For the few draws whose absence shows, like a water surface that would flicker
 // out while a variant of its shader builds; the first frame that needs it stalls instead.
 void GXPortSetBlockingDraws(GXBool on);
+// Port extension: expanding rings on GXPortSetWaterReflection's water (a splash's waves), which tip
+// its normal as GXPortSetWaterRipples' height does (they share the rippled variant). Row 0: x the
+// number of waves (0..GX_PORT_WATER_WAVES); then two rows a wave: (centre in view space xyz,
+// amplitude) and (wavenumber k, the crests' phase w t, the packet's radius R, its width s). A wave is
+// h(r) = amplitude exp(-((r - R) / s)^2) sin(k r - w t) at r from its centre, measured across the
+// surface; the normal tips against its slope (no scale: h is in view-space units).
+#define GX_PORT_WATER_WAVES 8
+#define GX_PORT_WATER_WAVE_ROWS (1 + 2 * GX_PORT_WATER_WAVES)
+void GXPortSetWaterWaves(const f32 waves[GX_PORT_WATER_WAVE_ROWS][4]);
 // Aurora extension: distance-field texturing for the following draws (see
 // GX_AURORA_SET_SDF). 0 turns it off.
 void GXSetSDF(u8 edge);

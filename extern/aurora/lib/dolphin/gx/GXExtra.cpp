@@ -473,6 +473,15 @@ void GXPortSetWaterReflection(s32 stage) {
   GX_WRITE_U8(stage >= 0 && stage < GX_MAX_TEVSTAGE ? static_cast<u8>(stage + 1) : 0);
 }
 
+void GXPortSetWaterWaves(const f32 waves[GX_PORT_WATER_WAVE_ROWS][4]) {
+  GX_WRITE_AURORA(GX_AURORA_PORT_WATER_WAVES);
+  for (u32 row = 0; row < GX_PORT_WATER_WAVE_ROWS; ++row) {
+    for (u32 i = 0; i < 4; ++i) {
+      GX_WRITE_F32(waves != nullptr ? waves[row][i] : 0.f);
+    }
+  }
+}
+
 void GXPortSetBlockingDraws(GXBool on) {
   GX_WRITE_AURORA(GX_AURORA_PORT_BLOCKING_DRAWS);
   GX_WRITE_U8(on ? 1 : 0);

@@ -3015,6 +3015,44 @@ TEST_F(GXFifoTest, PortWaterRipples_DecodesClamped) {
   EXPECT_FLOAT_EQ(g_gxState.waterRipples, 0.f);
 }
 
+// GXPortSetWaterWaves: the rows reach the state the water_waves uniform takes; the count is clamped to
+// GX_PORT_WATER_WAVES (NaN or below 1: none), and none or some is a pipeline change.
+TEST_F(GXFifoTest, PortWaterWaves_DecodesClamped) {
+  f32 waves[GX_PORT_WATER_WAVE_ROWS][4] = {};
+  waves[0][0] = 2.f;
+  waves[1][0] = 1.f;
+  waves[1][3] = 0.05f;
+  waves[2][0] = 7.85f;
+  waves[4][2] = 1.5f;
+  GXPortSetWaterWaves(waves);
+  auto bytes = capture_fifo();
+  EXPECT_TRUE(has_aurora_cmd(bytes, GX_AURORA_PORT_WATER_WAVES));
+
+  reset_gx_state();
+  EXPECT_EQ(g_gxState.waterWaveCount, 0);
+  g_gxState.dirty = 0;
+  decode_fifo(bytes);
+  EXPECT_EQ(g_gxState.waterWaveCount, 2);
+  EXPECT_FLOAT_EQ(g_gxState.waterWaves[0].x(), 2.f);
+  EXPECT_FLOAT_EQ(g_gxState.waterWaves[1].w(), 0.05f);
+  EXPECT_FLOAT_EQ(g_gxState.waterWaves[2].x(), 7.85f);
+  EXPECT_FLOAT_EQ(g_gxState.waterWaves[4].z(), 1.5f);
+  EXPECT_NE(g_gxState.dirty & aurora::gx::DirtyPipeline, 0);
+
+  waves[0][0] = 100.f;
+  GXPortSetWaterWaves(waves);
+  decode_fifo(capture_fifo());
+  EXPECT_EQ(g_gxState.waterWaveCount, GX_PORT_WATER_WAVES);
+  waves[0][0] = std::numeric_limits<f32>::quiet_NaN();
+  GXPortSetWaterWaves(waves);
+  decode_fifo(capture_fifo());
+  EXPECT_EQ(g_gxState.waterWaveCount, 0);
+  GXPortSetWaterWaves(nullptr);
+  decode_fifo(capture_fifo());
+  EXPECT_EQ(g_gxState.waterWaveCount, 0);
+  EXPECT_FLOAT_EQ(g_gxState.waterWaves[1].w(), 0.f);
+}
+
 // GXPortSetBlockingDraws: the flag reaches the state the draw's pipeline lookup reads, and a change
 // makes the next draw look its pipeline up again.
 TEST_F(GXFifoTest, PortBlockingDraws_Decodes) {

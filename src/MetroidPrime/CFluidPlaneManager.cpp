@@ -10,6 +10,7 @@
 #include "MetroidPrime/CActor.hpp"
 #include "MetroidPrime/CCameraManager.hpp"
 #include "port_overlay.h"
+#include "port_water_waves.h"
 #endif
 
 CFluidPlaneManager::CFluidProfile CFluidPlaneManager::sProfile;
@@ -38,7 +39,16 @@ CFluidPlaneManager::CFluidPlaneManager()
 namespace {
 float sPortLastDt = 0.f;
 uint sPortUpdateGeneration = 0;
+// The splashes' rings (port_water_waves.h), kept here rather than in the class (its size is retail's).
+PortWaterWaves::Wave sPortWaves[PortWaterWaves::kMaxWaves];
 } // namespace
+
+int CFluidPlaneManager::PortPackWaves(const float view[3][4], float minX, float minY, float maxX, float maxY,
+                                      float surfaceZ, int strengthPercent, float rows[17][4]) {
+  static_assert(PortWaterWaves::kRows == 17);
+  return PortWaterWaves::Pack(sPortWaves, view, minX, minY, maxX, maxY, surfaceZ, strengthPercent, PortPresentLag(),
+                              rows);
+}
 
 float CFluidPlaneManager::PortPresentLag() {
   const float t = CCameraManager::GetPresentationInterpolation();
@@ -55,6 +65,9 @@ void CFluidPlaneManager::Update(float dt) {
   sPortUpdateGeneration = CActor::PortTickGeneration();
 #endif
   mUvTime = dt + mUvTime;
+#ifdef TARGET_PC
+  PortWaterWaves::Age(sPortWaves, dt);
+#endif
   for (CSplashRecord* it = mSplashes.begin(); it != mSplashes.end(); ++it) {
     it->SetTime(dt + it->GetTime());
     if (it->GetTime() > 9999.f) {
@@ -98,6 +111,11 @@ void CFluidPlaneManager::CreateSplash(TUniqueId splasher, CStateManager& mgr,
 
   mSplashCooldown = 0.4f;
   mLastSplashPosition = pos;
+#ifdef TARGET_PC
+  // Port: a ring of waves from the splash (F1 > Video > Quality > Water waves), past the same
+  // cooldown as its effect, so wading doesn't start one every frame.
+  PortWaterWaves::Add(sPortWaves, pos.GetX(), pos.GetY(), pos.GetZ(), factor);
+#endif
   float oldestTime = 0.f;
   CSplashRecord* oldestRecord = nullptr;
   for (CSplashRecord* it = mSplashes.begin(); it != mSplashes.end(); ++it) {

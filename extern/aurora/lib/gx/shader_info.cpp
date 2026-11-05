@@ -505,6 +505,9 @@ ShaderInfo build_shader_info(const ShaderConfig& config) noexcept {
     // surface_probe (GXSetPBRProbe's view-to-probe rows and weight).
     info.usesSurfacePbr = true;
     info.uniformSize += sizeof(Vec4<float>) + sizeof(Mat3x4<float>);
+    if (info.usesWaterRipples) {
+      info.uniformSize += sizeof(Vec4<float>) * GX_PORT_WATER_WAVE_ROWS; // water_waves
+    }
   }
   if (config.pbr) {
     info.usesPbr = true;
@@ -755,6 +758,11 @@ static void fill_uniform(ByteBuffer& buf, const ShaderInfo& info) noexcept {
     buf.append(Vec4<float>{surface_pbr_highlight(), envLevel, envStrength,
                            info.usesWaterRipples ? g_gxState.waterRipples : g_gxState.surfacePbrStrength});
     buf.append(g_gxState.pbrProbe);
+    if (info.usesWaterRipples) {
+      for (const auto& row : g_gxState.waterWaves) {
+        buf.append(row);
+      }
+    }
   }
   if (info.usesPTTexMtx.any()) {
     for (int i = 0; i < info.usesPTTexMtx.size(); ++i) {

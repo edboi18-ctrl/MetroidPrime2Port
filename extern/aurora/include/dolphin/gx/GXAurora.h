@@ -400,6 +400,9 @@ extern "C" {
 // Port extension: the following draws wait for their pipeline instead of being left out while it
 // builds (GXPortSetBlockingDraws). Payload: u8 on.
 #define GX_AURORA_PORT_BLOCKING_DRAWS 0x0078
+// Port extension: the waves on the following water draws (GXPortSetWaterWaves). Payload: 68 f32
+// (GX_PORT_WATER_WAVE_ROWS rows of 4).
+#define GX_AURORA_PORT_WATER_WAVES 0x0079
 
 #define GX2_SET_POLYGON_OFFSET 0x1000
 

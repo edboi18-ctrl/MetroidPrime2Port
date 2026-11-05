@@ -671,12 +671,31 @@ void CFluidPlaneCPU::RenderSetup(const CStateManager& mgr, float alpha, const CT
                              : HasColorMap() && mColorMap.valid()         ? **mColorMap
                                                                           : nullptr;
     const int ripples = PortOverlay::WaterRipples();
-    if (ripple != nullptr && ripples > 0) {
-      ripple->Load(GX_TEXMAP7, CTexture::kCM_Repeat);
-      GXPortSetWaterRipples(static_cast< float >(ripples) / 100.f);
-    } else {
-      GXPortSetWaterRipples(0.f);
+    // The splashes' rings on this surface (GXPortSetWaterWaves, port_water_waves.h), their centres in
+    // GX's view space (CGraphics' view: x right, y forward, z up, as columns).
+    const CTransform4f& v = CGraphics::GetViewMatrix();
+    const CVector3f eye = v.GetTranslation();
+    const float axes[3][3] = {{v.Get00(), v.Get10(), v.Get20()},
+                              {v.Get02(), v.Get12(), v.Get22()},
+                              {-v.Get01(), -v.Get11(), -v.Get21()}};
+    float view[3][4];
+    for (int i = 0; i < 3; ++i) {
+      view[i][0] = axes[i][0];
+      view[i][1] = axes[i][1];
+      view[i][2] = axes[i][2];
+      view[i][3] = -(axes[i][0] * eye.GetX() + axes[i][1] * eye.GetY() + axes[i][2] * eye.GetZ());
     }
+    const CAABox& box = water->GetTriggerBoundsWR();
+    float waves[GX_PORT_WATER_WAVE_ROWS][4];
+    const int waveCount = CFluidPlaneManager::PortPackWaves(
+        view, box.GetMinPoint().GetX(), box.GetMinPoint().GetY(), box.GetMaxPoint().GetX(),
+        box.GetMaxPoint().GetY(), box.GetMaxPoint().GetZ(), PortOverlay::WaterWaves(), waves);
+    GXPortSetWaterWaves(waves);
+    // The rippled variant samples GX_TEXMAP7 for either (with no ripples, at no strength).
+    if (ripple != nullptr && (ripples > 0 || waveCount > 0)) {
+      ripple->Load(GX_TEXMAP7, CTexture::kCM_Repeat);
+    }
+    GXPortSetWaterRipples(ripple != nullptr ? static_cast< float >(ripples) / 100.f : 0.f);
     CCubeMaterial::PortLoadProbe();
   }
 #endif
@@ -726,6 +745,7 @@ void CFluidPlaneCPU::RenderCleanup() const {
   // RenderSetup's water reflection, off for what draws next.
   GXPortSetWaterReflection(-1);
   GXPortSetWaterRipples(0.f);
+  GXPortSetWaterWaves(nullptr);
   GXPortSetEnvProbeLook(0.f, -1.f);
 #endif
 
