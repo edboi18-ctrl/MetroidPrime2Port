@@ -188,6 +188,7 @@
 {"Video", "Quality", "Quality", "Water reflections", "reflection water pool lake fluid surface mirror fresnel live reflections"},
 {"Video", "Quality", "Quality", "Water blur", "reflection water blur ripple soft mirror"},
 {"Video", "Quality", "Quality", "Water strength", "reflection water strength bright"},
+{"Video", "Quality", "Quality", "Water ripples", "reflection water ripple waves bump distortion still flat moving surface"},
 {"Video", "Quality", "Quality", "PBR highlight strength", "pbr specular shine gloss glare too bright highlights"},
 {"Video", "Quality", "Quality", "Visor face PBR strength", "samus face visor reflection pbr glossy shiny creepy helmet flash charge shot missile"},
 {"Video", "Quality", "Quality", "Bloom", "bloom glow hdr lights bright halo post processing remastered"},

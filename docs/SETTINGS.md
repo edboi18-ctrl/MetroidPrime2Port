@@ -525,6 +525,15 @@ Video > Quality and Frame rate:
   looking straight down, 9% at a pool 4 m away from standing height, all of it at a grazing angle).
   Not with the camera under the surface, nor in split screen. Env
   `MP2_WATER_REFLECTIONS`, `MP2_WATER_REFLECTION_BLUR`, `MP2_WATER_REFLECTION_STRENGTH`.
+- `water_ripples` (0..400, percent; default 100): Quality > Water ripples (shown with Water reflections).
+  The reflection comes off a rippled surface: `CFluidPlaneCPU::RenderSetup` loads the water's gloss map
+  (else its colour warp map, else its colour map) at `GX_TEXMAP7`, and Aurora
+  (`GXPortSetWaterRipples`) reads its brightness as a height on the two scrolling layers retail lays
+  the gloss map on (`TEXCOORD0` and `TEXCOORD1`), so the ripples drift as retail's sparkle does. The
+  water's normal tips against the height's slope (its change over a texel either side, in the mip the
+  pixel reads, through Schüler's cotangent frame) times the strength, before it reflects the probe and
+  sets the Fresnel; distant water, read from smaller mips, calms instead of shimmering. 0% is the flat
+  surface. Env `MP2_WATER_RIPPLES`.
 - `bloom` (off by default), `bloom_strength` (0..200, percent; default 100) and `bloom_threshold`
   (50..95, percent of display white; default 90): Quality > Bloom / Bloom strength / Bloom threshold,
   Aurora's Remastered bloom (`GXPortPostProcess`) over the world, drawn in `CStateManager::DrawWorld`

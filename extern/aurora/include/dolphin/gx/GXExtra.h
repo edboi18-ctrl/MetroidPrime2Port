@@ -56,6 +56,13 @@ void GXPortSetEnvProbeLook(f32 level, f32 strength);
 // the probe is filled the stage keeps its own texture. A stage that doesn't read its texture's colour,
 // or a negative stage, turns it off.
 void GXPortSetWaterReflection(s32 stage);
+// Port extension: ripples on GXPortSetWaterReflection's water. The brightness of the texture loaded at
+// GX_TEXMAP7, read on TEXCOORD0 and TEXCOORD1 (two scrolling layers; both must be generated from the
+// position, GX_TG_MTX2x4 from GX_TG_POS, or there are no ripples), is a height field that tips the
+// surface's normal before it reflects the probe and sets the Fresnel: the slope is the height's change
+// over a texel either side, in the mip the pixel reads, times `strength` (0 off; 1 is a slope equal to
+// that change). Clamped to 0..8.
+void GXPortSetWaterRipples(f32 strength);
 // Aurora extension: distance-field texturing for the following draws (see
 // GX_AURORA_SET_SDF). 0 turns it off.
 void GXSetSDF(u8 edge);

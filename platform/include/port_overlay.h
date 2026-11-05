@@ -803,10 +803,14 @@ int BodyReflectionStrength();
 // Water surfaces reflect the live probe too (F1 > Video > Quality, shown with Live reflections;
 // CFluidPlaneCPU::RenderSetup, GXPortSetWaterReflection): on by default (`MP2_WATER_REFLECTIONS`),
 // with their own blur 0..100% (`MP2_WATER_REFLECTION_BLUR`; default 10) and strength 0..400%
-// (`MP2_WATER_REFLECTION_STRENGTH`; default 100: real water's Fresnel share, scaled).
+// (`MP2_WATER_REFLECTION_STRENGTH`; default 100: real water's Fresnel share, scaled), and ripples
+// 0..400% (`MP2_WATER_RIPPLES`; default 100): the water's own gloss map (else its colour warp or
+// colour map), on its two scrolling gloss layers, tips the surface the reflection comes off
+// (GXPortSetWaterRipples).
 bool WaterReflections();
 int WaterReflectionBlur();
 int WaterReflectionStrength();
+int WaterRipples();
 // Bloom over the world, under the visors and the HUD (`MP2_BLOOM`, F1 > Video > Quality; off by
 // default): Aurora's Remastered bloom (GXPortPostProcess) with the port's own curve and tints
 // (port_bloom_rules.h). Strength 0..200% (`MP2_BLOOM_STRENGTH`; default 100) and the brightness it

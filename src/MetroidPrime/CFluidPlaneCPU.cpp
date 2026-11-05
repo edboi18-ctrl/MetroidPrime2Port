@@ -662,6 +662,21 @@ void CFluidPlaneCPU::RenderSetup(const CStateManager& mgr, float alpha, const CT
     GXPortSetEnvProbeLook(
         static_cast< float >(PortOverlay::WaterReflectionBlur()) * PortOverlay::kReflectionLevelPerBlurPercent,
         static_cast< float >(PortOverlay::WaterReflectionStrength()) / 100.f);
+    // Ripples (GXPortSetWaterRipples): the water's own texture as a height, at GX_TEXMAP7 (free in
+    // these draws), on the gloss map's two scrolling layers (TEXCOORD0 and TEXCOORD1, generated from
+    // the position above whether or not there is a gloss map), so they drift as its sparkle does. The
+    // gloss map is the surface's sparkle pattern; without one, the colour warp map, else the colour map.
+    const CTexture* ripple = HasGlossMap()                                ? **mGlossMap
+                             : HasColorWarpMap() && mColorWarpMap.valid() ? **mColorWarpMap
+                             : HasColorMap() && mColorMap.valid()         ? **mColorMap
+                                                                          : nullptr;
+    const int ripples = PortOverlay::WaterRipples();
+    if (ripple != nullptr && ripples > 0) {
+      ripple->Load(GX_TEXMAP7, CTexture::kCM_Repeat);
+      GXPortSetWaterRipples(static_cast< float >(ripples) / 100.f);
+    } else {
+      GXPortSetWaterRipples(0.f);
+    }
     CCubeMaterial::PortLoadProbe();
   }
 #endif
@@ -701,6 +716,7 @@ void CFluidPlaneCPU::RenderCleanup() const {
 #ifdef TARGET_PC
   // RenderSetup's water reflection, off for what draws next.
   GXPortSetWaterReflection(-1);
+  GXPortSetWaterRipples(0.f);
   GXPortSetEnvProbeLook(0.f, -1.f);
 #endif
 

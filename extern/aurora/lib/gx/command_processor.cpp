@@ -1575,6 +1575,16 @@ void handle_aurora(ByteReader& reader) noexcept {
       g_gxState.waterReflect = stage;
       g_gxState.dirty |= DirtyPipeline;
     }
+  } else if (subCmd == GX_AURORA_PORT_WATER_RIPPLES) {
+    const f32 strength = reader.read<f32>();
+    const f32 clamped = strength >= 0.f ? (strength <= 8.f ? strength : 8.f) : 0.f; // NaN -> 0
+    if (g_gxState.waterRipples != clamped) {
+      if ((g_gxState.waterRipples > 0.f) != (clamped > 0.f)) {
+        g_gxState.dirty |= DirtyPipeline;
+      }
+      g_gxState.waterRipples = clamped;
+      g_gxState.dirty |= DirtyUniform;
+    }
   } else if (subCmd == GX_AURORA_PORT_ENV_PROBE_LOOK) {
     const f32 level = reader.read<f32>();
     const f32 strength = reader.read<f32>();

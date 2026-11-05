@@ -394,6 +394,9 @@ extern "C" {
 // Port extension: how much of the PBR maps' lighting the following draws take (GXPortSetSurfacePBRStrength).
 // Payload: f32 strength.
 #define GX_AURORA_PORT_SURFACE_PBR_STRENGTH 0x0076
+// Port extension: how much GX_TEXMAP7's height on TEXCOORD0 and TEXCOORD1 ripples the following water
+// draws' reflection (GXPortSetWaterRipples). Payload: f32 strength, 0 off.
+#define GX_AURORA_PORT_WATER_RIPPLES 0x0077
 
 #define GX2_SET_POLYGON_OFFSET 0x1000
 

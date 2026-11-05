@@ -284,7 +284,16 @@ int port_water_stage(const ShaderConfig& config) noexcept {
   return static_cast<int>(kind - 1u);
 }
 
-void apply_port_surface_flags(ShaderConfig& config, u8 surfacePbr, bool envProbe, u8 waterReflect) noexcept {
+bool port_water_ripples(const ShaderConfig& config) noexcept {
+  if ((config.pbrKind & kPortWaterRippleBit) == 0 || port_water_stage(config) < 0) {
+    return false;
+  }
+  const auto layer = [](const TcgConfig& tcg) { return tcg.type == GX_TG_MTX2x4 && tcg.src == GX_TG_POS; };
+  return layer(config.tcgs[GX_TEXCOORD0]) && layer(config.tcgs[GX_TEXCOORD1]);
+}
+
+void apply_port_surface_flags(ShaderConfig& config, u8 surfacePbr, bool envProbe, u8 waterReflect,
+                              bool waterRipples) noexcept {
   if (config.pbr != 0) {
     return;
   }
@@ -293,6 +302,11 @@ void apply_port_surface_flags(ShaderConfig& config, u8 surfacePbr, bool envProbe
     config.pbrKind = static_cast<u8>(kPortWaterBit | (waterReflect & kPortSurfacePbrStageMask));
     if (port_water_stage(config) < 0) {
       config.pbrKind = 0;
+    } else if (waterRipples) {
+      config.pbrKind |= kPortWaterRippleBit;
+      if (!port_water_ripples(config)) {
+        config.pbrKind &= static_cast<u8>(~kPortWaterRippleBit);
+      }
     }
     return;
   }
@@ -395,6 +409,14 @@ ShaderInfo build_shader_info(const ShaderConfig& config) noexcept {
     } else if (stage.indTexMtxId >= GX_ITM_T0 && stage.indTexMtxId <= GX_ITM_T2) {
       info.usedIndTexMtxs.set(stage.indTexMtxId - GX_ITM_T0);
     }
+  }
+
+  if (port_water_ripples(config)) {
+    // GXPortSetWaterRipples: the height map and its two layers.
+    info.sampledTexCoords.set(GX_TEXCOORD0);
+    info.sampledTexCoords.set(GX_TEXCOORD1);
+    info.sampledTextures.set(GX_TEXMAP7);
+    info.usesWaterRipples = true;
   }
 
   // Emboss bump needs its source texcoord generated and a light enabled
@@ -729,8 +751,9 @@ static void fill_uniform(ByteBuffer& buf, const ShaderInfo& info) noexcept {
       envLevel = g_gxState.envProbeLook.x();
       envStrength = g_gxState.envProbeLook.y();
     }
-    // w: GXPortSetSurfacePBRStrength.
-    buf.append(Vec4<float>{surface_pbr_highlight(), envLevel, envStrength, g_gxState.surfacePbrStrength});
+    // w: GXPortSetSurfacePBRStrength, or on rippled water (which has no PBR stage) GXPortSetWaterRipples.
+    buf.append(Vec4<float>{surface_pbr_highlight(), envLevel, envStrength,
+                           info.usesWaterRipples ? g_gxState.waterRipples : g_gxState.surfacePbrStrength});
     buf.append(g_gxState.pbrProbe);
   }
   if (info.usesPTTexMtx.any()) {

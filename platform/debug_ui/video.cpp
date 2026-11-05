@@ -352,6 +352,9 @@ void DrawVideoQuality() {
                                ImGuiSliderFlags_AlwaysClamp));
       ImGui::SetItemTooltip("How much of the surface the reflection covers. 100%% is real water's share (its\n"
                             "Fresnel); higher turns it towards a mirror sooner, up to the whole surface.");
+      Changed(ImGui::SliderInt("Water ripples", &sWaterRipples, 0, 400, "%d%%", ImGuiSliderFlags_AlwaysClamp));
+      ImGui::SetItemTooltip("How much the water's own scrolling texture ripples its reflection. 0%% is a\n"
+                            "flat surface; higher tips the reflection further as the layers drift.");
     }
   }
   if (sPbrMaps) {

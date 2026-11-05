@@ -51,6 +51,9 @@ constexpr u8 kPortEnvProbeBit = 0x20;
 // GXPortSetWaterReflection: with it set, the low bits (kPortSurfacePbrStageMask) are the water's
 // reflecting TEV stage + 1 instead of a surface PBR stage (a water draw has no PBR maps).
 constexpr u8 kPortWaterBit = 0x40;
+// GXPortSetWaterRipples, with kPortWaterBit: GX_TEXMAP7's height on TEXCOORD0 and TEXCOORD1 tips the
+// water's normal (port_water_ripples).
+constexpr u8 kPortWaterRippleBit = 0x80;
 constexpr bool EnableNormalVisualization = false;
 constexpr bool EnableDebugPrints = false;
 constexpr bool UseReversedZ = true;
@@ -416,6 +419,7 @@ struct GXState {
   u8 pbr = 0; // GX_AURORA_SET_PBR: above 1, a cost test (GXSetPBRCostTest)
   u8 surfacePbr = 0; // GX_AURORA_PORT_SURFACE_PBR: the relit TEV stage + 1 (GXPortSetSurfacePBR), 0 off
   u8 waterReflect = 0; // GX_AURORA_PORT_WATER_REFLECTION: the reflecting TEV stage + 1, 0 off
+  f32 waterRipples = 0.f; // GX_AURORA_PORT_WATER_RIPPLES: the ripples' slope scale, 0 off
   f32 surfacePbrStrength = 1.f; // GX_AURORA_PORT_SURFACE_PBR_STRENGTH: 0 the stage's own result, 1 full PBR
   bool envProbe = false; // GX_AURORA_PORT_ENV_PROBE: environment-mapped stages read the probe (GXPortSetEnvProbe)
   // GX_AURORA_PORT_ENV_PROBE_LOOK (GXPortSetEnvProbeLook): x the probe level, y the strength; y below 0
@@ -741,6 +745,7 @@ struct ShaderInfo {
   bool actorDecal : 1 = false;    // actor_decal: group 2 uses the shadow layout with the actor maps
   bool usesHdrTone : 1 = false;   // sceneHdr without pbr: hdr_tone (pbrTone) and hdr_tev_blend
   bool usesSurfacePbr : 1 = false; // port_surface_pbr_stage or port_env_probe_stages: surface_pbr, surface_probe
+  bool usesWaterRipples : 1 = false; // port_water_ripples: surface_pbr.w is the ripples' strength
   bool usesTevKonst : 1 = false; // a stage reads a konst input: the tev_konst uniform
   bool usesAlphaRef : 1 = false;  // an alpha compare reference is AlphaRefUniform: the alpha_ref uniform
 };

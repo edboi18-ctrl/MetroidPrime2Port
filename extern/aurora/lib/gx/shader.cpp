@@ -926,7 +926,9 @@ static std::string port_water_blend() {
     // GXPortSetWaterReflection: the live probe reflected off the water, blended over it by Fresnel
     if (ubuf.surface_probe[0].w > 0.0) {
         let pw_v = select(vec3f(0.0, 0.0, -1.0), normalize(in.pw_pos), dot(in.pw_pos, in.pw_pos) > 1e-12);
-        let pw_r = reflect(pw_v, pw_n);
+        // Off the (rippled) normal; a ripple that tips it below the surface is mirrored back above.
+        var pw_r = reflect(pw_v, pw_n);
+        pw_r = pw_r + pw_ng * (2.0 * max(0.0, -dot(pw_r, pw_ng)));
         let pw_d = ubuf.surface_probe[0].xyz * pw_r.x + ubuf.surface_probe[1].xyz * pw_r.y +
                    ubuf.surface_probe[2].xyz * pw_r.z;
         let pw_rc = textureSampleLevel(pbr_cube, pbr_cube_samp, pw_d, ubuf.surface_pbr.y).rgb;
@@ -938,6 +940,49 @@ static std::string port_water_blend() {
         prev = vec4f((pw_rc * pw_fe + clamp(prev.rgb, vec3f(0.0), vec3f(1.0)) * (pw_a * (1.0 - pw_fe))) /
                          max(pw_a2, 1e-4), pw_a2);
     })""";
+}
+
+// GXPortSetWaterRipples (kPortWaterRippleBit; port_water_ripples): the brightness of GX_TEXMAP7 on
+// TEXCOORD0 and TEXCOORD1 (the water's two scrolling layers) is a height field that tips the water's
+// normal, so the reflection and its Fresnel ripple. Each layer's frame is Schüler's cotangent frame
+// ("Normal Mapping without Precomputed Tangents", thetenthplanet.de/archives/1180, as in port_surface_pbr,
+// the Y derivatives negated for WebGPU's downward framebuffer Y): T and B, the surface gradients of U and
+// V, scaled so the longer is unit length. The height's change along U and V is its central difference
+// over a texel either side, read with the pixel's own derivatives (the mip it reads, so distant water
+// calms instead of shimmering), and the normal tips against the surface gradient they make (as a height
+// map's does: N - s (T dH/du + B dH/dv)), s the strength (surface_pbr.w). Placed after the texture
+// coordinates, at the top level where the derivatives are taken in uniform control flow.
+static std::string port_water_ripples_code() {
+  std::string out = R"""(
+    // GXPortSetWaterRipples: the water's normal tipped by GX_TEXMAP7's height on its two layers
+    {
+        let pr_dp1perp = cross(pw_n, pw_dx);
+        let pr_dp2perp = cross(-pw_dy, pw_n);
+        let pr_texel = 1.0 / vec2f(textureDimensions(tex7));
+        let pr_luma = vec3f(0.2126, 0.7152, 0.0722);
+        var pr_g = vec3f(0.0);)""";
+  for (int k = 0; k < 2; ++k) {
+    out += fmt::format(R"""(
+        let pr{0}_uv = tex{0}_uv;
+        let pr{0}_gx = dpdx(pr{0}_uv);
+        let pr{0}_gy = dpdy(pr{0}_uv);
+        let pr{0}_t = pr_dp2perp * pr{0}_gx.x - pr_dp1perp * pr{0}_gy.x;
+        let pr{0}_b = pr_dp2perp * pr{0}_gx.y - pr_dp1perp * pr{0}_gy.y;
+        let pr{0}_len = max(dot(pr{0}_t, pr{0}_t), dot(pr{0}_b, pr{0}_b));
+        let pr{0}_s = select(0.0, inverseSqrt(pr{0}_len), pr{0}_len > 1e-24);
+        let pr{0}_du = vec2f(pr_texel.x, 0.0);
+        let pr{0}_dv = vec2f(0.0, pr_texel.y);
+        let pr{0}_hu = dot(textureSampleGrad(tex7, tex7_samp, pr{0}_uv + pr{0}_du, pr{0}_gx, pr{0}_gy).rgb, pr_luma) -
+                       dot(textureSampleGrad(tex7, tex7_samp, pr{0}_uv - pr{0}_du, pr{0}_gx, pr{0}_gy).rgb, pr_luma);
+        let pr{0}_hv = dot(textureSampleGrad(tex7, tex7_samp, pr{0}_uv + pr{0}_dv, pr{0}_gx, pr{0}_gy).rgb, pr_luma) -
+                       dot(textureSampleGrad(tex7, tex7_samp, pr{0}_uv - pr{0}_dv, pr{0}_gx, pr{0}_gy).rgb, pr_luma);
+        pr_g += (pr{0}_t * pr{0}_hu + pr{0}_b * pr{0}_hv) * pr{0}_s;)""",
+                       k);
+  }
+  out += R"""(
+        pw_n = normalize(pw_n - pr_g * clamp(ubuf.surface_pbr.w, 0.0, 8.0));
+    })""";
+  return out;
 }
 
 // GXPortSetSurfacePBR (pbr 0, pbrKind = stage + 1; port_surface_pbr_stage says when it applies):
@@ -3499,7 +3544,8 @@ std::string build_shader_source(const ShaderConfig& config) noexcept {
         "\n    var pw_n = select(vec3f(0.0, 0.0, 1.0), normalize(pw_c), dot(pw_c, pw_c) > 1e-24);"
         "\n    if (dot(pw_n, in.pw_pos) > 0.0) {"
         "\n        pw_n = -pw_n;"
-        "\n    }";
+        "\n    }"
+        "\n    let pw_ng = pw_n;";
     fragmentFn += port_water_reflection(static_cast<u32>(waterStage));
   }
   std::array<bool, MaxTevRegs> colorNormalized{};
@@ -4062,6 +4108,9 @@ std::string build_shader_source(const ShaderConfig& config) noexcept {
   // does. A froxel texel is the in-scatter before the exposure (rgb) and the transmittance (a), at
   // slice sqrt((z - near) / (range - near)). Blended draws (and premultiplied ones, by their alpha)
   // take on the in-scatter; additive ones are only dimmed.
+  if (port_water_ripples(config)) {
+    fragmentFnPre += port_water_ripples_code();
+  }
   bool pbrVolFog = false;
   bool pbrEmitted = false; // pbr_func wrote prev: in the HDR scene it is exposed light already
   std::string volFogSample;

@@ -153,6 +153,66 @@ TEST(GxSurfacePbr, WaterStageReflectsTheProbe) {
   EXPECT_GT(source.find("let pw_a2 = pw_a + pw_fe * (1.0 - pw_a);"), source.find("// TEV stage 3"));
   EXPECT_EQ(source.find("pp_nrm"), std::string::npos);
   EXPECT_EQ(source.find("pbrs_"), std::string::npos);
+  // Reflected off the normal, kept above the facet; no ripples unless asked for.
+  EXPECT_NE(source.find("let pw_ng = pw_n;"), std::string::npos);
+  EXPECT_NE(source.find("pw_r = pw_r + pw_ng * (2.0 * max(0.0, -dot(pw_r, pw_ng)));"), std::string::npos);
+  EXPECT_EQ(source.find("pr_g"), std::string::npos);
+  EXPECT_FALSE(info.usesWaterRipples);
+}
+
+// GXPortSetWaterRipples: GX_TEXMAP7's height on TEXCOORD0 and TEXCOORD1 tips the water's normal through
+// Schüler's cotangent frame, before the stages run, and the strength rides in surface_pbr.w.
+TEST(GxSurfacePbr, WaterRipplesTipTheNormal) {
+  auto config = water_config();
+  apply_port_surface_flags(config, 0, false, 4, true);
+  EXPECT_EQ(config.pbrKind, kPortWaterBit | kPortWaterRippleBit | 4);
+  EXPECT_EQ(port_water_stage(config), 3);
+  EXPECT_TRUE(port_water_ripples(config));
+  EXPECT_EQ(port_surface_pbr_stage(config), -1);
+  EXPECT_EQ(port_env_probe_stages(config), 0u);
+  const auto info = build_shader_info(config);
+  EXPECT_TRUE(info.usesWaterRipples);
+  EXPECT_TRUE(info.sampledTextures.test(GX_TEXMAP7));
+  EXPECT_TRUE(info.sampledTexCoords.test(GX_TEXCOORD0));
+  EXPECT_TRUE(info.sampledTexCoords.test(GX_TEXCOORD1));
+  const std::string source = build_shader_source(config);
+  EXPECT_NE(source.find("the water's normal tipped by GX_TEXMAP7's height on its two layers"), std::string::npos)
+      << source;
+  for (const char* layer : {"0", "1"}) {
+    SCOPED_TRACE(layer);
+    const std::string p = std::string("pr") + layer;
+    EXPECT_NE(source.find("let " + p + "_uv = tex" + layer + "_uv;"), std::string::npos);
+    EXPECT_NE(source.find("let " + p + "_t = pr_dp2perp * " + p + "_gx.x - pr_dp1perp * " + p + "_gy.x;"),
+              std::string::npos);
+    EXPECT_NE(source.find("textureSampleGrad(tex7, tex7_samp, " + p + "_uv + " + p + "_du, " + p + "_gx, " + p + "_gy)"),
+              std::string::npos);
+  }
+  EXPECT_NE(source.find("let pr_dp2perp = cross(-pw_dy, pw_n);"), std::string::npos);
+  EXPECT_NE(source.find("pw_n = normalize(pw_n - pr_g * clamp(ubuf.surface_pbr.w, 0.0, 8.0));"), std::string::npos);
+  // After the layers' coordinates and the facet normal, before the stages and the blend.
+  EXPECT_GT(source.find("let pr0_uv = tex0_uv;"), source.find("var tex1_uv = "));
+  EXPECT_GT(source.find("let pr0_uv = tex0_uv;"), source.find("let pw_ng = pw_n;"));
+  EXPECT_LT(source.find("pw_n = normalize(pw_n - pr_g"), source.find("// TEV stage 0"));
+  EXPECT_LT(source.find("pw_n = normalize(pw_n - pr_g"), source.find("var pw_r = reflect(pw_v, pw_n);"));
+}
+
+TEST(GxSurfacePbr, WaterRipplesNeedTheirLayers) {
+  {
+    // TEXCOORD1 isn't generated from the position: no ripples, the reflection stays.
+    auto config = water_config();
+    config.tcgs[GX_TEXCOORD1].src = GX_TG_TEX0;
+    apply_port_surface_flags(config, 0, false, 4, true);
+    EXPECT_EQ(config.pbrKind, kPortWaterBit | 4);
+    EXPECT_FALSE(port_water_ripples(config));
+    EXPECT_EQ(build_shader_source(config).find("pr_g"), std::string::npos);
+  }
+  {
+    // Not water: nothing.
+    auto config = water_config();
+    apply_port_surface_flags(config, 0, false, 0, true);
+    EXPECT_EQ(config.pbrKind, 0);
+    EXPECT_FALSE(port_water_ripples(config));
+  }
 }
 
 TEST(GxSurfacePbr, WaterStageRefusesStagesWithoutTheirTexture) {

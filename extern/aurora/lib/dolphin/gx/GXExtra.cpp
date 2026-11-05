@@ -473,6 +473,11 @@ void GXPortSetWaterReflection(s32 stage) {
   GX_WRITE_U8(stage >= 0 && stage < GX_MAX_TEVSTAGE ? static_cast<u8>(stage + 1) : 0);
 }
 
+void GXPortSetWaterRipples(f32 strength) {
+  GX_WRITE_AURORA(GX_AURORA_PORT_WATER_RIPPLES);
+  GX_WRITE_F32(strength);
+}
+
 void GXPortSetEnvProbeLook(f32 level, f32 strength) {
   GX_WRITE_AURORA(GX_AURORA_PORT_ENV_PROBE_LOOK);
   GX_WRITE_F32(level);

@@ -13,6 +13,7 @@
 #include <bit>
 #include <chrono>
 #include <cmath>
+#include <limits>
 #include <thread>
 
 using aurora::gx::g_gxState;
@@ -2989,6 +2990,29 @@ TEST_F(GXFifoTest, PortWaterReflection_DecodesStage) {
   GXPortSetWaterReflection(-1);
   decode_fifo(capture_fifo());
   EXPECT_EQ(g_gxState.waterReflect, 0);
+}
+
+// GXPortSetWaterRipples: the strength reaches the state (clamped to 0..8, NaN off) the pipeline config
+// and surface_pbr.w read.
+TEST_F(GXFifoTest, PortWaterRipples_DecodesClamped) {
+  GXPortSetWaterRipples(1.5f);
+  auto bytes = capture_fifo();
+  EXPECT_TRUE(has_aurora_cmd(bytes, GX_AURORA_PORT_WATER_RIPPLES));
+
+  reset_gx_state();
+  EXPECT_FLOAT_EQ(g_gxState.waterRipples, 0.f);
+  decode_fifo(bytes);
+  EXPECT_FLOAT_EQ(g_gxState.waterRipples, 1.5f);
+
+  GXPortSetWaterRipples(100.f);
+  decode_fifo(capture_fifo());
+  EXPECT_FLOAT_EQ(g_gxState.waterRipples, 8.f);
+  GXPortSetWaterRipples(std::numeric_limits<f32>::quiet_NaN());
+  decode_fifo(capture_fifo());
+  EXPECT_FLOAT_EQ(g_gxState.waterRipples, 0.f);
+  GXPortSetWaterRipples(-1.f);
+  decode_fifo(capture_fifo());
+  EXPECT_FLOAT_EQ(g_gxState.waterRipples, 0.f);
 }
 
 // --- GXLoadLightObjImm (XF 0x600-0x67F) ---

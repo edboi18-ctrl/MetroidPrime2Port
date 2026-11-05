@@ -2159,6 +2159,7 @@ int sBodyReflectionStrength = 100;
 bool sWaterReflections = true;
 int sWaterReflectionBlur = 10;
 int sWaterReflectionStrength = 100;
+int sWaterRipples = 100;
 bool sBloom = false;
 int sBloomStrength = PortBloom::kStrengthDefault;
 int sBloomThreshold = PortBloom::kThresholdDefault;
@@ -2321,6 +2322,11 @@ int WaterReflectionBlur() {
 int WaterReflectionStrength() {
   ReadEnv();
   return EnvIntIn("MP2_WATER_REFLECTION_STRENGTH", sWaterReflectionStrength, 0, 400);
+}
+
+int WaterRipples() {
+  ReadEnv();
+  return EnvIntIn("MP2_WATER_RIPPLES", sWaterRipples, 0, 400);
 }
 
 bool Bloom() {
