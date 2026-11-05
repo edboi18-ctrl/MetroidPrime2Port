@@ -814,6 +814,12 @@ int WaterRipples();
 // Rings of waves where shots, bombs and Samus splash into the water (`MP2_WATER_WAVES`, F1 > Video >
 // Quality > Water waves, 0..400%, default 100; 0 off): port_water_waves.h, GXPortSetWaterWaves.
 int WaterWaves();
+// The GX fog drawn as Aurora's volumetric fog (`MP2_VOLUMETRIC_FOG`, F1 > Video > Quality; off by
+// default): CStateManager::DrawWorld, GXPortVolumetricFog's GX_PORT_FOG_FROM_GX. As thick as GX's at
+// every distance on average; Fog wisps 0..100% (`MP2_FOG_WISPS`; default 50) is how much drifting
+// noise thickens and thins it. Combat and Scan visors only, not in split screen.
+bool VolumetricFog();
+int FogWisps();
 // Bloom over the world, under the visors and the HUD (`MP2_BLOOM`, F1 > Video > Quality; off by
 // default): Aurora's Remastered bloom (GXPortPostProcess) with the port's own curve and tints
 // (port_bloom_rules.h). Strength 0..200% (`MP2_BLOOM_STRENGTH`; default 100) and the brightness it

@@ -346,10 +346,20 @@ typedef struct {
   // max(0, it k + mask density) and the cap max(0, it k + mask cap).
   f32 regions[8][7][4];
   u32 regionCount;         // up to 8
-  u32 pad[3];
+  u32 pad[3];              // pad[0]: GX_PORT_FOG_* flags
   u32 volume;              // the ambient volume (GXPBRVolume id), 0 for none
 } GXPortFogParams;
 GXBool GXPortVolumetricFog(const GXPortFogParams* params);
+// pad[0] flags. GX_PORT_FOG_FROM_GX: the GX fog set now, drawn as volumetric (lib/gfx/volfog_gx.hpp):
+// Aurora fills the range, the density over distance (so the light let through to each depth is what
+// GX's fog lets through there), scatter, absorb, the light (colorB.rgb, which the caller sets to the
+// GX fog colour as given to GXSetFog, 0..1) and an identity tone; the caller gives the view, the
+// projection, the depth range, fog[0] and fog[3] above 0, and the shape and noise. The draws until
+// GXPortVolumetricFogEnd that GX would fog take it instead, per pixel, and those it leaves unfogged
+// stay so. Nothing is drawn while the GX fog is GX_FOG_NONE. GX_PORT_FOG_KEEP_SKY: the full-screen
+// pass leaves the far plane (the sky, its depth never written) alone.
+#define GX_PORT_FOG_FROM_GX 1u
+#define GX_PORT_FOG_KEEP_SKY 2u
 // The draws after GXPortVolumetricFog fog themselves as Remastered's transparents do, until this:
 // opaque ones per pixel as the full-screen pass, blended and additive ones per vertex (blended:
 // colour T + in-scatter, additive: colour T). Harmless when no fog was drawn.

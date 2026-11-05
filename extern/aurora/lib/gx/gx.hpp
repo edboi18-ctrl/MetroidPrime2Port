@@ -421,6 +421,9 @@ struct GXState {
   u8 waterReflect = 0; // GX_AURORA_PORT_WATER_REFLECTION: the reflecting TEV stage + 1, 0 off
   f32 waterRipples = 0.f; // GX_AURORA_PORT_WATER_RIPPLES: the ripples' slope scale, 0 off
   bool blockingDraws = false; // GX_AURORA_PORT_BLOCKING_DRAWS: draws wait for their pipeline
+  // The volumetric fog (volFog) is the GX fog drawn as volumetric (volfog_gx.hpp's PortFlagFromGxFog):
+  // the draws GX fogs take it in place of their GX fog, per pixel; those GX leaves unfogged stay so.
+  bool volFogFromGx = false;
   // GX_AURORA_PORT_WATER_WAVES (GXPortSetWaterWaves): the rows the rippled water's water_waves
   // uniform takes, and how many waves they hold.
   std::array<Vec4<float>, GX_PORT_WATER_WAVE_ROWS> waterWaves{};
@@ -624,7 +627,14 @@ enum : u8 {
   VolFogAdditive = 2,   // added to the frame, per vertex: colour T
   VolFogOpaque = 3,     // not blended, per pixel: as the full-screen pass
   VolFogPremultiplied = 4, // ONE, INVSRCALPHA, per vertex: colour T + in-scatter alpha
+  // As 1, 2 and 4, read per pixel: under GX fog drawn as volumetric (GXState::volFogFromGx), where a big
+  // transparent quad (MP2's water is one quad over the whole pool) would interpolate per-vertex fog
+  // between corners far off or behind the camera.
+  VolFogBlendedPixel = 5,
+  VolFogAdditivePixel = 6,
+  VolFogPremultipliedPixel = 7,
 };
+inline bool vol_fog_per_pixel(u8 mode) noexcept { return mode == VolFogOpaque || mode >= VolFogBlendedPixel; }
 struct ShaderConfig {
   // GX_FOG_NONE or, for every other type, GX_FOG_PERSP_LIN (pipeline_fog_type): the curve is the Fog
   // uniform's, so a fog change (entering water) needs no new pipeline.

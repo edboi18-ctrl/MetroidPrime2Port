@@ -3,6 +3,7 @@
 #include "../gfx/bloom.hpp"
 #include "../gfx/ssao.hpp"
 #include "../gfx/volfog.hpp"
+#include "../gfx/volfog_gx.hpp"
 #include "../gfx/thermal.hpp"
 #include "../gfx/xray.hpp"
 #include "../gfx/depth_peek.hpp"
@@ -1859,7 +1860,21 @@ void handle_aurora(ByteReader& reader) noexcept {
       word = reader.read<u32>();
     }
     std::memcpy(&params, words, sizeof(params));
-    if (gfx::volfog::record(params)) {
+    // The GX fog drawn as volumetric (volfog_gx.hpp): its density, light and tone from the GX fog set now;
+    // the colour comes in colorB (GX's own register may hold the black it gives additive blends).
+    const bool fromGx = (params.pad[0] & gfx::volfog::PortFlagFromGxFog) != 0;
+    bool fogged = true;
+    if (fromGx) {
+      const auto& gxFog = g_gxState.fog;
+      const float color[3] = {params.colorB[0], params.colorB[1], params.colorB[2]};
+      fogged = gxFog.type != GX_FOG_NONE;
+      gfx::volfog::from_gx_fog(params, static_cast<u32>(gxFog.type), gxFog.a, gxFog.b, gxFog.c, color);
+    }
+    if (fogged && gfx::volfog::record(params)) {
+      if (g_gxState.volFogFromGx != fromGx) {
+        g_gxState.volFogFromGx = fromGx;
+        g_gxState.dirty |= DirtyPipeline;
+      }
       // The draws after it fog themselves through the froxels it fills.
       // w: where the world's depth range starts; nearer is the viewmodel (vf_depth).
       const Vec4<float> fogParams{params.depth[0], params.fog[0], params.colorA[3], params.depth[2]};
@@ -1882,8 +1897,9 @@ void handle_aurora(ByteReader& reader) noexcept {
       g_gxState.dirty |= DirtyTextures;
     }
   } else if (subCmd == GX_AURORA_PORT_VOLUMETRIC_FOG_END) {
-    if (g_gxState.volFog) {
+    if (g_gxState.volFog || g_gxState.volFogFromGx) {
       g_gxState.volFog = false;
+      g_gxState.volFogFromGx = false;
       g_gxState.dirty |= DirtyPipeline;
     }
   } else if (subCmd == GX_AURORA_PORT_XRAY) {

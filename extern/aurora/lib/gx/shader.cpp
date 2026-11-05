@@ -4134,8 +4134,10 @@ std::string build_shader_source(const ShaderConfig& config) noexcept {
   const auto volFogWeight = [&](std::string_view alpha) -> std::string {
     switch (config.volFog) {
     case VolFogAdditive:
+    case VolFogAdditivePixel:
       return "0.0";
     case VolFogPremultiplied:
+    case VolFogPremultipliedPixel:
       return std::string{alpha};
     default:
       return "1.0";
@@ -4144,7 +4146,7 @@ std::string build_shader_source(const ShaderConfig& config) noexcept {
   if (info.usesVolFog) {
     const std::string_view fragDepth = UseReversedZ ? "(1.0 - in.pos.z)" : "in.pos.z";
     vtxOutAttrs += fmt::format("\n    @location({}) vf: vec4f,", vtxOutIdx++);
-    if (config.volFog == VolFogOpaque) {
+    if (vol_fog_per_pixel(config.volFog)) {
       vtxXfrAttrs += "\n    out.vf = vec4f(out.pos.xy, out.pos.w, -mv_pos.z);";
       volFogSample = fmt::format("vf_at(vec4f(in.vf.xy, 0.0, in.vf.z), vf_depth(in.vf.w, {}))", fragDepth);
     } else {

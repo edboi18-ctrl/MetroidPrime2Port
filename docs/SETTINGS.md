@@ -551,6 +551,18 @@ Video > Quality and Frame rate:
   on that surface (`GXPortSetWaterWaves`), which tip the water's normal by their slope as the ripples
   do, so they show in the reflection and its Fresnel (not in the water's own texture). Env
   `MP2_WATER_WAVES`.
+- `volumetric_fog` (off by default) and `fog_wisps` (0..100, percent; default 50): Quality >
+  Volumetric fog / Fog wisps. The rooms' GX fog drawn as Aurora's volumetric fog (Remastered's froxel
+  fog, `GXPortVolumetricFog` with `GX_PORT_FOG_FROM_GX`, `extern/aurora/lib/gfx/volfog_gx.hpp`):
+  Aurora chooses the density over distance so the light let through to each depth is what the GX fog
+  lets through there (within 1.5% in its tests, for linear, exponential and squared fog), lit by the fog
+  colour, and the drifting noise (Fog wisps) thickens and thins it around that, its mean divided out.
+  `CStateManager::DrawWorld` starts it before the world's first draw, with the camera's area's fog (or
+  the camera's own under water), and ends it after the area loop; every draw GX would fog takes it in
+  place of its GX fog, per pixel (transparent ones too, so the one quad of a pool is fogged right across
+  it), and what GX leaves unfogged (the sky, the rain and flakes, the arm cannon, the visors) stays so.
+  One fog for the frame: the camera's area's, where retail fogs each area with its own. Combat and Scan
+  visors, not in split screen. Env `MP2_VOLUMETRIC_FOG`, `MP2_FOG_WISPS`.
 - `bloom` (off by default), `bloom_strength` (0..200, percent; default 100) and `bloom_threshold`
   (50..95, percent of display white; default 90): Quality > Bloom / Bloom strength / Bloom threshold,
   Aurora's Remastered bloom (`GXPortPostProcess`) over the world, drawn in `CStateManager::DrawWorld`

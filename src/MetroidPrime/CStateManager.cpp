@@ -1515,6 +1515,68 @@ void CStateManager::PortCaptureProbeFace() {
 }
 #endif
 
+#ifdef TARGET_PC
+// Port: Quality > Volumetric fog (GXPortVolumetricFog with GX_PORT_FOG_FROM_GX, lib/gfx/volfog_gx.hpp).
+// Aurora makes the froxels let through to each depth what the GX fog set now lets through there, lit
+// by its colour; the noise (Quality > Fog wisps) thickens and thins it in drifting wisps that average
+// out to GX's density. The draws GX fogs take it in place of their GX fog until
+// GXPortVolumetricFogEnd; the sky (the far plane) is left alone, as GX fog leaves it. False with no fog.
+static bool PortDrawVolumetricFog(float time) {
+  GXFogType type;
+  float start;
+  float end;
+  float fogNear;
+  float fogFar;
+  GXColor color;
+  CGX::GetFog(&type, &start, &end, &fogNear, &fogFar, &color);
+  const CGraphics::CProjectionState& proj = CGraphics::GetProjectionState();
+  if (type == GX_FOG_NONE || !proj.IsPerspective() || !(proj.GetNear() > 0.f)) {
+    return false;
+  }
+  GXPortFogParams p;
+  memset(&p, 0, sizeof(p));
+  // View space is GX's: right, up, towards the camera; CGraphics' view has right, forward, up as columns.
+  const CTransform4f& view = CGraphics::GetViewMatrix();
+  const CVector3f eye = view.GetTranslation();
+  const float rows[3][4] = {
+      {view.Get00(), view.Get02(), -view.Get01(), eye.GetX()},
+      {view.Get10(), view.Get12(), -view.Get11(), eye.GetY()},
+      {view.Get20(), view.Get22(), -view.Get21(), eye.GetZ()},
+  };
+  memcpy(p.viewToWorld, rows, sizeof(rows));
+  const float zNear = proj.GetNear();
+  p.frustum[0] = proj.GetLeft() / zNear;
+  p.frustum[1] = proj.GetRight() / zNear;
+  p.frustum[2] = proj.GetBottom() / zNear;
+  p.frustum[3] = proj.GetTop() / zNear;
+  p.depth[0] = zNear;
+  p.depth[1] = proj.GetFar();
+  p.depth[2] = CGraphics::GetDepthNear();
+  p.depth[3] = CGraphics::GetDepthFar();
+  p.fog[0] = proj.GetFar(); // Aurora sets the range, density, scatter and absorb from the GX fog
+  p.fog[3] = 1.f;
+  // No height term (GX fog is as thick at every height); the noise: about one feature every few
+  // units, drifting with a light breeze.
+  static const float kNoiseFrequency = 0.05f;
+  static const float kWind[3] = {0.35f, 0.f, 0.12f};
+  p.shape[0] = 0.f;
+  p.shape[1] = 1.f;
+  p.shape[2] = kNoiseFrequency;
+  p.shape[3] = static_cast< float >(PortOverlay::FogWisps()) / 100.f;
+  for (int i = 0; i < 3; ++i) {
+    p.noise[i] = -kWind[i] * time;
+  }
+  // The fog colour as GXSetFog was given it (GX's register holds black while an additive blend is set).
+  p.colorB[0] = static_cast< float >(color.r) / 255.f;
+  p.colorB[1] = static_cast< float >(color.g) / 255.f;
+  p.colorB[2] = static_cast< float >(color.b) / 255.f;
+  p.colorB[3] = 1.f;
+  p.pad[0] = GX_PORT_FOG_FROM_GX | GX_PORT_FOG_KEEP_SKY;
+  GXPortVolumetricFog(&p);
+  return true;
+}
+#endif
+
 void CStateManager::DrawWorld(const CInGameGuiManagerSet& gui) {
   CScopedProfiler profile(rstl::string_l("*TotalDrawWorld"), true);
 #ifdef TARGET_PC
@@ -1560,6 +1622,15 @@ void CStateManager::DrawWorld(const CInGameGuiManagerSet& gui) {
   // F1 > Debug > Rendering > Collision "Only": nothing of the world is drawn but Samus and the
   // collision view (port_collision_view.h).
   const bool portCollisionOnly = PortCollisionView::Only();
+  // Quality > Volumetric fog: the GX fog drawn as volumetric, from before the world's first draw to
+  // the end of the area loop (the rain and flakes after it keep their own black fade). The camera's
+  // area is drawn last (area_sorter), so its fog (or the camera's own, under water) is the one.
+  bool portVolFog = false;
+  if (!portCollisionOnly && PortOverlay::VolumetricFog() && !IsMultiplayer() && !areas.empty() &&
+      (visor == CPlayerState::kPV_Combat || visor == CPlayerState::kPV_Scan)) {
+    SetupFogForArea(*areas[areas.size() - 1]);
+    portVolFog = PortDrawVolumetricFog(presentedTime);
+  }
   if (!portCollisionOnly) {
 #endif
   RenderActorQueue(mStateManagerContainer->mRenderBeforeAreas,
@@ -1612,6 +1683,11 @@ void CStateManager::DrawWorld(const CInGameGuiManagerSet& gui) {
       gpRender->DrawSortedGeometry(mode, -2);
     }
   }
+#ifdef TARGET_PC
+  if (portVolFog) {
+    GXPortVolumetricFogEnd();
+  }
+#endif
 
 #ifdef TARGET_PC
   // Port: the fog the world was just drawn with, for the ambient occlusion below. The areas are drawn

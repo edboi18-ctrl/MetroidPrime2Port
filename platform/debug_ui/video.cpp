@@ -377,6 +377,15 @@ void DrawVideoQuality() {
                           "0%% the original's lighting.");
   }
   // Read each frame by CStateManager::DrawWorld.
+  // Read each frame by CStateManager::DrawWorld.
+  Changed(ImGui::Checkbox("Volumetric fog", &sVolumetricFog));
+  ImGui::SetItemTooltip("Recommended: on, if you like. The rooms' fog drawn as a volume: as thick as the\n"
+                        "original at every distance on average, but in drifting wisps, and worked out\n"
+                        "for every pixel (water and glass included). Combat and Scan visors.");
+  if (sVolumetricFog) {
+    Changed(ImGui::SliderInt("Fog wisps", &sFogWisps, 0, 100, "%d%%", ImGuiSliderFlags_AlwaysClamp));
+    ImGui::SetItemTooltip("How much the fog thickens and thins as it drifts. 0%% is even, like the original.");
+  }
   Changed(ImGui::Checkbox("Bloom", &sBloom));
   ImGui::SetItemTooltip("Bright lights and highlights glow into the picture around them, as a camera\n"
                         "sees them: drawn over the world before the visor and the HUD, so the HUD\n"

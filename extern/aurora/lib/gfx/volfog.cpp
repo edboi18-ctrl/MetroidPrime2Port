@@ -298,6 +298,11 @@ fn fs_apply(in: VertexOutput) -> @location(0) vec4f {
   // Reversed Z. Nearer than the world's depth range is the viewmodel: Remastered draws it in
   // 0.0097656..0.0386719 of the depth buffer and this pass reads that as a full-range depth.
   let z = 1.0 - textureLoad(depthTex, at, 0);
+  // volfog_gx.hpp's PortFlagKeepSky (regionInfo.y: GXPortFogParams.pad[0]): the far plane is the sky,
+  // which GX fog leaves alone.
+  if ((p.regionInfo.y & 2u) != 0u && z >= p.depth.w - 1e-6) {
+    return f;
+  }
   let gun = z < p.depth.z;
   let d = select(clamp((z - p.depth.z) / max(p.depth.w - p.depth.z, 1e-6), 0.0, 1.0),
                  mix(0.0097656, 0.0386719, z / p.depth.z), gun);

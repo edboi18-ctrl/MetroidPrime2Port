@@ -512,14 +512,16 @@ static u8 vol_fog_mode(bool depthOnly) noexcept {
     return VolFogNone;
   }
   const bool srcScales = src == GX_BL_ONE || src == GX_BL_SRCALPHA || src == GX_BL_INVSRCALPHA;
+  // GX fog drawn as volumetric reads the froxels per pixel (VolFogBlendedPixel and on).
+  const bool pixel = g_gxState.volFogFromGx;
   if (srcScales && dst == GX_BL_ONE) {
-    return g_gxState.particleFog ? VolFogNone : VolFogAdditive;
+    return g_gxState.particleFog ? VolFogNone : pixel ? VolFogAdditivePixel : VolFogAdditive;
   }
   if (src == GX_BL_SRCALPHA && dst == GX_BL_INVSRCALPHA) {
-    return VolFogBlended;
+    return pixel ? VolFogBlendedPixel : VolFogBlended;
   }
   if (src == GX_BL_ONE && dst == GX_BL_INVSRCALPHA) {
-    return g_gxState.particleFog ? VolFogNone : VolFogPremultiplied;
+    return g_gxState.particleFog ? VolFogNone : pixel ? VolFogPremultipliedPixel : VolFogPremultiplied;
   }
   return VolFogNone;
 }
@@ -653,6 +655,16 @@ void populate_pipeline_config(PipelineConfig& config, GXPrimitive primitive, GXV
     config.shaderConfig.fogRangeEnabled = false;
   }
   config.shaderConfig.volFog = drawId ? VolFogNone : vol_fog_mode(depthOnly);
+  if (g_gxState.volFogFromGx && config.shaderConfig.volFog != VolFogNone) {
+    if (g_gxState.fog.type == GX_FOG_NONE) {
+      // GX fog drawn as volumetric: what GX leaves unfogged stays so.
+      config.shaderConfig.volFog = VolFogNone;
+    } else {
+      // ...and what it fogs takes the volumetric fog in its place.
+      config.shaderConfig.fogType = GX_FOG_NONE;
+      config.shaderConfig.fogRangeEnabled = false;
+    }
+  }
   config.shaderConfig.shadow = g_gxState.shadowCaster && g_gxState.shadowActive && config.shaderConfig.lineMode == 0;
   if (g_gxState.actorDecal && config.shaderConfig.shadow && !drawId && !depthOnly) {
     // Remastered's actor shadow decal: the receiver's geometry multiplies the frame by the shadow

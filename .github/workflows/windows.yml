@@ -197,7 +197,7 @@ jobs:
         run: |
           cmake --build build-win --target gfx_recording_tests -j
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          ./build-win/extern/aurora/tests/gfx_recording_tests --gtest_brief=1 --gtest_filter='GxSurfacePbr.*:GxAmbientOcclusion.*'
+          ./build-win/extern/aurora/tests/gfx_recording_tests --gtest_brief=1 --gtest_filter='GxSurfacePbr.*:GxAmbientOcclusion.*:GxVolFogFromGx.*'
 
       # The settings self-test hangs on Windows before printing anything: give
       # every thread's stack of a run that is still alive after 15 s.
