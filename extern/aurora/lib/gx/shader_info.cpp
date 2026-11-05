@@ -66,38 +66,7 @@ void color_arg_reg_info(GXTevColorArg arg, const TevStage& stage, ShaderInfo& in
     }
     break;
   case GX_CC_KONST:
-    switch (stage.kcSel) {
-    case GX_TEV_KCSEL_K0:
-    case GX_TEV_KCSEL_K0_R:
-    case GX_TEV_KCSEL_K0_G:
-    case GX_TEV_KCSEL_K0_B:
-    case GX_TEV_KCSEL_K0_A:
-      info.sampledKColors.set(0);
-      break;
-    case GX_TEV_KCSEL_K1:
-    case GX_TEV_KCSEL_K1_R:
-    case GX_TEV_KCSEL_K1_G:
-    case GX_TEV_KCSEL_K1_B:
-    case GX_TEV_KCSEL_K1_A:
-      info.sampledKColors.set(1);
-      break;
-    case GX_TEV_KCSEL_K2:
-    case GX_TEV_KCSEL_K2_R:
-    case GX_TEV_KCSEL_K2_G:
-    case GX_TEV_KCSEL_K2_B:
-    case GX_TEV_KCSEL_K2_A:
-      info.sampledKColors.set(2);
-      break;
-    case GX_TEV_KCSEL_K3:
-    case GX_TEV_KCSEL_K3_R:
-    case GX_TEV_KCSEL_K3_G:
-    case GX_TEV_KCSEL_K3_B:
-    case GX_TEV_KCSEL_K3_A:
-      info.sampledKColors.set(3);
-      break;
-    default:
-      break;
-    }
+    info.usesTevKonst = true;
     break;
   default:
     break;
@@ -140,34 +109,7 @@ void alpha_arg_reg_info(GXTevAlphaArg arg, const TevStage& stage, ShaderInfo& in
     }
     break;
   case GX_CA_KONST:
-    switch (stage.kaSel) {
-    case GX_TEV_KASEL_K0_R:
-    case GX_TEV_KASEL_K0_G:
-    case GX_TEV_KASEL_K0_B:
-    case GX_TEV_KASEL_K0_A:
-      info.sampledKColors.set(0);
-      break;
-    case GX_TEV_KASEL_K1_R:
-    case GX_TEV_KASEL_K1_G:
-    case GX_TEV_KASEL_K1_B:
-    case GX_TEV_KASEL_K1_A:
-      info.sampledKColors.set(1);
-      break;
-    case GX_TEV_KASEL_K2_R:
-    case GX_TEV_KASEL_K2_G:
-    case GX_TEV_KASEL_K2_B:
-    case GX_TEV_KASEL_K2_A:
-      info.sampledKColors.set(2);
-      break;
-    case GX_TEV_KASEL_K3_R:
-    case GX_TEV_KASEL_K3_G:
-    case GX_TEV_KASEL_K3_B:
-    case GX_TEV_KASEL_K3_A:
-      info.sampledKColors.set(3);
-      break;
-    default:
-      break;
-    }
+    info.usesTevKonst = true;
     break;
   default:
     break;
@@ -215,7 +157,7 @@ u32 line_texcoord_mask() noexcept {
 
 int port_surface_pbr_stage(const ShaderConfig& config) noexcept {
   const u32 kind = config.pbrKind & kPortSurfacePbrStageMask;
-  if (config.pbr != 0 || kind == 0 || config.perPixelLight == 0 ||
+  if (config.pbr != 0 || kind == 0 || (config.pbrKind & kPortWaterBit) != 0 || config.perPixelLight == 0 ||
       !config.colorChannels[GX_COLOR0].lightingEnabled) {
     return -1;
   }
@@ -294,7 +236,8 @@ int port_surface_pbr_stage(const ShaderConfig& config) noexcept {
 }
 
 u32 port_env_probe_stages(const ShaderConfig& config) noexcept {
-  if (config.pbr != 0 || (config.pbrKind & kPortEnvProbeBit) == 0 || config.perPixelLight == 0 ||
+  if (config.pbr != 0 || (config.pbrKind & kPortEnvProbeBit) == 0 || (config.pbrKind & kPortWaterBit) != 0 ||
+      config.perPixelLight == 0 ||
       !config.colorChannels[GX_COLOR0].lightingEnabled) {
     return 0;
   }
@@ -320,8 +263,40 @@ u32 port_env_probe_stages(const ShaderConfig& config) noexcept {
   return stages;
 }
 
-void apply_port_surface_flags(ShaderConfig& config, u8 surfacePbr, bool envProbe) noexcept {
-  if (config.pbr != 0 || (surfacePbr == 0 && !envProbe)) {
+int port_water_stage(const ShaderConfig& config) noexcept {
+  if (config.pbr != 0 || (config.pbrKind & kPortWaterBit) == 0 || config.lineMode != 0) {
+    return -1;
+  }
+  const u32 kind = config.pbrKind & kPortSurfacePbrStageMask;
+  if (kind == 0 || kind - 1u >= config.tevStageCount) {
+    return -1;
+  }
+  // The stage must read its texture's colour: that sample is what the reflection replaces.
+  const auto& stage = config.tevStages[kind - 1u];
+  if (stage.texMapId == GX_TEXMAP_NULL || stage.texCoordId == GX_TEXCOORD_NULL || stage.texCoordId >= MaxTexCoord) {
+    return -1;
+  }
+  const auto& c = stage.colorPass;
+  const auto tex = [](GXTevColorArg arg) { return arg == GX_CC_TEXC || arg == GX_CC_TEXA; };
+  if (!(tex(c.a) || tex(c.b) || tex(c.c) || tex(c.d))) {
+    return -1;
+  }
+  return static_cast<int>(kind - 1u);
+}
+
+void apply_port_surface_flags(ShaderConfig& config, u8 surfacePbr, bool envProbe, u8 waterReflect) noexcept {
+  if (config.pbr != 0) {
+    return;
+  }
+  if (waterReflect != 0) {
+    // The water: no PBR maps or env probe stages, and no per-pixel lights of its own.
+    config.pbrKind = static_cast<u8>(kPortWaterBit | (waterReflect & kPortSurfacePbrStageMask));
+    if (port_water_stage(config) < 0) {
+      config.pbrKind = 0;
+    }
+    return;
+  }
+  if (surfacePbr == 0 && !envProbe) {
     return;
   }
   // Both predicates need per-pixel lights; wants_per_pixel_light keeps them on for the result.
@@ -483,7 +458,10 @@ ShaderInfo build_shader_info(const ShaderConfig& config) noexcept {
       }
     }
   }
-  info.uniformSize += info.sampledKColors.count() * sizeof(Vec4<float>);
+  if (info.usesTevKonst) {
+    info.tevStageCount = config.tevStageCount;
+    info.uniformSize += config.tevStageCount * sizeof(Vec4<float>);
+  }
   for (int i = 0; i < info.sampledTexCoords.size(); ++i) {
     if (!info.sampledTexCoords.test(i)) {
       continue;
@@ -500,7 +478,7 @@ ShaderInfo build_shader_info(const ShaderConfig& config) noexcept {
     info.sampledTextures.set(GX_TEXMAP6);
     info.sampledTextures.set(GX_TEXMAP7);
   }
-  if (surfacePbr || port_env_probe_stages(config) != 0) {
+  if (surfacePbr || port_env_probe_stages(config) != 0 || port_water_stage(config) >= 0) {
     // surface_pbr (highlight strength, the environment stages' probe level and weight) and
     // surface_probe (GXSetPBRProbe's view-to-probe rows and weight).
     info.usesSurfacePbr = true;
@@ -546,11 +524,33 @@ ShaderInfo build_shader_info(const ShaderConfig& config) noexcept {
     // The caster and receiver matrices, the sun's direction and colour (GXState::shadowUniform)
     info.uniformSize += sizeof(g_gxState.shadowUniform);
   }
+  if (config.alphaCompare.ref0 == AlphaRefUniform || config.alphaCompare.ref1 == AlphaRefUniform) {
+    info.usesAlphaRef = true;
+    info.uniformSize += sizeof(Vec4<u32>);
+  }
   info.uniformSize = gfx::align_uniform(info.uniformSize);
   if (info.uniformSize > MaxUniformSize) {
     Log.fatal("Uniform size exceeds maximum: {} > {}", info.uniformSize, MaxUniformSize);
   }
   return info;
+}
+
+// A stage's konst input: rgb as its kcSel, alpha as its kaSel (a fraction, or a K register or one of
+// its components).
+static Vec4<float> tev_konst(const TevStage& stage) noexcept {
+  const auto konst = [](u32 sel, u32 comp) -> float {
+    if (sel < 8) {
+      return static_cast<float>(8 - sel) / 8.f; // GX_TEV_K?SEL_8_8 .. 1_8
+    }
+    if (sel >= GX_TEV_KCSEL_K0_R) { // K0_R .. K3_A: one component of a register
+      return g_gxState.kcolors[(sel - GX_TEV_KCSEL_K0_R) % 4][(sel - GX_TEV_KCSEL_K0_R) / 4];
+    }
+    if (sel >= GX_TEV_KCSEL_K0) { // K0 .. K3 (colour only)
+      return g_gxState.kcolors[sel - GX_TEV_KCSEL_K0][comp];
+    }
+    return 0.f;
+  };
+  return {konst(stage.kcSel, 0), konst(stage.kcSel, 1), konst(stage.kcSel, 2), konst(stage.kaSel, 3)};
 }
 
 static void fill_uniform(ByteBuffer& buf, const ShaderInfo& info) noexcept {
@@ -628,9 +628,9 @@ static void fill_uniform(ByteBuffer& buf, const ShaderInfo& info) noexcept {
       buf.append(ccsa.matColor);
     }
   }
-  for (int i = 0; i < info.sampledKColors.size(); ++i) {
-    if (info.sampledKColors.test(i)) {
-      buf.append(g_gxState.kcolors[i]);
+  if (info.usesTevKonst) {
+    for (u32 i = 0; i < info.tevStageCount; ++i) {
+      buf.append(tev_konst(g_gxState.tevStages[i]));
     }
   }
   if (info.usesPbr) {
@@ -724,7 +724,13 @@ static void fill_uniform(ByteBuffer& buf, const ShaderInfo& info) noexcept {
     float envLevel = 0.f;
     float envStrength = 1.f;
     env_probe_look(envLevel, envStrength);
-    buf.append(Vec4<float>{surface_pbr_highlight(), envLevel, envStrength, 0.f});
+    // A draw's own look (GXPortSetEnvProbeLook) over the frame's.
+    if (g_gxState.envProbeLook.y() >= 0.f) {
+      envLevel = g_gxState.envProbeLook.x();
+      envStrength = g_gxState.envProbeLook.y();
+    }
+    // w: GXPortSetSurfacePBRStrength.
+    buf.append(Vec4<float>{surface_pbr_highlight(), envLevel, envStrength, g_gxState.surfacePbrStrength});
     buf.append(g_gxState.pbrProbe);
   }
   if (info.usesPTTexMtx.any()) {
@@ -734,22 +740,13 @@ static void fill_uniform(ByteBuffer& buf, const ShaderInfo& info) noexcept {
   }
   if (info.usesFog) {
     const auto& state = g_gxState.fog;
-    const float logicalWidth = std::max(g_gxState.logicalViewport.width, 1.f);
-    const float renderWidth = std::max(g_gxState.renderViewport.width, 1.f);
     Fog fog{
         .color = state.color,
         .a = state.a,
         .b = state.b,
         .c = state.c,
-        .rangeCenter = ((static_cast<float>(state.rangeCenter) - g_gxState.logicalViewport.left) / logicalWidth) * 2.f -
-                       1.f + (g_gxState.renderViewport.left / renderWidth) * 2.f,
+        .type = static_cast<u32>(state.type),
     };
-    for (u32 i = 0; i < state.rangeK.size(); ++i) {
-      const u32 source = (i & ~1u) | (1u - (i & 1u));
-      fog.rangeK[i / 4][i % 4] = static_cast<float>(state.rangeK[source]) / 64.f;
-    }
-    fog.rangeK[2][2] = fog.rangeK[2][1];
-    fog.rangeK[2][3] = fog.rangeK[2][1];
     buf.append(fog);
   }
   if (info.usesVolFog) {
@@ -778,6 +775,9 @@ static void fill_uniform(ByteBuffer& buf, const ShaderInfo& info) noexcept {
     for (const auto& v : g_gxState.shadowUniform) {
       buf.append(v);
     }
+  }
+  if (info.usesAlphaRef) {
+    buf.append(Vec4<u32>{g_gxState.alphaCompare.ref0, g_gxState.alphaCompare.ref1, 0, 0});
   }
 }
 

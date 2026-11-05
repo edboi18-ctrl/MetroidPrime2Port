@@ -532,7 +532,7 @@ void populate_pipeline_config(PipelineConfig& config, GXPrimitive primitive, GXV
   // From the pass being recorded (the replayed FIFO's), so an offscreen pass or the next frame's
   // LDR scene never takes an HDR pipeline.
   config.shaderConfig.sceneHdr = gfx::scene_hdr_pass_active();
-  config.shaderConfig.fogType = g_gxState.fog.type;
+  config.shaderConfig.fogType = pipeline_fog_type(g_gxState.fog.type);
   config.shaderConfig.fogRangeEnabled = g_gxState.fog.rangeEnabled;
   config.shaderConfig.pbr = g_gxState.pbr;
   if (g_gxState.pbr != 0) {
@@ -606,6 +606,7 @@ void populate_pipeline_config(PipelineConfig& config, GXPrimitive primitive, GXV
     config.shaderConfig.tevStages[i] = g_gxState.tevStages[i];
   }
   config.shaderConfig.tevStageCount = g_gxState.numTevStages;
+  pipeline_tev_konst(config.shaderConfig);
   for (u8 i = 0; i < g_gxState.numIndStages; ++i) {
     config.shaderConfig.indStages[i] = g_gxState.indStages[i];
   }
@@ -627,11 +628,11 @@ void populate_pipeline_config(PipelineConfig& config, GXPrimitive primitive, GXV
   // After the stages, swap table, channels and texgens it reads (the probe finds its stages by
   // their texgen: copied after this, it saw none and never applied).
   if (g_gxState.pbr == 0) {
-    apply_port_surface_flags(config.shaderConfig, g_gxState.surfacePbr, g_gxState.envProbe);
+    apply_port_surface_flags(config.shaderConfig, g_gxState.surfacePbr, g_gxState.envProbe, g_gxState.waterReflect);
   }
   config.shaderConfig.perPixelLight = wants_per_pixel_light(config.shaderConfig);
   if (g_gxState.alphaCompare) {
-    config.shaderConfig.alphaCompare = g_gxState.alphaCompare;
+    config.shaderConfig.alphaCompare = pipeline_alpha_compare(g_gxState.alphaCompare);
   }
   const auto cullMode = config.shaderConfig.lineMode == 0 ? g_gxState.cullMode : GX_CULL_NONE;
   const auto [polygonOffset, polygonOffsetScale] = polygon_offset_for_cull_mode(cullMode);

@@ -4001,7 +4001,8 @@ void CMorphBall::ComputeBallMovement(const CFinalInput& input, CStateManager& mg
 #ifdef TARGET_PC
   // Spring Ball, as Metroid Prime Trilogy's nunchuk flick: C-stick up on the ground is a bomb jump
   // from the ball's own position, so the ball can leave the ground without a bomb to spend. The
-  // ball camera does not use the C-stick, so nothing else consumes it here. The input has been
+  // ball camera's stick control (CBallCamera::PortManualOrbit) leaves stick up alone while Spring
+  // Ball is on, so nothing else consumes it here. The input has been
   // scaled by the ball's own divisor, so a full deflection can read 1.0/divisor; 0.25 is MP1's
   // threshold, and it still passes a deflection of half the stick at a divisor of 2. The touch
   // overlay's swipe up asks for one too (PortTouch::SpringBallRequested), as in MP1's port; the
@@ -4009,7 +4010,7 @@ void CMorphBall::ComputeBallMovement(const CFinalInput& input, CStateManager& mg
   if (sSpringBallCooldown > 0.f) {
     sSpringBallCooldown -= dt;
   } else if ((input.ARAUp() > 0.25f ||
-              (input.DeltaTime() > 0.f && PortTouch::SpringBallRequested())) &&
+              (input.DeltaTime() > 0.f && PortTouch::SpringBallRequested(mPlayer.GetPlayerIndex()))) &&
              mBallState == kBS_Normal &&
              mPlayer.GetPlayerMovementState() == NPlayer::kMS_OnGround &&
              !mPlayer.IsMorphBallTransitioning() && IsMovementAllowed() &&
@@ -4023,7 +4024,7 @@ void CMorphBall::ComputeBallMovement(const CFinalInput& input, CStateManager& mg
                                     mPlayer.GetVelocityWR().GetZ()));
     mPlayer.SetMoveState(NPlayer::kMS_FallingMorphed, mgr);
     sSpringBallCooldown = kSpringBallCooldown;
-    PortTouch::ClearSpringBallRequest();
+    PortTouch::ClearSpringBallRequest(mPlayer.GetPlayerIndex());
   }
 #endif
   switch (mBallState) {

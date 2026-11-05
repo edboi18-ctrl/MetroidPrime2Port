@@ -1,6 +1,7 @@
 #include "command_processor.hpp"
 
 #include "../gfx/bloom.hpp"
+#include "../gfx/ssao.hpp"
 #include "../gfx/volfog.hpp"
 #include "../gfx/thermal.hpp"
 #include "../gfx/xray.hpp"
@@ -1541,6 +1542,46 @@ void handle_aurora(ByteReader& reader) noexcept {
     } else if (g_gxState.surfacePbr != stage) {
       g_gxState.surfacePbr = stage;
       g_gxState.dirty |= DirtyPipeline;
+    }
+  } else if (subCmd == GX_AURORA_PORT_AMBIENT_OCCLUSION) {
+    gfx::ssao::Params params;
+    u32 words[sizeof(params) / sizeof(u32)];
+    for (u32& word : words) {
+      word = reader.read<u32>();
+    }
+    std::memcpy(&params, words, sizeof(params));
+    // The fog the world was just drawn with: the composite keeps its share of each pixel.
+    const auto& state = g_gxState.fog;
+    const gfx::ssao::Fog fog{
+        .color = {state.color.x(), state.color.y(), state.color.z(), state.color.w()},
+        .a = state.a,
+        .b = state.b,
+        .c = state.c,
+        .type = static_cast<u32>(state.type),
+    };
+    gfx::ssao::record(params, fog);
+  } else if (subCmd == GX_AURORA_PORT_SURFACE_PBR_STRENGTH) {
+    const f32 strength = reader.read<f32>();
+    const f32 clamped = strength >= 0.f ? (strength <= 1.f ? strength : 1.f) : 0.f; // NaN -> 0
+    if (g_gxState.surfacePbrStrength != clamped) {
+      g_gxState.surfacePbrStrength = clamped;
+      g_gxState.dirty |= DirtyUniform;
+    }
+  } else if (subCmd == GX_AURORA_PORT_WATER_REFLECTION) {
+    const u8 stage = reader.read<u8>();
+    if (stage > MaxTevStages) {
+      Log.warn("GX_AURORA_PORT_WATER_REFLECTION: invalid stage {}", stage);
+    } else if (g_gxState.waterReflect != stage) {
+      g_gxState.waterReflect = stage;
+      g_gxState.dirty |= DirtyPipeline;
+    }
+  } else if (subCmd == GX_AURORA_PORT_ENV_PROBE_LOOK) {
+    const f32 level = reader.read<f32>();
+    const f32 strength = reader.read<f32>();
+    const Vec4<float> look{level, strength, 0.f, 0.f};
+    if (g_gxState.envProbeLook != look) {
+      g_gxState.envProbeLook = look;
+      g_gxState.dirty |= DirtyUniform;
     }
   } else if (subCmd == GX_AURORA_PORT_ENV_PROBE) {
     const bool on = reader.read<u8>() != 0;

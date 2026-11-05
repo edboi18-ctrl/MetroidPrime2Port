@@ -7,6 +7,7 @@
 #include "bloom.hpp"
 #include "shadow.hpp"
 #include "actor_shadow.hpp"
+#include "ssao.hpp"
 #include "volfog.hpp"
 #include "thermal.hpp"
 #include "xray.hpp"
@@ -862,6 +863,7 @@ void shutdown() {
   probe::shutdown();
   bloom::shutdown();
   volfog::shutdown();
+  ssao::shutdown();
   xray::shutdown();
   thermal::shutdown();
   shadow::shutdown();

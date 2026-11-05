@@ -36,16 +36,27 @@ void DrawEnhancementsTab() {
   ItemHelp("How fast Power Beam shots fly, plain and charged. They reach as far as before: a shot "
            "that fades out after a distance fades out at the same distance, sooner. Lock-on leads "
            "its target for the new speed. The other beams, missiles and combos are unchanged.");
+  ImGui::SeparatorText("Music");
+  // Read when the next track starts: a room change or a portal hop.
+  Changed(ImGui::Checkbox("Light world music in Dark Aether", &sDarkWorldLightMusic));
 
   ImGui::SeparatorText("Pace");
   // The game reads this every frame in its cinematic flow state.
   Changed(ImGui::Checkbox("Skippable cutscenes", &sSkipCinematics));
+  // Read when a pickup is touched and when a map station's message box comes up.
+  Changed(ImGui::Checkbox("Seamless item pickups", &sSeamlessPickups));
+  // Off walks at retail speed; a custom action bound to this switch makes the slider a sprint.
+  Changed(ImGui::Checkbox("Custom walk speed", &sWalkSpeedEnabled));
+  ImGui::SetItemTooltip("Off: retail speed. Bind a custom action to this setting (Toggle or While\n"
+                        "held) in Controls to sprint at the speed below.");
+  ImGui::BeginDisabled(!sWalkSpeedEnabled);
   int walkSpeed = sWalkSpeed;
   if (ImGui::SliderInt("Walk speed", &walkSpeed, PortOverlay::kWalkSpeedMin,
                        PortOverlay::kWalkSpeedMax, "%d%%", ImGuiSliderFlags_AlwaysClamp)) {
     sWalkSpeed = walkSpeed;
     Changed(true);
   }
+  ImGui::EndDisabled();
   int scanSpeed = sScanSpeed;
   if (ImGui::SliderInt("Scan speed", &scanSpeed, PortOverlay::kScanSpeedMin,
                        PortOverlay::kScanSpeedMax, "%d%%", ImGuiSliderFlags_AlwaysClamp)) {

@@ -11,6 +11,7 @@
 #endif
 
 class CAABox;
+class CActor;
 class CStateManager;
 class CTexture;
 
@@ -28,8 +29,22 @@ public:
   CAABox GetBounds() const;
   CAABox GetMaxShadowBox(const CAABox& bounds) const;
   bool Valid() const;
+#ifdef TARGET_PC
+  // Port: the actor that queued this shadow this frame (CActor::AddToRenderer), whose models the
+  // silhouette shadow draws.
+  void PortSetOwner(const CActor* owner) const { mPortOwner = owner; }
+  // Port: Video > Quality > Actor shadows (port_actor_shadow_rules.h): the owner's silhouette in the
+  // blob's place. True when it drew it, or when there is nothing to draw; false to draw the blob.
+  bool PortRenderSilhouette(const CStateManager& mgr) const;
+#endif
 
 private:
+#ifdef TARGET_PC
+  // mXf, or its blend between the last two ticks while the presentation interpolates.
+  CTransform4f PortPresentedXf() const;
+  // The blob's quad at `xf`, `radius` to a side, in whatever blend and TEV state is set.
+  static void PortStreamQuad(const CTransform4f& xf, float radius, uint color);
+#endif
   CTransform4f mXf;
   float mScale;
   float mRadius;
@@ -43,6 +58,7 @@ private:
 #ifdef TARGET_PC
   // Render() snapshots mXf per tick to draw the blob at the blend between ticks.
   mutable PortTickPair< CTransform4f > mPortXf{CTransform4f::Identity()};
+  mutable const CActor* mPortOwner = nullptr;
 #endif
 };
 

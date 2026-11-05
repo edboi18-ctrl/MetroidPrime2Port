@@ -452,8 +452,9 @@ void CPlayerGun::PortAimShotAtPointer(CTransform4f& xf) const {
   xf.SetTranslation(position);
 }
 
-void CPlayerGun::PortStartRapidCharge() {
-  mPortRapidCharge = PortOverlay::RapidCharge() && PortRapidChargeFor(mCurrentBeamId) != nullptr;
+void CPlayerGun::PortStartRapidCharge(CStateManager& mgr) {
+  mPortRapidCharge = PortOverlay::RapidCharge(GetPlayerFromAll(mgr)->GetPlayerIndex()) &&
+                     PortRapidChargeFor(mCurrentBeamId) != nullptr;
   mPortRapidShots = 0;
   mPortRapidTimer = 0.f;
 }
@@ -808,7 +809,7 @@ void CPlayerGun::Main(CStateManager& mgr, int message, float dt) {
         mFiring = false;
         state->SetChargeBeamFactor(0.f);
 #ifdef TARGET_PC
-        PortStartRapidCharge();
+        PortStartRapidCharge(mgr);
 #endif
       }
     }
@@ -819,7 +820,7 @@ void CPlayerGun::Main(CStateManager& mgr, int message, float dt) {
       mPortRapidCharge = false;
     } else if (!state->ItemEnabled(CPlayerState::kIT_ChargeBeam)) {
       if ((mPressedInputFlags & 1) != 0) {
-        PortStartRapidCharge();
+        PortStartRapidCharge(mgr);
       } else if ((mInputFlags & 1) != 0 && mPortRapidCharge &&
                  mChargePhase == CPlayerGun::kCP_NotCharging &&
                  !PortRapidChargeShot(dt, mgr)) {
@@ -1064,7 +1065,7 @@ void CPlayerGun::MissileClosing(CStateManager& mgr, int message, float dt) {
         (mInputFlags & 4) != 0) {
       mChargePhase = kCP_ChargeRequested;
 #ifdef TARGET_PC
-      PortStartRapidCharge();
+      PortStartRapidCharge(mgr);
 #endif
     }
     break;
@@ -1617,7 +1618,12 @@ void CPlayerGun::Render(const CStateManager& mgr, const CVector3f& cameraTransla
   gpRender->SetModelMatrix(CTransform4f::Identity());
 
   if (mChargeEffectVisible) {
+#ifdef TARGET_PC
+    // Retail 0x801D0988 lwz r0,0x694(r27); 0x801D098C cmpwi r0,0x4 = kCP_Charged.
+    if (mAuxMuzzleGenerators[mCurrentBeamId].get() != nullptr && mChargePhase == kCP_Charged) {
+#else
     if (mAuxMuzzleGenerators[mCurrentBeamId].get() != nullptr && mChargePhase == kCP_ChargeFx) {
+#endif
       mAuxMuzzleGenerators[mCurrentBeamId]->Render();
     }
     if (mMuzzleEffectVisTimer > 0.f ||
@@ -1825,7 +1831,12 @@ void CPlayerGun::Update(float dt, CStateManager& mgr) {
         }
       }
     }
+#ifdef TARGET_PC
+    // Retail 0x801CFE84 lwz r0,0x694(r31); 0x801CFE88 cmpwi r0,0x4 = kCP_Charged.
+    if (mAuxMuzzleGenerators[mCurrentBeamId].get() && mChargePhase == kCP_Charged) {
+#else
     if (mAuxMuzzleGenerators[mCurrentBeamId].get() && mChargePhase == kCP_ChargeFx) {
+#endif
       mAuxMuzzleGenerators[mCurrentBeamId]->SetGlobalOrientAndTrans(mBeamLocalXf);
       mAuxMuzzleGenerators[mCurrentBeamId]->SetGlobalScale(scale);
       mAuxMuzzleGenerators[mCurrentBeamId]->SetParticleEmission(emitting);
@@ -2985,7 +2996,7 @@ void CPlayerGun::HandleBeamChange(const CFinalInput& input, CStateManager& mgr) 
 #ifdef TARGET_PC
   // The disc picks beams with the C-stick, which twin stick aims with (issue #15); beams then
   // come from the port's direct picks (LB + D-pad, the radial, keys), through PortTouch.
-  const bool stickPicks = !PortMouse::StickOwnsCStick();
+  const bool stickPicks = !PortMouse::StickOwnsCStick(player->GetPlayerIndex());
   for (int i = 0; stickPicks && i < 4; ++i) {
 #else
   for (int i = 0; i < 4; ++i) {

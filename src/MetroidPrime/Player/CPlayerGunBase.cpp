@@ -146,7 +146,7 @@ void CPlayerGunBase::CreateGunLight(CStateManager& mgr) {
     mgr.AddObject(rs_new CGameLight(mLightId, kInvalidAreaId, false, rstl::string_l(""), mTransform,
                                     mPlayerUniqueId,
                                     CLight::BuildDirectional(CVector3f::Forward(), CColor::Black()),
-                                    mLightId.Value() & 0x3ff, 0, 0.f));
+                                    mLightId.Value() & kUniqueIdIndexMask, 0, 0.f));
   }
 }
 
@@ -308,7 +308,12 @@ void CPlayerGunBase::UpdateTransform(CStateManager& mgr, const CVector3f& positi
   }
   case kGHS_Holstering: {
     float t = 1.f - CMath::Limit(mGunHolsterRemTime / gpTweakPlayerGun->GetGunHolsterTime(), 1.f);
+#ifdef TARGET_PC
+    // Retail 0x801DD9A8 lwz r0,0x38c(r3); 0x801DD9AC cmpwi r0,0x2 = kMS_Morphing.
+    if (GetPlayer(mgr)->GetMorphballTransitionState() == CPlayer::kMS_Morphing) {
+#else
     if (GetPlayer(mgr)->GetMorphballTransitionState() == CPlayer::kMS_Morphed) {
+#endif
       t = 1.f - CMath::Limit(mGunHolsterRemTime / 0.1f, 1.f);
     }
     if (t > 0.01f) {

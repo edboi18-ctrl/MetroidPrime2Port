@@ -145,6 +145,96 @@ by default 70% blur, about level 3.5 of 0-5, at 60%: a matte metal sheen rather 
 Surfaces with PBR maps
 reflect the probe too, at the level their roughness asks, dimmed where the game lights them little.
 Until all six faces are drawn the materials keep their own look.
+Samus's body, the morph ball and the cutscene Samus read it as well (Quality > Samus & morph ball
+reflections, on by default under Live reflections): `CPlayer::Render` and `CScriptPlayerActor::Render`
+open a `CCubeMaterial::CPortEnvProbeScope`, which sets `sPortEnvProbe` with their own blur and
+strength (`GXPortSetEnvProbeLook`, ordered with the draws, so the cannon keeps its matte look and
+the ball its glossier one). When any of their draws read the probe, the next capture is centred on
+her bounding box rather than on the camera: in the morph ball and cutscenes the camera stands well
+away from her, and a probe taken there would reflect the wrong part of the room. Only the
+environment-map stages their materials already have change; a material without one (or one drawn
+unlit) is drawn as before.
+
+**Water reflections.** Quality > Water reflections (`water_reflections`, on by default under Live
+reflections): retail's water (`CFluidPlaneCPU::RenderSetup`) has no reflection of the room. Its
+"environment map" is a painted texture laid flat over the surface (texture coordinates from the
+position, scaled to the water's bounds), so it never moves with the view. With the setting on, that
+stage's sample becomes the live probe along the view reflected off the surface
+(`GXPortSetWaterReflection`, Aurora command `0x0075`), still masked by the water's gloss layers and lit
+by its lightmap as retail combines them. Water without an environment map keeps its own stages and
+gets one more, last, adding the reflection on top (`PREV = reflection + PREV`); it reads a black
+texture until the probe is filled. The reflection is weighted by Schlick's Fresnel approximation for
+water, `F = F0 + (1 - F0)(1 - cos)^5` with `F0 = ((1.333 - 1) / (1.333 + 1))^2 = 0.0204` (water's index
+of refraction 1.333 at 20 C and 589 nm), so it is faint looking straight down and a mirror at
+grazing angles. The surface's normal comes from screen-space derivatives of its view-space position
+(a varying of its own), since MP2's water is a flat plane drawn with positions only and often unlit.
+Blur (default 10%) and strength (default 100%) are the water's own (`GXPortSetEnvProbeLook`). Not with
+the camera under the surface (retail drops the env map there too) nor in split screen. The probe is
+captured around the camera, and around Samus while she is drawn in third person, so a pool's
+reflection is of the room as seen from there, not mirrored about the water; nearby walls are slightly
+off in parallax and distant ones (sky, far walls) are right.
+
+**Visor face PBR strength.** Samus's face in the visor (`CSamusFaceReflection`), lit by a charge shot's or a
+missile's flash right next to it, looked glossy and plastic with the PBR maps at full strength. Its draw
+opens a `CCubeMaterial::CPortPbrStrengthScope` (Quality > Visor face PBR strength, default 40%), and
+`PortBeginSurfaceDraw` sends Aurora's `GXPortSetSurfacePBRStrength` (command `0x0076`) with its PBR maps: the
+relit stage's result becomes `mix(L x base, PBR, strength)`, the stage's own TEV result and the PBR one, so
+the normal map, the highlights and the probe's reflection fade together towards the game's own look.
+
+**Bloom.** F1 > Video > Quality > Bloom (`bloom`, off by default): `CStateManager::DrawWorld` calls
+Aurora's `GXPortPostProcess`, the Remastered bloom the MP1 port draws (`extern/aurora/lib/gfx/bloom.cpp`:
+a bright pass at 1/4 size, four downsamples to 1/64, four upsamples back, `b / (1 + b)` added to the
+frame), after the arm cannon and before the Dark and Echo visors' pictures, the camera filters and the
+HUD, so the HUD never glows. It is off in those two visors, which draw their own picture, and in split
+screen, where the post would cover the other viewports. The bright pass reads the EFB through a tone
+curve, undoing it to get the light back; MP2's rooms have no Remastered data, so
+`platform/include/port_bloom_rules.h` supplies one: the colour as drawn up to 0.6 linear, then a
+shoulder that reaches white only at infinite light, so a pixel drawn near white counts as brighter
+light (up to the pass's cap of 4.0, drawn at about 98%) and blooms more. The threshold (Quality > Bloom
+threshold, 50-95%, default 90%) is the brightness, as drawn, at which a pixel starts to glow. The five
+levels are weighted alike, and the strength (0-200%) scales the bright pass they all come from. The
+composite adds the bloom to the frame as drawn, so the curve changes nothing else. A ReShade bloom
+on top adds a second glow.
+
+**Actor shadows.** F1 > Video > Quality > Actor shadows (`actor_shadows`, off by default): where
+retail's `CSimpleShadow` drops a round blob textured quad onto the floor below an actor (a ray cast
+straight down), `CSimpleShadow::PortRenderSilhouette` draws the actor's own shape there with Aurora's
+Remastered actor shadow (`extern/aurora/lib/gfx/actor_shadow.cpp`). `CActor::AddToRenderer` notes the
+owner on the shadow; the shadow's draw then renders the owner's models (opaque, depth only, the whole
+model) between `GXPortActorShadowCasters` and `GXPortActorShadowEnd` into one 256x256 layer of the
+actor maps, through an orthographic view straight down over the model's bounds
+(`platform/include/port_actor_shadow_rules.h`), has `GXPortActorShadowRender` draw the map, and redraws
+the blob's quad, widened to cover the map, as the multiply decal (`GXPortActorShadowDecal`):
+`1 - (1 - vis) opacity (1 - w)^2`, `w` the floor's depth below the actor's feet over the blob's fade
+height (`CSimpleShadow`'s max object height). The decal keeps to the shadow's box and to surfaces
+facing up within 60 degrees. One layer each, so 16 a frame; the rest keep the blob. The quad is flat, as
+the blob is, so on uneven ground the shadow cuts into the floor as the blob does.
+
+**Ambient occlusion.** F1 > Video > Quality > Ambient occlusion (`ambient_occlusion`, off by default):
+`CStateManager::DrawWorld` calls Aurora's `GXPortAmbientOcclusion` (`extern/aurora/lib/gfx/ssao.cpp`)
+after the world and the actors and before the scan visor's markers, the fog planes, the Dark World
+haze, the arm cannon and the HUD. It is McGuire, Mara and Luebke's Scalable Ambient Obscurance (HPG
+2012) without its depth MIP chain: at half the EFB's size, each pixel's view position from the depth
+buffer (reversed Z, the world's GX z range 0.125-1; nearer is the viewmodel, the far plane the sky), its
+face normal from the neighbouring positions, and an angle-biased occlusion over 9 samples on a 7-turn
+spiral within the radius: each sample counts by how far it rises above the surface, the sine of its
+elevation less the angle bias (Quality > Ambient occlusion angle bias, default 0.3), with a falloff to
+the radius, in place of the paper's equation 1 (AlchemyAO's v.n / v.v, which grows without bound
+towards a fold and drew dark lines along the shallow folds between a low-poly room's facets; HBAO+'s
+bias exists to hide the same low-tessellation artifacts); two 7-tap bilateral blurs; then the frame multiplied by
+it in linear light, the four nearest half-size texels weighted by depth. It fades out from 40 to 80
+units away. A flat surface is never darkened (the estimator's `v . n` is 0 on a plane), so it adds
+contact darkening in creases and under objects on top of the lightmaps' baked shading rather than
+replacing it. `platform/include/port_ao_rules.h` holds the intensity (sigma 4 at 100%), radius
+(1 unit at 100%) and angle bias, chosen from a simulation of the estimator on analytic folds: a 90-degree
+corner darkens to about 0.47 in the crease, a 45-degree fold to 0.85, a 30-degree one to 0.97, and folds of
+20 degrees or less not at all. It works with MSAA and any render scale, unlike a ReShade AO, which loses the depth
+buffer to MSAA and draws over the HUD.
+
+**No sun shadows.** Aurora's sun cascades (`GXPortSetShadowFrame`) are received only by Remastered's
+PBR materials (`shadow_receives` in `extern/aurora/lib/gx/gx.hpp` needs `pbr != 0`), which MP2's TEV
+materials are not, and MP2's rooms are lightmapped: the lightmaps already hold the static shadows, so a
+second sun shadow over them would darken them twice.
 
 Reload is a savestate-style world restart: `PortSaveState::RequestModReload` writes the current state
 to the undo slot and loads it back; `CMainFlow` (`kCFS_Game`) calls `ReloadModsNow` after the old world

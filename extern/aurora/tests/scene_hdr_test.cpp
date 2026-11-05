@@ -10,6 +10,7 @@
 #include "gfx/hdr_tone.hpp"
 #include "gfx/recording.hpp"
 #include "gfx/resources.hpp"
+#include "gfx/ssao.hpp"
 #include "gfx/tex_copy_conv.hpp"
 #include "gfx/texture.hpp"
 #include "gfx/volfog.hpp"
@@ -606,6 +607,17 @@ TEST_F(SceneHdrTest, WaterAndFogApplyCompileInBothDomains) {
     }
   }
   EXPECT_EQ(compiled, 8u + 4u);
+  EXPECT_TRUE(g_uncapturedErrors.empty());
+}
+
+// GXPortAmbientOcclusion's passes (gfx/ssao.cpp) for a single-sampled and a multisampled depth buffer.
+TEST_F(SceneHdrTest, AmbientOcclusionCompiles) {
+  for (const uint32_t samples : {1u, 4u}) {
+    SCOPED_TRACE(testing::Message() << "ssao samples " << samples);
+    const std::string source = ssao::shader_source(samples);
+    ASSERT_FALSE(source.empty());
+    EXPECT_EQ(module_error(source), "");
+  }
   EXPECT_TRUE(g_uncapturedErrors.empty());
 }
 

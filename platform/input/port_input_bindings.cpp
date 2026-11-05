@@ -1058,6 +1058,26 @@ const BallRow* FindBallRow(Action a) {
   return nullptr;
 }
 
+const MapRow* FindMapRow(Action a) {
+  for (const MapRow& r : kMapRows)
+    if (r.row == a)
+      return &r;
+  return nullptr;
+}
+
+void ApplyMapRows(Profile& profile) {
+  for (Binding& b : profile.bindings) {
+    if (FindMapRow(b.action) == nullptr)
+      continue;
+    b.contexts = kCtxMap;
+    b.blocked = 0;
+  }
+  // Every binding, scoped or not: a key bound to a map row does only that on the map.
+  BlockRowInputs(
+      profile, [](const Binding& b) { return FindMapRow(b.action) != nullptr && BindingFamily(b) != Family::Touch; },
+      kCtxMap, false);
+}
+
 const BallRow* BallRowForGame(Action game) {
   for (const BallRow& r : kBallRows)
     if (r.game == game)
@@ -1156,6 +1176,30 @@ std::vector<TouchButton> ParseTouchButtons(std::string_view layout) {
       out.push_back({slot, slots[slot]});
   }
   return out;
+}
+
+bool StockTouchInput(const Input& in) {
+  if (in.device != Device::Touch) return false;
+  return std::any_of(std::begin(kTouchStockControls), std::end(kTouchStockControls),
+                     [&](const TouchStockControl& c) { return c.control == in.code; });
+}
+
+UserProfile WithoutStockTouch(const UserProfile& user) {
+  UserProfile out = user;
+  std::erase_if(out.bindings, [](const Binding& b) {
+    return std::any_of(b.inputs.begin(), b.inputs.begin() + b.count, StockTouchInput);
+  });
+  return out;
+}
+
+void BindStockTouch(Profile& profile) {
+  for (const TouchStockControl& c : kTouchStockControls) {
+    Binding b;
+    b.action = c.action;
+    b.inputs[0] = Input{Device::Touch, 0, 50, uint16_t(c.control)};
+    b.count = 1;
+    profile.bindings.push_back(b);
+  }
 }
 
 void BindTouchButtons(Profile& profile, std::string_view layout) {

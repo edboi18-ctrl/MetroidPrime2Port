@@ -645,18 +645,18 @@ endif()
 
 if(AURORA_SDL3_TARGET)
     add_library(mp_port_audio OBJECT platform/ai_dma.cpp platform/port_controls.cpp
-        platform/port_save.cpp platform/port_save_convert.cpp platform/port_save_trilogy.cpp platform/port_save_trilogy_payload.cpp platform/port_savestate.cpp platform/port_beam_ammo.cpp platform/port_savestate_room.cpp platform/port_savestate_fields.cpp platform/port_entity_schema.cpp platform/port_statedump.cpp platform/port_savestate_format.cpp platform/port_randomizer.cpp platform/port_rando_gen.cpp platform/port_rando_models.cpp platform/port_rando_world.cpp platform/port_rando_logic.cpp platform/port_logfile.cpp platform/port_breadcrumb.cpp
+        platform/port_save.cpp platform/port_save_convert.cpp platform/port_save_trilogy.cpp platform/port_save_trilogy_payload.cpp platform/port_savestate.cpp platform/port_beam_ammo.cpp platform/port_savestate_room.cpp platform/port_savestate_fields.cpp platform/port_entity_schema.cpp platform/port_statedump.cpp platform/port_savestate_format.cpp platform/port_randomizer.cpp platform/port_rando_gen.cpp platform/port_rando_models.cpp platform/port_rando_world.cpp platform/port_rando_logic.cpp platform/port_logfile.cpp platform/port_breadcrumb.cpp platform/port_pickup_presentation.cpp
         platform/port_crash.cpp platform/port_watchdog.cpp platform/port_motion_watch.cpp platform/port_memory_log.cpp platform/port_storage_report.cpp
         platform/port_pointer.cpp platform/port_pointer_menu.cpp
-        platform/port_events.cpp platform/port_livesplit.cpp platform/port_harness.cpp platform/port_mouse.cpp
+        platform/port_events.cpp platform/port_vpads.cpp platform/port_livesplit.cpp platform/port_harness.cpp platform/port_mouse.cpp
         platform/port_radial.cpp
-        platform/port_warp.cpp platform/port_freecam.cpp platform/port_photo.cpp platform/port_console.cpp platform/port_overlay.cpp platform/port_disc_replace.cpp
+        platform/port_warp.cpp platform/port_freecam.cpp platform/port_photo.cpp platform/port_console.cpp platform/port_overlay.cpp platform/port_map_pickups.cpp platform/port_disc_replace.cpp
         platform/port_gyro_motion.cpp
         platform/port_dynamic_res.cpp platform/port_video.cpp platform/port_gpu_driver.cpp
         platform/port_data_folder.cpp
         platform/port_json.cpp platform/port_ws.cpp platform/port_update_check.cpp
-        platform/debug_ui/audio.cpp platform/debug_ui/card_data.cpp platform/debug_ui/cheats.cpp platform/debug_ui/controls.cpp platform/debug_ui/debug.cpp
-        platform/debug_ui/enhancements.cpp
+        platform/debug_ui/audio.cpp platform/debug_ui/card_data.cpp platform/debug_ui/cheats.cpp platform/debug_ui/controls.cpp platform/debug_ui/multiplayer.cpp platform/debug_ui/debug.cpp
+        platform/debug_ui/enhancements.cpp platform/debug_ui/tracker.cpp
         platform/debug_ui/game_sections.cpp platform/debug_ui/mods.cpp platform/debug_ui/performance.cpp platform/debug_ui/randomizer.cpp
         platform/debug_ui/savestates.cpp platform/debug_ui/search.cpp platform/debug_ui/settings.cpp
         platform/debug_ui/photo.cpp platform/debug_ui/tabs.cpp platform/debug_ui/ui_common.cpp platform/debug_ui/video.cpp
@@ -917,6 +917,21 @@ if(AURORA_SDL3_TARGET)
     target_include_directories(port_pbr_rules_tests PRIVATE platform/include)
     add_test(NAME port_pbr_rules_tests COMMAND port_pbr_rules_tests)
     set_tests_properties(port_pbr_rules_tests PROPERTIES TIMEOUT 30 LABELS port)
+    # Header-only (port_bloom_rules.h): the bloom's tone curve, threshold and tints.
+    add_executable(port_bloom_rules_tests tests/port_bloom_rules.cpp)
+    target_include_directories(port_bloom_rules_tests PRIVATE platform/include)
+    add_test(NAME port_bloom_rules_tests COMMAND port_bloom_rules_tests)
+    set_tests_properties(port_bloom_rules_tests PROPERTIES TIMEOUT 30 LABELS port)
+    # Header-only (port_actor_shadow_rules.h): the actor shadows' map matrices and decal parameters.
+    add_executable(port_actor_shadow_rules_tests tests/port_actor_shadow_rules.cpp)
+    target_include_directories(port_actor_shadow_rules_tests PRIVATE platform/include)
+    add_test(NAME port_actor_shadow_rules_tests COMMAND port_actor_shadow_rules_tests)
+    set_tests_properties(port_actor_shadow_rules_tests PROPERTIES TIMEOUT 30 LABELS port)
+    # Header-only (port_ao_rules.h): the ambient occlusion's parameters.
+    add_executable(port_ao_rules_tests tests/port_ao_rules.cpp)
+    target_include_directories(port_ao_rules_tests PRIVATE platform/include)
+    add_test(NAME port_ao_rules_tests COMMAND port_ao_rules_tests)
+    set_tests_properties(port_ao_rules_tests PROPERTIES TIMEOUT 30 LABELS port)
 
     # Header-only (port_input_pad.h): the MP2_INPUT `pN.` prefix parser.
     add_executable(port_input_pad_tests tests/port_input_pad.cpp)
@@ -960,6 +975,10 @@ if(AURORA_SDL3_TARGET)
     target_include_directories(port_dynamic_res_tests PRIVATE platform/include)
     add_test(NAME port_dynamic_res_tests COMMAND port_dynamic_res_tests)
     set_tests_properties(port_dynamic_res_tests PROPERTIES TIMEOUT 30 LABELS port)
+    add_executable(port_flick_stick_tests tests/port_flick_stick.cpp)
+    target_include_directories(port_flick_stick_tests PRIVATE platform/include)
+    add_test(NAME port_flick_stick_tests COMMAND port_flick_stick_tests)
+    set_tests_properties(port_flick_stick_tests PROPERTIES TIMEOUT 30 LABELS port)
     add_executable(port_tri_orbit_tests tests/port_tri_orbit.cpp)
     target_include_directories(port_tri_orbit_tests PRIVATE platform/include)
     add_test(NAME port_tri_orbit_tests COMMAND port_tri_orbit_tests)

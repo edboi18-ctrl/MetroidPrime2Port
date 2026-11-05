@@ -9,6 +9,7 @@
 #include "port_radial.h"
 #include "port_overlay.h"
 #include "port_photo.h"
+#include "port_pickup_presentation.h"
 #include "port_savestate.h"
 #include "port_touch.h"
 #include "port_pipeline_context.h"
@@ -112,7 +113,7 @@ CMFGame::~CMFGame() {
   // Port: back in the front end there is no game flow and no player, so the touch controls
   // (and anything else reading these) stop seeing the last in-game state: the Ball page on the title.
   PortHarness::GameFlowState(-1, false);
-  PortTouch::SetMorphed(false);
+  for (int player = 0; player < 4; ++player) PortTouch::SetMorphed(false, player);
   PortTouch::SetScanTextUp(false);
   // Port: the render mode is widened by the aspect setting.
   CGraphics::SetViewport(0, 0, CGraphics::GetRenderMode().fbWidth,
@@ -283,6 +284,16 @@ CIOWin::EMessageReturn CMFGame::OnMessage(const CArchitectureMessage& message,
         CMidiManager::StopAll();
         mSkippedCineCam = introCam->GetScriptCameraId();
         sHarnessCinematicSkip = true;
+        SetFlowState(kFS_CinematicSkip);
+        mFlowTime = 0.f;
+      } else if (introCam && PortPickupPresentation::Take(PortPickupPresentation::kCamera,
+                                                          introCam->GetScriptCameraId().Value())) {
+        // Seamless pickups: a cinematic the item's pickup chain started is skipped the way the
+        // skip button skips it, so everything the scene changes still changes.
+        PortOverlay::SkipConfirmDisarm();
+        CMidiManager::StopAll();
+        mSkippedCineCam = introCam->GetScriptCameraId();
+        sPortUserCinematicSkip = true;
         SetFlowState(kFS_CinematicSkip);
         mFlowTime = 0.f;
       }
@@ -1021,6 +1032,10 @@ void CMFGame::EnterMapScreen() {
   gui.GetAutoMapper().SetMapMode(CAutoMapper::kMM_Normal);
   gui.PauseGame(*mStateManager, kIGGS_MapScreen);
   mStateManager->SetInMapScreen(true);
+#ifdef TARGET_PC
+  // Port: the input's Map context (issue #31).
+  PortHarness::GameMapScreen();
+#endif
 }
 
 void CMFGame::PauseGame() {
@@ -1029,6 +1044,9 @@ void CMFGame::PauseGame() {
   gui.GetAutoMapper().SetMapMode(CAutoMapper::kMM_Teleport);
   gui.PauseGame(*mStateManager, kIGGS_MapScreen);
   mStateManager->SetInMapScreen(true);
+#ifdef TARGET_PC
+  PortHarness::GameMapScreen();
+#endif
 }
 
 void CMFGame::EnterLogBook() {

@@ -77,8 +77,54 @@ public:
   // and for either the live probe's matrix (GXSetPBRProbe). Begin returns what End undoes.
   static uint PortBeginSurfaceDraw();
   static void PortEndSurfaceDraw(uint begun);
+  // GXSetPBRProbe for the current view (the live probe's matrix and weight), and counts a draw
+  // that reads it (sPortProbeDraws). PortBeginSurfaceDraw's, and the water's (CFluidPlaneCPU).
+  static void PortLoadProbe();
   // CPlayerGun::Render sets it: the first-person gun's environment maps read the live probe.
   static bool sPortEnvProbe;
+  // The look sPortEnvProbe's draws read the probe with (GXPortSetEnvProbeLook): the probe level and
+  // the strength; a strength below 0 is the frame's look (the cannon's, aurora_set_env_probe_look).
+  static float sPortEnvProbeLevel;
+  static float sPortEnvProbeStrength;
+  // Where the next capture centres the probe (CStateManager::PortCaptureProbeFace) when set: the
+  // model that last read it, if it isn't the first-person view's. Unset, the probe is the camera's.
+  static bool sPortProbeFocusSet;
+  static CVector3f sPortProbeFocus;
+  // How much of the PBR maps' lighting the surfaces drawn now take, 0..1 (GXPortSetSurfacePBRStrength);
+  // 1 outside a CPortPbrStrengthScope.
+  static float sPortPbrStrength;
+  // The face reflection in Samus's visor (CSamusFaceReflection::Draw): lit by a flash right next to it,
+  // full PBR (the GGX highlight, the normal map, the probe) made a glossy, plastic face. Its draws take
+  // `strength` of it, the rest the game's own lighting.
+  class CPortPbrStrengthScope {
+  public:
+    explicit CPortPbrStrengthScope(float strength);
+    ~CPortPbrStrengthScope();
+
+  private:
+    CPortPbrStrengthScope(const CPortPbrStrengthScope&);
+    CPortPbrStrengthScope& operator=(const CPortPbrStrengthScope&);
+    float mSaved;
+  };
+  // Samus's body, her morph ball and the cutscene Samus (CPlayer::Render, CScriptPlayerActor::Render):
+  // their environment maps read the live probe with their own look while it lives, and, if any of
+  // their draws did, the next probe is centred on `focus`, so it holds the room around them rather
+  // than around a third-person camera. `on` false leaves everything as it was.
+  class CPortEnvProbeScope {
+  public:
+    CPortEnvProbeScope(bool on, float level, float strength, const CVector3f& focus);
+    ~CPortEnvProbeScope();
+
+  private:
+    CPortEnvProbeScope(const CPortEnvProbeScope&);
+    CPortEnvProbeScope& operator=(const CPortEnvProbeScope&);
+    bool mOn;
+    bool mSavedProbe;
+    float mSavedLevel;
+    float mSavedStrength;
+    uint mDraws;
+    CVector3f mFocus;
+  };
   // CStateManager::PortCaptureProbeFace is drawing one of the probe's faces.
   static bool sPortCapturingProbe;
   // Draws that read the probe since the start (captures not counted): the capture runs only

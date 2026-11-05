@@ -5,6 +5,10 @@
 
 #include "../port_overlay_internal.h"
 
+#include "port_actor_shadow_rules.h"
+#include "port_ao_rules.h"
+#include "port_bloom_rules.h"
+#include "port_controls.h"
 #include "port_discord.h"
 #include "port_env.h"
 #include "port_livesplit.h"
@@ -148,6 +152,125 @@ constexpr SettingKey BoolKey(const char* key) {
           "0"};
 }
 
+// p<N>.<key>: player N-1's override of a PortOverlay::PlayerSetting (see port_overlay.h). Written
+// only while set; an empty value clears it, so the player follows Player 1 again.
+enum PlayerValueKind { kPlayerBool, kPlayerInt, kPlayerFloat };
+
+template < int Player, PortOverlay::PlayerSetting Key, PlayerValueKind Kind, int Min = 0, int Max = 0 >
+void ReadPlayerSetting(const std::string& value) {
+  PlayerOverride& o = sPlayerSettings[Player][Key];
+  if (Trim(value).empty()) {
+    o = {};
+    return;
+  }
+  float parsed = 0.f;
+  if (Kind == kPlayerBool) {
+    parsed = ParseBool(value) ? 1.f : 0.f;
+  } else if (Kind == kPlayerInt) {
+    int i = 0;
+    if (!ParseInt(value, i) || i < Min || i > Max)
+      return;
+    parsed = float(i);
+  } else if (!ParseFloat(value, parsed) || parsed < PortOverlay::kGyroSensitivityMin ||
+             parsed > PortOverlay::kGyroSensitivityMax) {
+    return;
+  }
+  o = {parsed, true};
+}
+
+template < int Player, PortOverlay::PlayerSetting Key, PlayerValueKind Kind >
+void WritePlayerSetting(std::ostream& out) {
+  const PlayerOverride& o = sPlayerSettings[Player][Key];
+  if (!o.set)
+    return;
+  if (Kind == kPlayerFloat)
+    out << o.value;
+  else
+    out << int(o.value);
+}
+
+template < int Player, PortOverlay::PlayerSetting Key, PlayerValueKind Kind, int Min = 0, int Max = 0 >
+constexpr SettingKey PlayerKey(const char* key, const char* sampleA, const char* sampleB) {
+  return {key, ReadPlayerSetting< Player, Key, Kind, Min, Max >,
+          WritePlayerSetting< Player, Key, Kind >, true, sampleA, sampleB};
+}
+
+// p<N>.twin_stick, flick stick and the stick rates: PortMouse keeps those overrides.
+template < int Player, PortMouse::StickKey Key >
+void ReadPlayerStick(const std::string& value) {
+  if (Trim(value).empty()) {
+    PortMouse::ClearPlayerStick(Player, Key);
+    return;
+  }
+  if (Key == PortMouse::kStick_Enabled || Key == PortMouse::kStick_Split || Key == PortMouse::kStick_Flick) {
+    (Key == PortMouse::kStick_Enabled ? PortMouse::SetPlayerStickEnabled
+     : Key == PortMouse::kStick_Split ? PortMouse::SetPlayerStickAimSplit
+                                      : PortMouse::SetPlayerFlickStick)(Player, ParseBool(value));
+    return;
+  }
+  float parsed = 0.f;
+  if (ParseFloat(value, parsed) && parsed >= 50.f && parsed <= 10000.f) {
+    (Key == PortMouse::kStick_Rate ? PortMouse::SetPlayerStickAimRate
+                                   : PortMouse::SetPlayerStickAimRateY)(Player, parsed);
+  }
+}
+
+template < int Player, PortMouse::StickKey Key >
+void WritePlayerStick(std::ostream& out) {
+  if (!PortMouse::PlayerStickSet(Player, Key))
+    return;
+  switch (Key) {
+  case PortMouse::kStick_Enabled: WriteBool(out, PortMouse::StickEnabled(Player)); break;
+  case PortMouse::kStick_Rate: out << PortMouse::StickAimRate(Player); break;
+  case PortMouse::kStick_Split: WriteBool(out, PortMouse::StickAimSplit(Player)); break;
+  case PortMouse::kStick_RateY: out << PortMouse::StickAimRateY(Player); break;
+  case PortMouse::kStick_Flick: WriteBool(out, PortMouse::FlickStickSetting(Player)); break;
+  }
+}
+
+template < int Player, PortMouse::StickKey Key >
+constexpr SettingKey PlayerStickKey(const char* key, const char* sampleA, const char* sampleB) {
+  return {key, ReadPlayerStick< Player, Key >, WritePlayerStick< Player, Key >, true, sampleA,
+          sampleB};
+}
+
+// pad_preset, p<N>.pad_preset: the last controller preset of pad port `Port`, which a
+// controller connected there later gets (PortControls::ApplySavedPadPresets). Per port, not a
+// Player 1 override: an empty one means none.
+template < unsigned Port >
+constexpr SettingKey PadPresetKey(const char* key) {
+  return {key, [](const std::string& value) { PortControls::SetSavedPadPreset(Port, Trim(value)); },
+          [](std::ostream& out) { out << PortControls::SavedPadPreset(Port); }, true, "remastered",
+          "southpaw"};
+}
+
+// Every per-player key of player N (2-4), as p<N>.<Player 1's key>.
+#define PLAYER_SETTING_KEYS(N)                                                                     \
+  PlayerStickKey< N - 1, PortMouse::kStick_Enabled >("p" #N ".twin_stick", "1", "0"),              \
+      PlayerStickKey< N - 1, PortMouse::kStick_Rate >("p" #N ".stick_aim_rate", "900", "1200"),    \
+      PlayerStickKey< N - 1, PortMouse::kStick_Split >("p" #N ".stick_aim_split", "1", "0"),       \
+      PlayerStickKey< N - 1, PortMouse::kStick_RateY >("p" #N ".stick_aim_rate_y", "900", "1200"), \
+      PlayerStickKey< N - 1, PortMouse::kStick_Flick >("p" #N ".flick_stick", "1", "0"),           \
+      PadPresetKey< N - 1 >("p" #N ".pad_preset"),                                                 \
+      PlayerKey< N - 1, PortOverlay::kPlayer_LockOnToggle, kPlayerBool >("p" #N ".lockon_toggle",  \
+                                                                         "1", "0"),                \
+      PlayerKey< N - 1, PortOverlay::kPlayer_StickyCharge, kPlayerBool >("p" #N ".sticky_charge",  \
+                                                                         "1", "0"),                \
+      PlayerKey< N - 1, PortOverlay::kPlayer_RapidCharge, kPlayerBool >("p" #N ".rapid_charge",    \
+                                                                        "1", "0"),                 \
+      PlayerKey< N - 1, PortOverlay::kPlayer_AutoAim, kPlayerBool >("p" #N ".auto_aim", "1", "0"), \
+      PlayerKey< N - 1, PortOverlay::kPlayer_LockOnFreeAim, kPlayerBool >(                         \
+          "p" #N ".lock_on_free_aim", "1", "0"),                                                   \
+      PlayerKey< N - 1, PortOverlay::kPlayer_GyroAim, kPlayerBool >("p" #N ".gyro_aim", "1", "0"), \
+      PlayerKey< N - 1, PortOverlay::kPlayer_GyroMode, kPlayerInt, PortOverlay::kGyroModeMin,      \
+                 PortOverlay::kGyroModeMax >("p" #N ".gyro_mode", "2", "1"),                       \
+      PlayerKey< N - 1, PortOverlay::kPlayer_GyroSensitivity, kPlayerFloat >(                      \
+          "p" #N ".gyro_sensitivity", "2", "1"),                                                   \
+      PlayerKey< N - 1, PortOverlay::kPlayer_GyroSplit, kPlayerBool >("p" #N ".gyro_split", "1",   \
+                                                                      "0"),                        \
+      PlayerKey< N - 1, PortOverlay::kPlayer_GyroSensitivityY, kPlayerFloat >(                     \
+          "p" #N ".gyro_sensitivity_y", "2", "1")
+
 // A key that is one int in [Min, Max]: anything else is ignored.
 template < int* Value, int Min, int Max >
 constexpr SettingKey IntKey(const char* key, const char* sampleA, const char* sampleB) {
@@ -189,6 +312,7 @@ bool sGameOptionsRestored = false;
 const SettingKey kSettingKeys[] = {
     BoolKey< &sOriginalExperience >("original_experience"),
     BoolKey< &sSkipCinematics >("skip_cinematics"),
+    BoolKey< &sSeamlessPickups >("seamless_pickups"),
     BoolKey< &sUnlockHardMode >("unlock_hard_mode"),
     BoolKey< &sUnlockGalleries >("unlock_galleries"),
     BoolKey< &sUnlockBeamDoors >("unlock_beam_doors"),
@@ -201,6 +325,10 @@ const SettingKey kSettingKeys[] = {
     BoolKey< &sMapInvertY >("map_invert_y"),
     IntKey< &sPowerBeamSpeed, PortOverlay::kPowerBeamSpeedMin, PortOverlay::kPowerBeamSpeedMax >(
         "power_beam_speed", "100", "150"),
+    BoolKey< &sBallCam >("ball_cam"),
+    IntKey< &sBallCamSpeed, PortOverlay::kBallCamSpeedMin, PortOverlay::kBallCamSpeedMax >("ball_cam_speed", "50",
+                                                                                          "200"),
+    BoolKey< &sWalkSpeedEnabled >("walk_speed_enabled"),
     IntKey< &sWalkSpeed, PortOverlay::kWalkSpeedMin, PortOverlay::kWalkSpeedMax >("walk_speed", "50",
                                                                                   "200"),
     IntKey< &sScanSpeed, PortOverlay::kScanSpeedMin, PortOverlay::kScanSpeedMax >("scan_speed", "50",
@@ -241,6 +369,10 @@ const SettingKey kSettingKeys[] = {
     IntKey< &sPromptGlyphs, PortOverlay::kPromptGlyphs_Auto, PortOverlay::kPromptGlyphs_Keyboard >(
         "prompt_glyphs", "0", "5"),
     BoolKey< &sMinimapTap >("minimap_tap"),
+    IntKey< &sMapPickups, PortOverlay::kMapPickups_Off, PortOverlay::kMapPickups_All >(
+        "map_pickups", "0", "2"),
+    BoolKey< &sMapPickupKinds >("map_pickup_kinds"),
+    BoolKey< &sRevealMap >("reveal_map"),
     BoolKey< &sIgtTimer >("igt_timer"),
     IntKey< &sLanguage, 0, PortOverlay::kLanguageMax >("language", "0", "6"),
     IntKey< &sHintDelay, PortOverlay::kHintDelayMin, PortOverlay::kHintDelayMax >("hint_delay", "0",
@@ -363,6 +495,7 @@ const SettingKey kSettingKeys[] = {
        }
      },
      [](std::ostream& out) { out << PortMouse::MouseDpi(); }, false, "800", "1600"},
+    PadPresetKey< 0 >("pad_preset"),
     {"twin_stick",
      [](const std::string& value) { PortMouse::SetStickEnabled(ParseBool(value)); },
      [](std::ostream& out) { WriteBool(out, PortMouse::StickEnabled()); }, false, "1", "0"},
@@ -385,6 +518,20 @@ const SettingKey kSettingKeys[] = {
        }
      },
      [](std::ostream& out) { out << PortMouse::StickAimRateY(); }, false, "900", "1200"},
+    {"flick_stick",
+     [](const std::string& value) { PortMouse::SetFlickStick(ParseBool(value)); },
+     [](std::ostream& out) { WriteBool(out, PortMouse::FlickStickSetting()); }, false, "1", "0"},
+    {"flick_stick_outer_deadzone",
+     [](const std::string& value) {
+       float parsed = 0.f;
+       if (ParseFloat(value, parsed) && parsed >= 0.f && parsed <= PortMouse::kFlickOuterDeadZoneMax) {
+         PortMouse::SetFlickOuterDeadZone(parsed);
+       }
+     },
+     [](std::ostream& out) { out << PortMouse::FlickOuterDeadZone(); }, false, "10", "20"},
+    {"touch_flick_stick",
+     [](const std::string& value) { PortMouse::SetTouchFlickStick(ParseBool(value)); },
+     [](std::ostream& out) { WriteBool(out, PortMouse::TouchFlickStick()); }, false, "1", "0"},
     BoolKey< &sCardBackup >("card_backup"),
     BoolKey< &sLogFile >("log_file"),
     BoolKey< &sHideHelmet >("no_helmet"),
@@ -400,6 +547,7 @@ const SettingKey kSettingKeys[] = {
     BoolKey< &sDarkVisorFull >("dark_visor_full"),
     IntKey< &sDarkVisorStatic, 0, PortOverlay::kDarkVisorStaticMax >("dark_visor_static", "50", "100"),
     BoolKey< &sInfiniteBeamAmmo >("infinite_beam_ammo"),
+    BoolKey< &sDarkWorldLightMusic >("dark_world_light_music"),
     IntKey< &sHudOpacityEcho, PortOverlay::kHudOpacityVisor, PortOverlay::kHudOpacityMax >(
         "hud_opacity_echo", "-1", "40"),
     IntKey< &sHudOpacityDark, PortOverlay::kHudOpacityVisor, PortOverlay::kHudOpacityMax >(
@@ -493,7 +641,7 @@ const SettingKey kSettingKeys[] = {
     IntKey< &sCrosshairSize, PortOverlay::kCrosshairSizeMin, PortOverlay::kCrosshairSizeMax >(
         "crosshair_size", "25", "100"),
     IntKey< &sCrosshairOpacity, PortOverlay::kCrosshairOpacityMin,
-            PortOverlay::kCrosshairOpacityMax >("crosshair_opacity", "0", "100"),
+            PortOverlay::kCrosshairOpacityMax >("crosshair_opacity", "0", "300"),
     {"crosshair_color",
      [](const std::string& value) { ParseFloat3(value, sCrosshairColor, 0.f, 1.f); },
      [](std::ostream& out) {
@@ -567,12 +715,29 @@ const SettingKey kSettingKeys[] = {
        sReflectionResolution = size >= 128 ? 128 : size >= 64 ? 64 : 32;
      },
      [](std::ostream& out) { out << sReflectionResolution; }, false, "32", "128"},
+    BoolKey< &sBodyReflections >("body_reflections"),
+    IntKey< &sBodyReflectionBlur, 0, 100 >("body_reflection_blur", "0", "80"),
+    IntKey< &sBodyReflectionStrength, 0, 200 >("body_reflection_strength", "0", "150"),
+    BoolKey< &sWaterReflections >("water_reflections"),
+    IntKey< &sWaterReflectionBlur, 0, 100 >("water_reflection_blur", "0", "60"),
+    IntKey< &sWaterReflectionStrength, 0, 400 >("water_reflection_strength", "0", "150"),
     {"cannon_reflection_strength",
      [](const std::string& value) { sCannonReflectionStrength = std::clamp(std::atoi(value.c_str()), 0, 200); },
      [](std::ostream& out) { out << sCannonReflectionStrength; }, false, "0", "150"},
     {"pbr_highlight",
      [](const std::string& value) { sPbrHighlight = std::clamp(std::atoi(value.c_str()), 0, 200); },
      [](std::ostream& out) { out << sPbrHighlight; }, false, "0", "150"},
+    BoolKey< &sBloom >("bloom"),
+    IntKey< &sBloomStrength, PortBloom::kStrengthMin, PortBloom::kStrengthMax >("bloom_strength", "0", "150"),
+    IntKey< &sBloomThreshold, PortBloom::kThresholdMin, PortBloom::kThresholdMax >("bloom_threshold", "50", "80"),
+    BoolKey< &sActorShadows >("actor_shadows"),
+    IntKey< &sActorShadowStrength, PortActorShadow::kStrengthMin, PortActorShadow::kStrengthMax >(
+        "actor_shadow_strength", "0", "90"),
+    BoolKey< &sAmbientOcclusion >("ambient_occlusion"),
+    IntKey< &sAoStrength, PortAo::kStrengthMin, PortAo::kStrengthMax >("ao_strength", "0", "150"),
+    IntKey< &sAoRadius, PortAo::kRadiusMin, PortAo::kRadiusMax >("ao_radius", "25", "200"),
+    IntKey< &sAoAngleBias, PortAo::kAngleBiasMin, PortAo::kAngleBiasMax >("ao_angle_bias", "0", "50"),
+    IntKey< &sFacePbrStrength, 0, 100 >("face_pbr_strength", "0", "100"),
     BoolKey< &sDynamicRes >("dynamic_res"),
     {"dynamic_res_target",
      [](const std::string& value) { sDynamicResTarget = std::clamp(std::atoi(value.c_str()), 0, PortOverlay::kFpsCapMax); },
@@ -646,6 +811,10 @@ const SettingKey kSettingKeys[] = {
        }
      },
      true, "keep_depth", "unmonitored_fence,validation"},
+    // A match's players 2-4, after Player 1's keys they override.
+    PLAYER_SETTING_KEYS(2),
+    PLAYER_SETTING_KEYS(3),
+    PLAYER_SETTING_KEYS(4),
     {"disc_path", [](const std::string& value) { sDiscPath = value; },
      [](std::ostream& out) { out << sDiscPath; }, true, "/a/disc.iso", "/b/disc.iso"},
     // Last, as in MP1: the game's options blob (PortOverlay::SyncGameOptions).

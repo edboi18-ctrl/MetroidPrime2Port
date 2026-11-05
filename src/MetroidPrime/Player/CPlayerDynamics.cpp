@@ -70,12 +70,19 @@ static float WalkScale() { return static_cast< float >(PortOverlay::WalkSpeed())
 // the dash as a tapped jump does in ComputeDash, and it moves in a straight line along the body's
 // right axis at that moment, at the dash's speeds, until it lands or times out (kDodgeDash).
 // Locked on, the press starts the jump and ComputeDash starts retail's dash on the same tick.
+// One state per player: in a multiplayer match each CPlayer runs its own Dodge.
 enum EDodgePhase { kDodgeNone, kDodgeHop, kDodgeDash };
-static EDodgePhase sDodgePhase = kDodgeNone;
-static float sDodgeStrafe = 0.f;
-static CVector3f sDodgeRight = CVector3f(1.f, 0.f, 0.f);
-static CVector3f sDodgeForward = CVector3f(0.f, 1.f, 0.f);
-static bool sDodgeOrbitDash = false;
+struct SDodge {
+  EDodgePhase phase = kDodgeNone;
+  float strafe = 0.f;
+  CVector3f right = CVector3f(1.f, 0.f, 0.f);
+  CVector3f forward = CVector3f(0.f, 1.f, 0.f);
+  bool orbitDash = false;
+};
+static SDodge& PlayerDodge(int player) {
+  static SDodge sDodge[4];
+  return sDodge[static_cast< unsigned >(player) < 4 ? player : 0];
+}
 
 // The double-tap dash (PortOverlay::DoubleTapDash, MP1 dead-space-prime a10ee2274 83390a3d5).
 // Retail's dash circles a lock-on; this one goes straight whichever way was tapped: a burst from
@@ -332,11 +339,12 @@ void CPlayer::ComputeDash(const CFinalInput& input, float dt, CStateManager& mgr
   }
   if (!mSidewaysDashing) {
 #ifdef TARGET_PC
-    const bool dodge = sDodgeOrbitDash && !mSlidingOnWall && !mHitWallDuringMove &&
+    SDodge& playerDodge = PlayerDodge(mPlayerIndex);
+    const bool dodge = playerDodge.orbitDash && !mSlidingOnWall && !mHitWallDuringMove &&
                        mOrbitState == kOS_OrbitObject &&
                        CMath::AbsF(strafeInput) >= CMath::AbsF(forwardInput) &&
                        CMath::AbsF(strafeInput) > GetTweakPlayer()->GetDashStrafeInputThreshold();
-    sDodgeOrbitDash = false;
+    playerDodge.orbitDash = false;
     if (dodge || SidewaysDashAllowed(strafeInput, forwardInput, input, mgr)) {
 #else
     if (SidewaysDashAllowed(strafeInput, forwardInput, input, mgr)) {
@@ -426,7 +434,7 @@ CVector3f CPlayer::PortMovementInput(const CFinalInput& input) const {
 
 void CPlayer::PortStartDash(int direction, CStateManager& mgr) {
   if (direction < 0 || direction > 3 || sPortDashTime > 0.f || sPortDashCooldown > 0.f ||
-      sDodgePhase != kDodgeNone || mOrbitState != kOS_NoOrbit || mMorphBallState != kMS_Unmorphed ||
+      PlayerDodge(mPlayerIndex).phase != kDodgeNone || mOrbitState != kOS_NoOrbit || mMorphBallState != kMS_Unmorphed ||
       IsMorphBallTransitioning() || mGrappleState != kGS_None || GetFrozenState() ||
       !mPlayerState->IsPlayerAlive()) {
     return;
@@ -504,10 +512,11 @@ void CPlayer::ComputeMovement(const CFinalInput& input, CStateManager& mgr, floa
 #ifdef TARGET_PC
   // A Dodge press is held for a short window (PortTouch::TakeDodgeRequest), so it is only taken
   // once the strafe input and the ground allow it, as SidewaysDashAllowed asks of a dash.
+  SDodge& dodge = PlayerDodge(mPlayerIndex);
   bool dodgePressed = false;
-  sDodgeOrbitDash = false;
+  dodge.orbitDash = false;
   const bool lockedOn = mOrbitState == kOS_OrbitObject;
-  if (sDodgePhase == kDodgeNone && sPortDashTime <= 0.f && (mOrbitState == kOS_NoOrbit || lockedOn) &&
+  if (dodge.phase == kDodgeNone && sPortDashTime <= 0.f && (mOrbitState == kOS_NoOrbit || lockedOn) &&
       mMovementState == NPlayer::kMS_OnGround && !IsMorphBallTransitioning() &&
       GetTweakPlayer()->GetDashEnabled() && !mSlidingOnWall && !mHitWallDuringMove) {
     const float strafe = mControlMapper.GetAnalogInput(CControlMapper::kC_StrafeRight, input) -
@@ -518,36 +527,36 @@ void CPlayer::ComputeMovement(const CFinalInput& input, CStateManager& mgr, floa
     right.SetZ(0.f);
     if (CMath::AbsF(strafe) >= CMath::AbsF(forward) &&
         CMath::AbsF(strafe) > GetTweakPlayer()->GetDashStrafeInputThreshold() &&
-        right.CanBeNormalized() && PortTouch::TakeDodgeRequest()) {
+        right.CanBeNormalized() && PortTouch::TakeDodgeRequest(mPlayerIndex)) {
       SetMoveState(NPlayer::kMS_Jump, mgr);
       if (lockedOn) {
-        sDodgeOrbitDash = true;
+        dodge.orbitDash = true;
       } else {
-        sDodgePhase = kDodgeHop;
+        dodge.phase = kDodgeHop;
         dodgePressed = true;
       }
-      sDodgeStrafe = strafe;
-      sDodgeRight = right.AsNormalized();
-      sDodgeForward = CVector3f(-sDodgeRight.GetY(), sDodgeRight.GetX(), 0.f);
+      dodge.strafe = strafe;
+      dodge.right = right.AsNormalized();
+      dodge.forward = CVector3f(-dodge.right.GetY(), dodge.right.GetX(), 0.f);
     }
   }
-  if (sDodgePhase != kDodgeNone && !dodgePressed) {
+  if (dodge.phase != kDodgeNone && !dodgePressed) {
     const bool stop = mMovementState == NPlayer::kMS_OnGround || mOrbitState != kOS_NoOrbit ||
                       IsMorphBallTransitioning() || mSlidingOnWall || mHitWallDuringMove;
-    if (sDodgePhase == kDodgeHop) {
+    if (dodge.phase == kDodgeHop) {
       if (stop) {
-        sDodgePhase = kDodgeNone;
+        dodge.phase = kDodgeNone;
       } else {
         // ComputeDash's start, a tick into the jump as a tapped jump is.
-        sDodgePhase = kDodgeDash;
-        BeginSidewaysDash(sDodgeStrafe, mgr);
+        dodge.phase = kDodgeDash;
+        BeginSidewaysDash(dodge.strafe, mgr);
       }
     } else {
       mDashTimer += dt;
       if (stop || !mSidewaysDashing || mDashTimer >= mDashDuration) {
         FinishSidewaysDash(mgr);
         CSfxManager::RemoveEmitter(mDashSfx);
-        sDodgePhase = kDodgeNone;
+        dodge.phase = kDodgeNone;
       }
     }
   }
@@ -578,7 +587,7 @@ void CPlayer::ComputeMovement(const CFinalInput& input, CStateManager& mgr, floa
 #endif
 #ifdef TARGET_PC
   // A Dodge sets its own velocity, as an orbit dash does without the free-movement friction.
-  if (sDodgePhase != kDodgeDash)
+  if (dodge.phase != kDodgeDash)
 #endif
   SetVelocityWR(GetDampedClampedVelocityWR());
   float turnSpeedMultiplier = GetTweakPlayer()->GetTurnSpeedMultiplier();
@@ -726,11 +735,11 @@ void CPlayer::ComputeMovement(const CFinalInput& input, CStateManager& mgr, floa
       ApplyForceOR(CVector3f::Zero(),
                    CAxisAngle(CUnitVector3f(0.f, 0.f, 1.f, CUnitVector3f::kN_Yes), turnInput));
     }
-  } else if (sDodgePhase == kDodgeDash) {
+  } else if (dodge.phase == kDodgeDash) {
     // ComputeDash's speeds along the captured axes: the walk strafe speed on its
     // first tick, then the dash speed blended down to it.
     const ESurfaceRestraints restraint = GetSurfaceRestraint();
-    float strafeSpeed = skStrafeDistances[restraint] * WalkScale() * sDodgeStrafe;
+    float strafeSpeed = skStrafeDistances[restraint] * WalkScale() * dodge.strafe;
     if (mDashTimer > 0.f) {
       if (mNoStrafeDashBlend) {
         strafeSpeed = mDashSpeedMultiplier * skDashStrafeDistances[restraint];
@@ -745,7 +754,7 @@ void CPlayer::ComputeMovement(const CFinalInput& input, CStateManager& mgr, floa
       }
     }
     const float forwardSpeed = forwardInput * (skOrbitForwardDistances[restraint] * WalkScale());
-    const CVector3f target = sDodgeRight * strafeSpeed + sDodgeForward * forwardSpeed;
+    const CVector3f target = dodge.right * strafeSpeed + dodge.forward * forwardSpeed;
     // The dash sets the horizontal speed outright, as an orbit dash does; a force's per-tick
     // acceleration would take far longer than the dash lasts.
     SetVelocityWR(CVector3f(target.GetX(), target.GetY(), GetVelocityWR().GetZ()));
@@ -1515,7 +1524,12 @@ void CPlayer::SetIntoBallReadyAnimation(float dt, EPlayerMorphBallState state) {
       const float angle =
           CMath::Rad2Deg(CMath::WrapTwoPi(atan2f(-flatVelocity.GetX(), flatVelocity.GetY())));
       const float maxSpeed = GetActualFirstPersonMaxVelocity(dt);
+#ifdef TARGET_PC
+      // Retail 0x80185CA8 lfs f0,lbl_8041C9C4 = 45.0; fcmpo f30,f0; blt skips (then <= 315.0).
+      if (angle >= 45.f && angle <= 315.f) {
+#else
       if (angle >= 225.f && angle <= 315.f) {
+#endif
         commandMgr.DeliverCmd(CPBCMorphToBallCmd(0, 4));
       } else if (speed >= 0.5f * maxSpeed) {
         commandMgr.DeliverCmd(CPBCMorphToBallCmd(0, 3));

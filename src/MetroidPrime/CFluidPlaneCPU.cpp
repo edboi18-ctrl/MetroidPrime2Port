@@ -23,6 +23,11 @@
 #include "MetroidPrime/CGameArea.hpp"
 #include "MetroidPrime/CStateManager.hpp"
 #include "MetroidPrime/CWorld.hpp"
+#ifdef TARGET_PC
+#include "MetroidPrime/PortEfbCopy.hpp"
+#include "Kyoto/Graphics/CCubeMaterial.hpp"
+#include "port_overlay.h"
+#endif
 #include "MetroidPrime/Cameras/CGameCamera.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptWater.hpp"
 #include "MetroidPrime/TCastTo.hpp"
@@ -203,7 +208,15 @@ void CFluidPlaneCPU::RenderDistortion(float time, const CTransform4f& xf,
   GXColor fogColor;
   CGX::GetFog(&fogType, &fogStart, &fogEnd, &fogNear, &fogFar, &fogColor);
   CGX::SetFog(GX_FOG_NONE, 0.f, 0.f, 0.f, 0.f, fogColor);
+#ifdef TARGET_PC
+  // Distortion particles copy the full viewport into the same spare buffer. Aurora keeps one copy
+  // texture per destination and drops to the buffer's CPU bytes when the size differs, so a splash
+  // made the water sample garbage for a frame (#44). Take this copy's own destination.
+  void* buffer = PortEfbCopy::Destination(CGraphics::GetDolphinSpareBuffer(), viewport.mHalfWidth,
+                                          viewport.mHalfHeight, 2);
+#else
   void* buffer = CGraphics::GetDolphinSpareBuffer();
+#endif
   GXSetTexCopySrc(viewport.mLeft, viewport.mTop, viewport.mWidth, viewport.mHeight);
   GXSetTexCopyDst(viewport.mHalfWidth, viewport.mHalfHeight, GX_TF_RGB565, GX_TRUE);
   const bool videoFilter = CGraphics::GetUseVideoFilter();
@@ -211,8 +224,13 @@ void CFluidPlaneCPU::RenderDistortion(float time, const CTransform4f& xf,
   GXCopyTex(buffer, GX_FALSE);
   CGraphics::SetUseVideoFilter(videoFilter);
   GXPixModeSync();
+#ifdef TARGET_PC
+  CGraphics::LoadDolphinSpareTexture(viewport.mHalfWidth, viewport.mHalfHeight, GX_TF_RGB565,
+                                     buffer, CGraphics::kSpareBufferTexMapID);
+#else
   CGraphics::LoadDolphinSpareTexture(viewport.mHalfWidth, viewport.mHalfHeight, GX_TF_RGB565,
                                      nullptr, CGraphics::kSpareBufferTexMapID);
+#endif
 
   rstl::vector< CVector3f > polygon;
   polygon.reserve(4);
@@ -312,6 +330,19 @@ void CFluidPlaneCPU::RenderSetup(const CStateManager& mgr, float alpha, const CT
       mgr.GetCurrentRenderCameraManager()->GetCurrentCamera(mgr, true)->GetFluidCount() != 0
           ? 0
           : HasEnvMap();
+#ifdef TARGET_PC
+  // Port: Live reflections > Water reflections (GXPortSetWaterReflection). The surface's environment
+  // stage drops its painted map, and Aurora blends the live probe, reflected off the surface, over the
+  // finished water by water's Fresnel, raising the water's alpha to match (lib/gx/shader.cpp's
+  // port_water_blend). Water without an environment map keeps its own stages and gets one more, last,
+  // that passes the colour on (it only marks the draw). Not with the camera under the surface (retail
+  // drops the env map there too) nor in split screen.
+  const bool portWaterReflect =
+      PortOverlay::LiveReflections() && PortOverlay::WaterReflections() && !mgr.IsMultiplayer() &&
+      mgr.GetCurrentRenderCameraManager()->GetCurrentCamera(mgr, true)->GetFluidCount() == 0;
+  const bool portAddedEnv = portWaterReflect && envMapType == 0;
+  int portWaterStage = -1;
+#endif
   const CAABox transformed =
       CAABox(CVector3f::Zero(), CVector3f(1.f, 1.f, 1.f)).GetTransformedAABox(xf);
   const float width = transformed.GetWidth();
@@ -371,6 +402,14 @@ void CFluidPlaneCPU::RenderSetup(const CStateManager& mgr, float alpha, const CT
     texMapIds[6] = static_cast< GXTexMapID >(nextTexMap);
     (*mEnvMap)->Load(static_cast< GXTexMapID >(nextTexMap++), CTexture::kCM_Repeat);
   }
+#ifdef TARGET_PC
+  else if (portAddedEnv) {
+    // Black: the added stage adds nothing, before the probe is filled or after.
+    texMapIds[6] = static_cast< GXTexMapID >(nextTexMap);
+    zeroTexture.Load(static_cast< GXTexMapID >(nextTexMap++), CTexture::kCM_Repeat);
+    texCoordIds[6] = GX_TEXCOORD0;
+  }
+#endif
 
   float uvOffsets[CFluidUVMotion::kNumLayers][2];
   mUvMotion.CalculateFluidTextureOffset(uvTime, uvOffsets);
@@ -573,6 +612,11 @@ void CFluidPlaneCPU::RenderSetup(const CStateManager& mgr, float alpha, const CT
                        GX_TRUE, GX_TEVPREV);
   }
   if (envMapType != 0) {
+#ifdef TARGET_PC
+    if (portWaterReflect) {
+      portWaterStage = stage;
+    }
+#endif
     CGX::SetTevOrder(static_cast< GXTevStageID >(stage), texCoordIds[6], texMapIds[6],
                      GX_COLOR_NULL);
     const GXTevColorArg color = HasColorMap() ? GX_CC_C1 : GX_CC_ZERO;
@@ -591,6 +635,17 @@ void CFluidPlaneCPU::RenderSetup(const CStateManager& mgr, float alpha, const CT
     CGX::SetTevColorOp(static_cast< GXTevStageID >(stage++), GX_TEV_ADD, GX_TB_ZERO, GX_CS_SCALE_1,
                        GX_TRUE, GX_TEVPREV);
   }
+#ifdef TARGET_PC
+  if (portAddedEnv) {
+    // PREV = black + PREV: the water as retail draws it. The stage marks the draw for the reflection
+    // Aurora blends over it once the last stage has run.
+    portWaterStage = stage;
+    CGX::SetTevOrder(static_cast< GXTevStageID >(stage), texCoordIds[6], texMapIds[6], GX_COLOR_NULL);
+    CGX::SetTevColorIn(static_cast< GXTevStageID >(stage), GX_CC_ZERO, GX_CC_TEXC, GX_CC_ONE, GX_CC_CPREV);
+    CGX::SetTevColorOp(static_cast< GXTevStageID >(stage++), GX_TEV_ADD, GX_TB_ZERO, GX_CS_SCALE_1,
+                       GX_TRUE, GX_TEVPREV);
+  }
+#endif
   CGX::SetNumTevStages(stage);
   const GXTevStageID last = static_cast< GXTevStageID >(stage - 1);
   CGX::SetTevAlphaIn(last, GX_CA_ZERO, GX_CA_ZERO, GX_CA_ZERO, GX_CA_KONST);
@@ -601,6 +656,15 @@ void CFluidPlaneCPU::RenderSetup(const CStateManager& mgr, float alpha, const CT
   CGX::SetZMode(GX_TRUE, GX_LEQUAL, mFluidType == 2);
   CGX::SetAlphaCompare(GX_ALWAYS, 0, GX_AOP_AND, GX_ALWAYS, 0);
   GXSetCullMode(GX_CULL_NONE);
+#ifdef TARGET_PC
+  if (portWaterStage >= 0) {
+    GXPortSetWaterReflection(portWaterStage);
+    GXPortSetEnvProbeLook(
+        static_cast< float >(PortOverlay::WaterReflectionBlur()) * PortOverlay::kReflectionLevelPerBlurPercent,
+        static_cast< float >(PortOverlay::WaterReflectionStrength()) / 100.f);
+    CCubeMaterial::PortLoadProbe();
+  }
+#endif
 }
 
 void CFluidPlaneCPU::Render(const CStateManager& mgr, float alpha, const CAABox& bounds,
@@ -634,6 +698,11 @@ void CFluidPlaneCPU::RenderCleanup() const {
   if (!gkWaterEnable) {
     return;
   }
+#ifdef TARGET_PC
+  // RenderSetup's water reflection, off for what draws next.
+  GXPortSetWaterReflection(-1);
+  GXPortSetEnvProbeLook(0.f, -1.f);
+#endif
 
   CGX::SetTexCoordGen(GX_TEXCOORD0, GX_TG_MTX3x4, GX_TG_TEX0, GX_IDENTITY, GX_FALSE, GX_PTIDENTITY);
   CGX::SetTexCoordGen(GX_TEXCOORD1, GX_TG_MTX3x4, GX_TG_TEX1, GX_IDENTITY, GX_FALSE, GX_PTIDENTITY);

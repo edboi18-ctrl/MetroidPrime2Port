@@ -143,6 +143,11 @@ public:
   CVector3f& Scale() { return mScale; }
   rstl::auto_ptr< CAnimData >& AnimData() { return mAnimData; }
   void SetRenderSorted(bool v) { mRenderSorted = v; }
+#ifdef TARGET_PC
+  // For a second draw of the whole model in the frame (CSimpleShadow::PortRenderSilhouette).
+  bool PortRenderSorted() const { return mRenderSorted; }
+  void PortSetRenderSorted(bool v) const { mRenderSorted = v; }
+#endif
   void SetTexturesLocked(bool v) { mTexturesLocked = v; }
   // (`SetRenderUnsortedParts` already exists upstream.)
   // The three model slots, for `optional_object::Invalidate` (`clear()` would unlock a token).

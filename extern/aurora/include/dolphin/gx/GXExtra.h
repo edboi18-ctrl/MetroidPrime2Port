@@ -30,12 +30,32 @@ void GXSetPBR(GXBool enable);
 // as they are. Draws whose stage isn't of that form, that use maps 6 or 7 themselves, or that
 // GXSetPBR shades, are drawn as before. Lit with per-pixel lights. A negative stage turns it off.
 void GXPortSetSurfacePBR(s32 stage);
+// Port extension: how much of GXPortSetSurfacePBR's lighting the following draws take, 0..1 (clamped): the
+// relit stage's result is mix(its own TEV result, the PBR result, strength), so the normal map, the
+// highlights and the probe's reflection fade together towards the game's own look. 1 by default.
+void GXPortSetSurfacePBRStrength(f32 strength);
 // Port extension: the following draws' environment-mapped TEV stages (texture coordinates from
 // the normal, GX_TG_NRM) sample the live probe (GXCopyProbeFace) in the view's reflected
 // direction, through GXSetPBRProbe's matrix, once its weight is above 0; before that they keep
 // their own texture. Draws with an unlit channel 0, or GXSetPBR's, are drawn as before. Lit
 // with per-pixel lights.
 void GXPortSetEnvProbe(GXBool on);
+// Port extension: how the following draws' environment stages read the probe (GXPortSetEnvProbe):
+// at `level` (blur: 0 the sharp face, up to the probe's MipCount - 1) and scaled by `strength`.
+// A strength below 0 goes back to the look aurora_set_env_probe_look sets for every draw. Ordered
+// with the draws, so models drawn one after another can each have their own look.
+void GXPortSetEnvProbeLook(f32 level, f32 strength);
+// Port extension: the following draws are water. Once the probe is filled, TEV stage `stage`'s texture
+// sample (the painted reflection) reads black, and after the last stage the live probe (GXCopyProbeFace)
+// seen along the view reflected off the surface is blended over the water by Schlick's Fresnel for
+// water (F0 0.0204) times the strength: faint looking straight down, a mirror at grazing angles. The
+// water's alpha is raised to match (a + F (1 - a)), so a SRCALPHA / INVSRCALPHA blend shows F of the
+// reflection over 1 - F of the water as drawn. The surface's normal comes from its own view-space
+// position (no normal attribute or lit channel is needed; a rippled mesh reflects off its facets).
+// Read through GXSetPBRProbe's matrix and weight at GXPortSetEnvProbeLook's level and strength; until
+// the probe is filled the stage keeps its own texture. A stage that doesn't read its texture's colour,
+// or a negative stage, turns it off.
+void GXPortSetWaterReflection(s32 stage);
 // Aurora extension: distance-field texturing for the following draws (see
 // GX_AURORA_SET_SDF). 0 turns it off.
 void GXSetSDF(u8 edge);
@@ -313,6 +333,26 @@ GXBool GXPortVolumetricFog(const GXPortFogParams* params);
 // opaque ones per pixel as the full-screen pass, blended and additive ones per vertex (blended:
 // colour T + in-scatter, additive: colour T). Harmless when no fog was drawn.
 void GXPortVolumetricFogEnd(void);
+// Port extension: screen-space ambient occlusion over the EFB as drawn so far, from its depth alone
+// (lib/gfx/ssao.cpp: Scalable Ambient Obscurance, McGuire, Mara and Luebke, HPG 2012). Pixels in the
+// world's GX z range (depth[2] to depth[3]) are darkened where nearby geometry hides them, by the
+// obscurance computed at half size and smoothed along depth edges; nearer (the viewmodel) and the far
+// plane are left alone, and the effect fades out between fade start and end (view depth). The GX fog
+// current when the command is processed is taken as the world's: the fog colour's share of each pixel
+// is kept and only the surface under it is darkened (so dense fog, underwater above all, hides it as
+// it hides the surface). Ends the current pass. False when it could not be recorded (no core features, the HDR scene, draw-id view).
+// View space is GX's (x right, y up, z towards the camera).
+typedef struct {
+  f32 frustum[4]; // left, right, top, bottom at a view depth of 1
+  f32 depth[4];   // near, far, and the GX z range the world draws in (min, max)
+  f32 radius;     // world units
+  f32 intensity;  // the estimator's sigma: 0 none
+  f32 bias;       // angle bias: samples rising less than asin(bias) above the surface don't occlude
+  f32 fadeStart;
+  f32 fadeEnd;
+  f32 pad[3];
+} GXPortAoParams;
+GXBool GXPortAmbientOcclusion(const GXPortAoParams* params);
 // Marks the draws up to the next call with false as particles' (inside the volumetric fog). As
 // Remastered's particle renderers, they fog themselves per vertex as colour T + in-scatter unless
 // their blend mode is additive or premultiplied (the static render state's "no fog" flag), when

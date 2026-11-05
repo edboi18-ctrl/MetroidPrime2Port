@@ -10,16 +10,21 @@
 #include <string>
 
 #include "port_graphics_backend.h"
+#include "port_overlay.h"
 
 namespace PortOverlayState {
 
 extern bool sSkipCinematics;
+extern bool sSeamlessPickups;
 extern bool sLogFile;
 extern bool sFastMorph;
 extern bool sPointerMenus;
 extern bool sMapSwapFingers;
 extern bool sMapInvertX;
 extern bool sMapInvertY;
+extern bool sBallCam;
+extern int sBallCamSpeed;
+extern bool sWalkSpeedEnabled;
 extern int sWalkSpeed;
 extern int sPowerBeamSpeed;
 extern int sScanSpeed;
@@ -33,6 +38,9 @@ extern int sComboBeamCost;
 extern int sComboMissileCost;
 extern int sBeamAmmoPerExpansion;
 extern bool sMinimapTap;
+extern int sMapPickups;
+extern bool sMapPickupKinds;
+extern bool sRevealMap;
 extern int sPromptGlyphs;
 extern bool sIgtTimer;
 extern bool sOriginalExperience;
@@ -75,6 +83,13 @@ extern float sGyroSensitivityY;
 extern bool sResetAimBoth;
 extern bool sLockOnFreeAim;
 extern bool sHandOnCannon;
+// PortOverlay::PlayerSetting overrides of players 1-3 ([0] unused); settings.cpp reads and
+// writes them as `p<N>.<key>`.
+struct PlayerOverride {
+  float value = 0.f;
+  bool set = false;
+};
+extern PlayerOverride sPlayerSettings[PortOverlay::kSettingPlayers][PortOverlay::kPlayerSettingCount];
 extern bool sMenuStandardButtons;
 extern bool sCardBackup;
 extern float sFirstPersonFov;
@@ -88,6 +103,7 @@ extern bool sBallBars;
 extern bool sDarkVisorFull;
 extern int sDarkVisorStatic;
 extern bool sInfiniteBeamAmmo;
+extern bool sDarkWorldLightMusic;
 extern int sHudOpacityEcho;
 extern int sHudOpacityDark;
 extern int sHudOpacityScan;
@@ -149,6 +165,22 @@ extern int sCannonReflectionBlur;     // Video > Quality > Cannon reflection blu
 extern int sCannonReflectionStrength; // Video > Quality > Cannon reflection strength, 0..200 (%)
 extern int sReflectionRefresh;    // Video > Quality > Reflection refresh: probe faces a frame (1, 2, 3, 6)
 extern int sReflectionResolution; // Video > Quality > Reflection resolution: 32, 64 or 128
+extern bool sBodyReflections;     // Video > Quality > Samus & morph ball reflections (CPortEnvProbeScope)
+extern int sBodyReflectionBlur;   // Video > Quality > Samus & morph ball blur, 0..100 (%)
+extern int sBodyReflectionStrength; // Video > Quality > Samus & morph ball strength, 0..200 (%)
+extern bool sWaterReflections;    // Video > Quality > Water reflections (CFluidPlaneCPU::RenderSetup)
+extern int sWaterReflectionBlur;  // Video > Quality > Water blur, 0..100 (%)
+extern int sWaterReflectionStrength; // Video > Quality > Water strength, 0..200 (%)
+extern bool sBloom;               // Video > Quality > Bloom (CStateManager::DrawWorld, port_bloom_rules.h)
+extern int sBloomStrength;        // Video > Quality > Bloom strength, 0..200 (%)
+extern int sBloomThreshold;       // Video > Quality > Bloom threshold, 50..95 (% of display white)
+extern bool sActorShadows;        // Video > Quality > Actor shadows (CSimpleShadow::PortRenderSilhouette)
+extern int sActorShadowStrength;  // Video > Quality > Actor shadow strength, 0..100 (%)
+extern bool sAmbientOcclusion;    // Video > Quality > Ambient occlusion (CStateManager::DrawWorld, port_ao_rules.h)
+extern int sAoStrength;           // Video > Quality > Ambient occlusion strength, 0..200 (%)
+extern int sAoRadius;             // Video > Quality > Ambient occlusion radius, 25..300 (% of a unit)
+extern int sAoAngleBias;          // Video > Quality > Ambient occlusion angle bias, 0..60 (%)
+extern int sFacePbrStrength;      // Video > Quality > Visor face PBR strength, 0..100 (%)
 extern PortGraphicsBackend::EGraphicsBackend sGraphicsBackend; // renderer choice (Windows, desktop Linux)
 extern PortGraphicsBackend::EGraphicsBackend sGraphicsBackendAtStart;
 extern bool sOpenGles;

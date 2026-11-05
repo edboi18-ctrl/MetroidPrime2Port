@@ -14,6 +14,9 @@
 #include "port_video.h"
 #include "port_env.h"
 #include "port_overlay_internal.h"
+#include "port_actor_shadow_rules.h"
+#include "port_ao_rules.h"
+#include "port_bloom_rules.h"
 #include "port_logfile.h"
 #include "port_mouse.h"
 #include "port_radial.h"
@@ -59,6 +62,7 @@ extern "C" void AIPortSetOutputGain(float gain);
 namespace PortOverlayState {
 
 bool sSkipCinematics = false;
+bool sSeamlessPickups = false;
 // `MP2_LOG_FILE`: whether stdout and stderr also go to a file (F1 > Testing, console `logfile`).
 // PortLogFile::Start reads it before Aurora comes up, so the row only reports the state the next
 // launch will take.
@@ -71,6 +75,9 @@ bool sMapSwapFingers = false;
 // Controls > Options > Map: flip either map rotate axis, as Prime 1's #225.
 bool sMapInvertX = false;
 bool sMapInvertY = false;
+bool sBallCam = false;
+int sBallCamSpeed = PortOverlay::kBallCamSpeedDefault;
+bool sWalkSpeedEnabled = true;
 int sWalkSpeed = PortOverlay::kWalkSpeedDefault;
 int sPowerBeamSpeed = PortOverlay::kPowerBeamSpeedDefault;
 int sScanSpeed = PortOverlay::kScanSpeedDefault;
@@ -84,6 +91,9 @@ int sComboBeamCost = PortOverlay::kComboBeamCostMax;
 int sComboMissileCost = PortOverlay::kComboMissileCostMax;
 int sBeamAmmoPerExpansion = PortOverlay::kBeamAmmoPerExpansionDefault;
 bool sMinimapTap = true;
+int sMapPickups = PortOverlay::kMapPickups_Off;
+bool sMapPickupKinds = false;
+bool sRevealMap = false;
 int sPromptGlyphs = 0;
 bool sIgtTimer = false;
 bool sOriginalExperience = false;
@@ -125,6 +135,7 @@ float sGyroSensitivityY = PortOverlay::kGyroSensitivityDefault;
 bool sResetAimBoth = false;
 bool sLockOnFreeAim = false;
 bool sHandOnCannon = true;
+PlayerOverride sPlayerSettings[PortOverlay::kSettingPlayers][PortOverlay::kPlayerSettingCount];
 bool sMenuStandardButtons = false;
 bool sRapidCharge = false;
 // `MP2_CARD_BACKUP`: copy the card's save file into save-backups before every card write (F1 >
@@ -146,6 +157,7 @@ bool sBallBars = false; // `ball_bars`: the morph ball view's narrowed viewport
 bool sDarkVisorFull = false;
 int sDarkVisorStatic = PortOverlay::kDarkVisorStaticMax;
 bool sInfiniteBeamAmmo = false; // Enhancements; saved, unlike the sInfiniteAmmo cheat
+bool sDarkWorldLightMusic = false; // `dark_world_light_music` (#36)
 int sHudOpacityEcho = PortOverlay::kHudOpacityVisor;
 int sHudOpacityDark = PortOverlay::kHudOpacityVisor;
 int sHudOpacityScan = PortOverlay::kHudOpacityVisor;
@@ -158,7 +170,7 @@ bool sAimCrosshair = true;
 // MP2's classic model does not resolve in this port, so `remastered` is the default here.
 int sCrosshairStyle = PortOverlay::kCrosshairStyle_Remastered;
 int sCrosshairSize = PortOverlay::kCrosshairSizeDefault;
-int sCrosshairOpacity = PortOverlay::kCrosshairOpacityMax;
+int sCrosshairOpacity = PortOverlay::kCrosshairOpacityDefault;
 bool sCrosshairCustomColor = false;
 float sCrosshairColor[3] = {1.f, 1.f, 1.f};
 // Arm cannon offset in metres along the camera's right, forward and up axes (`MP2_GUN_OFFSET`).
@@ -244,6 +256,7 @@ bool sNoDarkAetherDamage = false; // never saved, as sGodMode
 uint32_t sWorldId = 0;
 int sAreaId = -1;
 std::vector< SRoomEntry > sRooms;
+uint32_t sRoomsWorld = 0; // the asset id the entries were taken from, 0 before any world
 std::vector< SLayerEntry > sLayers;
 int sLayersArea = -1;
 std::atomic< int > sShowPage{-1};
@@ -260,7 +273,6 @@ namespace {
 
 bool sHudScaling = false;
 bool sReadEnv = false;
-uint32_t sRoomsWorld = 0; // the asset id the entries were taken from, 0 before any world
 bool sRoomsSplitLogged = false; // the Light/Dark count is logged once per world
 
 void ClearRooms() {
@@ -724,6 +736,20 @@ void SetSkipCinematics(bool skip) {
   Persist();
 }
 
+bool SeamlessPickups() {
+  ReadEnv();
+  if (OriginalExperience()) {
+    return false;
+  }
+  return EnvBool("MP2_SEAMLESS_PICKUPS", sSeamlessPickups);
+}
+
+void SetSeamlessPickups(bool seamless) {
+  ReadEnv();
+  sSeamlessPickups = seamless;
+  Persist();
+}
+
 // A kScreen_* setting: `show|skip|off` (or 0..2) in the variable wins over the saved value.
 static int EnvScreenMode(const char* name, int value) {
   const char* env = port::EnvString(name);
@@ -1021,6 +1047,14 @@ bool InfiniteBeamAmmo() {
   return EnvBool("MP2_INFINITE_BEAM_AMMO", sInfiniteBeamAmmo);
 }
 
+bool DarkWorldLightMusic() {
+  ReadEnv();
+  if (OriginalExperience()) {
+    return false;
+  }
+  return EnvBool("MP2_DARK_WORLD_LIGHT_MUSIC", sDarkWorldLightMusic);
+}
+
 bool InfiniteAmmo(unsigned kinds) {
   ReadEnv();
   const unsigned on = sInfiniteAmmo | (InfiniteBeamAmmo() ? kInfAmmoDark | kInfAmmoLight : 0u);
@@ -1054,6 +1088,53 @@ bool MinimapTap() {
 void SetMinimapTap(bool enabled) {
   ReadEnv();
   sMinimapTap = enabled;
+  Persist();
+}
+
+int MapPickups() {
+  ReadEnv();
+  if (OriginalExperience()) {
+    return kMapPickups_Off;
+  }
+  const char* env = port::EnvString("MP2_MAP_PICKUPS");
+  if (env != nullptr && std::strcmp(env, "off") == 0) {
+    return kMapPickups_Off;
+  }
+  if (env != nullptr && std::strcmp(env, "rooms") == 0) {
+    return kMapPickups_Rooms;
+  }
+  if (env != nullptr && std::strcmp(env, "all") == 0) {
+    return kMapPickups_All;
+  }
+  return EnvIntIn("MP2_MAP_PICKUPS", sMapPickups, kMapPickups_Off, kMapPickups_All);
+}
+
+void SetMapPickups(int mode) {
+  ReadEnv();
+  sMapPickups = std::clamp(mode, static_cast< int >(kMapPickups_Off),
+                           static_cast< int >(kMapPickups_All));
+  Persist();
+}
+
+bool MapPickupKinds() {
+  ReadEnv();
+  return EnvBool("MP2_MAP_PICKUP_KINDS", sMapPickupKinds);
+}
+
+void SetMapPickupKinds(bool enabled) {
+  ReadEnv();
+  sMapPickupKinds = enabled;
+  Persist();
+}
+
+bool RevealMap() {
+  ReadEnv();
+  return !OriginalExperience() && EnvBool("MP2_REVEAL_MAP", sRevealMap);
+}
+
+void SetRevealMap(bool enabled) {
+  ReadEnv();
+  sRevealMap = enabled;
   Persist();
 }
 
@@ -1101,9 +1182,22 @@ void SetMapInvertY(bool invert) {
   Persist();
 }
 
-int WalkSpeed() {
+bool BallCamControl() {
   ReadEnv();
   if (OriginalExperience()) {
+    return false;
+  }
+  return EnvBool("MP2_BALL_CAM", sBallCam);
+}
+
+int BallCamSpeed() {
+  ReadEnv();
+  return EnvIntIn("MP2_BALL_CAM_SPEED", sBallCamSpeed, kBallCamSpeedMin, kBallCamSpeedMax);
+}
+
+int WalkSpeed() {
+  ReadEnv();
+  if (OriginalExperience() || !WalkSpeedEnabled()) {
     return kWalkSpeedDefault;
   }
   return EnvIntIn("MP2_WALK_SPEED", sWalkSpeed, kWalkSpeedMin, kWalkSpeedMax);
@@ -1128,6 +1222,17 @@ bool ConsumeShowHintRequest() {
   const bool requested = sShowHintRequested;
   sShowHintRequested = false;
   return requested;
+}
+
+bool WalkSpeedEnabled() {
+  ReadEnv();
+  return EnvBool("MP2_WALK_SPEED_ENABLED", sWalkSpeedEnabled);
+}
+
+void SetWalkSpeedEnabled(bool enabled) {
+  ReadEnv();
+  sWalkSpeedEnabled = enabled;
+  Persist();
 }
 
 void SetWalkSpeed(int percent) {
@@ -1468,6 +1573,116 @@ void SetRapidCharge(bool enabled) {
   ReadEnv();
   sRapidCharge = enabled;
   Persist();
+}
+
+namespace {
+
+// Player 1-3's override of `key`, or null when it follows Player 1.
+const PlayerOverride* Override(int player, PlayerSetting key) {
+  if (player <= 0 || player >= kSettingPlayers || key < 0 || key >= kPlayerSettingCount) {
+    return nullptr;
+  }
+  const PlayerOverride& o = sPlayerSettings[player][key];
+  return o.set ? &o : nullptr;
+}
+
+bool PlayerBool(int player, PlayerSetting key, bool p1) {
+  const PlayerOverride* o = Override(player, key);
+  return o != nullptr ? o->value != 0.f : p1;
+}
+
+float PlayerFloat(int player, PlayerSetting key, float p1) {
+  const PlayerOverride* o = Override(player, key);
+  return o != nullptr ? o->value : p1;
+}
+
+} // namespace
+
+bool PlayerSettingSet(int player, PlayerSetting key) { return Override(player, key) != nullptr; }
+
+void SetPlayerSetting(int player, PlayerSetting key, float value) {
+  ReadEnv();
+  if (key < 0 || key >= kPlayerSettingCount || !std::isfinite(value)) {
+    return;
+  }
+  if (key == kPlayer_GyroMode) {
+    value = std::clamp(std::round(value), float(kGyroModeMin), float(kGyroModeMax));
+  } else if (key == kPlayer_GyroSensitivity || key == kPlayer_GyroSensitivityY) {
+    value = std::clamp(value, kGyroSensitivityMin, kGyroSensitivityMax);
+  } else {
+    value = value != 0.f ? 1.f : 0.f;
+  }
+  if (player <= 0) {
+    switch (key) {
+    case kPlayer_LockOnToggle: sLockOnToggle = value != 0.f; break;
+    case kPlayer_StickyCharge: sStickyCharge = value != 0.f; break;
+    case kPlayer_RapidCharge: sRapidCharge = value != 0.f; break;
+    case kPlayer_AutoAim: sAutoAim = value != 0.f; break;
+    case kPlayer_LockOnFreeAim: sLockOnFreeAim = value != 0.f; break;
+    case kPlayer_GyroAim: sGyroAim = value != 0.f; break;
+    case kPlayer_GyroMode: sGyroMode = int(value); break;
+    case kPlayer_GyroSensitivity: sGyroSensitivity = value; break;
+    case kPlayer_GyroSplit: sGyroSplit = value != 0.f; break;
+    case kPlayer_GyroSensitivityY: sGyroSensitivityY = value; break;
+    case kPlayerSettingCount: return;
+    }
+  } else if (player < kSettingPlayers) {
+    sPlayerSettings[player][key] = {value, true};
+  } else {
+    return;
+  }
+  Persist();
+}
+
+void ClearPlayerSetting(int player, PlayerSetting key) {
+  if (Override(player, key) == nullptr) {
+    return;
+  }
+  sPlayerSettings[player][key] = {};
+  Persist();
+}
+
+void ClearPlayerSettings(int player) {
+  if (player <= 0 || player >= kSettingPlayers) {
+    return;
+  }
+  for (PlayerOverride& o : sPlayerSettings[player]) {
+    o = {};
+  }
+  Persist();
+}
+
+bool LockOnToggle(int player) {
+  return !OriginalExperience() && PlayerBool(player, kPlayer_LockOnToggle, LockOnToggle());
+}
+
+bool StickyCharge(int player) {
+  return !OriginalExperience() && PlayerBool(player, kPlayer_StickyCharge, StickyCharge());
+}
+
+bool RapidCharge(int player) {
+  return !OriginalExperience() && PlayerBool(player, kPlayer_RapidCharge, RapidCharge());
+}
+
+bool AutoAim(int player) {
+  return OriginalExperience() || PlayerBool(player, kPlayer_AutoAim, AutoAim());
+}
+
+bool LockOnFreeAim(int player) { return PlayerBool(player, kPlayer_LockOnFreeAim, LockOnFreeAim()); }
+
+bool GyroAim(int player) { return PlayerBool(player, kPlayer_GyroAim, GyroAim()); }
+
+int GyroMode(int player) { return int(PlayerFloat(player, kPlayer_GyroMode, float(GyroMode()))); }
+
+float GyroSensitivity(int player) {
+  return PlayerFloat(player, kPlayer_GyroSensitivity, GyroSensitivity());
+}
+
+bool GyroSplit(int player) { return PlayerBool(player, kPlayer_GyroSplit, GyroSplit()); }
+
+float GyroSensitivityYEffective(int player) {
+  return GyroSplit(player) ? PlayerFloat(player, kPlayer_GyroSensitivityY, GyroSensitivityY())
+                           : GyroSensitivity(player);
 }
 
 bool CardBackup() {
@@ -1938,6 +2153,22 @@ int sCannonReflectionBlur = 70;
 int sCannonReflectionStrength = 60;
 int sReflectionRefresh = 3;
 int sReflectionResolution = 64;
+bool sBodyReflections = true;
+int sBodyReflectionBlur = 30;
+int sBodyReflectionStrength = 100;
+bool sWaterReflections = true;
+int sWaterReflectionBlur = 10;
+int sWaterReflectionStrength = 100;
+bool sBloom = false;
+int sBloomStrength = PortBloom::kStrengthDefault;
+int sBloomThreshold = PortBloom::kThresholdDefault;
+bool sActorShadows = false;
+int sActorShadowStrength = PortActorShadow::kStrengthDefault;
+bool sAmbientOcclusion = false;
+int sAoStrength = PortAo::kStrengthDefault;
+int sAoRadius = PortAo::kRadiusDefault;
+int sAoAngleBias = PortAo::kAngleBiasDefault;
+int sFacePbrStrength = 40;
 PortGraphicsBackend::EGraphicsBackend sGraphicsBackend = PortGraphicsBackend::kGraphicsBackend_Auto;
 PortGraphicsBackend::EGraphicsBackend sGraphicsBackendAtStart = PortGraphicsBackend::kGraphicsBackend_Auto;
 bool sOpenGles = false;
@@ -2060,6 +2291,87 @@ int ReflectionResolution() {
   ReadEnv();
   const int size = EnvIntIn("MP2_REFLECTION_RESOLUTION", sReflectionResolution, 32, 128);
   return size >= 128 ? 128 : size >= 64 ? 64 : 32;
+}
+
+bool BodyReflections() {
+  ReadEnv();
+  return EnvBool("MP2_BODY_REFLECTIONS", sBodyReflections);
+}
+
+int BodyReflectionBlur() {
+  ReadEnv();
+  return EnvIntIn("MP2_BODY_REFLECTION_BLUR", sBodyReflectionBlur, 0, 100);
+}
+
+int BodyReflectionStrength() {
+  ReadEnv();
+  return EnvIntIn("MP2_BODY_REFLECTION_STRENGTH", sBodyReflectionStrength, 0, 200);
+}
+
+bool WaterReflections() {
+  ReadEnv();
+  return EnvBool("MP2_WATER_REFLECTIONS", sWaterReflections);
+}
+
+int WaterReflectionBlur() {
+  ReadEnv();
+  return EnvIntIn("MP2_WATER_REFLECTION_BLUR", sWaterReflectionBlur, 0, 100);
+}
+
+int WaterReflectionStrength() {
+  ReadEnv();
+  return EnvIntIn("MP2_WATER_REFLECTION_STRENGTH", sWaterReflectionStrength, 0, 400);
+}
+
+bool Bloom() {
+  ReadEnv();
+  return EnvBool("MP2_BLOOM", sBloom);
+}
+
+int BloomStrength() {
+  ReadEnv();
+  return EnvIntIn("MP2_BLOOM_STRENGTH", sBloomStrength, PortBloom::kStrengthMin, PortBloom::kStrengthMax);
+}
+
+int BloomThreshold() {
+  ReadEnv();
+  return EnvIntIn("MP2_BLOOM_THRESHOLD", sBloomThreshold, PortBloom::kThresholdMin, PortBloom::kThresholdMax);
+}
+
+bool ActorShadows() {
+  ReadEnv();
+  return EnvBool("MP2_ACTOR_SHADOWS", sActorShadows);
+}
+
+int ActorShadowStrength() {
+  ReadEnv();
+  return EnvIntIn("MP2_ACTOR_SHADOW_STRENGTH", sActorShadowStrength, PortActorShadow::kStrengthMin,
+                  PortActorShadow::kStrengthMax);
+}
+
+bool AmbientOcclusion() {
+  ReadEnv();
+  return EnvBool("MP2_AMBIENT_OCCLUSION", sAmbientOcclusion);
+}
+
+int AoStrength() {
+  ReadEnv();
+  return EnvIntIn("MP2_AO_STRENGTH", sAoStrength, PortAo::kStrengthMin, PortAo::kStrengthMax);
+}
+
+int AoRadius() {
+  ReadEnv();
+  return EnvIntIn("MP2_AO_RADIUS", sAoRadius, PortAo::kRadiusMin, PortAo::kRadiusMax);
+}
+
+int AoAngleBias() {
+  ReadEnv();
+  return EnvIntIn("MP2_AO_ANGLE_BIAS", sAoAngleBias, PortAo::kAngleBiasMin, PortAo::kAngleBiasMax);
+}
+
+int FacePbrStrength() {
+  ReadEnv();
+  return EnvIntIn("MP2_FACE_PBR_STRENGTH", sFacePbrStrength, 0, 100);
 }
 
 bool OpenGles() {

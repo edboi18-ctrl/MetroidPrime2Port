@@ -371,7 +371,7 @@ void Frame() {
       sAppliedReflectionBlur = reflectionBlur;
       sAppliedReflectionStrength = reflectionStrength;
       // Blur 0..100% over the probe's levels 0..5 (Aurora's gfx::probe::MipCount is 6).
-      aurora_set_env_probe_look(static_cast< float >(reflectionBlur) * 0.05f,
+      aurora_set_env_probe_look(static_cast< float >(reflectionBlur) * PortOverlay::kReflectionLevelPerBlurPercent,
                                 static_cast< float >(reflectionStrength) / 100.f);
     }
     static int sAppliedPbrHighlight = -1;

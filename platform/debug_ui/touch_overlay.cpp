@@ -80,6 +80,8 @@ constexpr int kBeamShift = -2;
 constexpr int kTurboFire = -3;
 // A button added in the layout editor: its action is a touch: binding. Sends no GameCube button.
 constexpr int kCustomButton = -4;
+// The pointer menus' back arrow: GameCube B, whatever the remaps do with the overlay's buttons.
+constexpr int kMenuBack = -5;
 // Axis-held controls are tracked with ids above this, to share one press map.
 constexpr int kAxisIdBase = 100;
 
@@ -406,10 +408,12 @@ bool sAnyLeft = false, sAnyRight = false, sAnyAim = false, sAnyPan = false, sAny
 // The floating stick: where the thumb came down, and whether the held one floats.
 float sFloatX = 0.f, sFloatY = 0.f;
 bool sLeftFloated = false;
-// The open wheel (the kWheel target's finger).
+// The open wheel (the kWheel target's finger), and the control that opened it: a stock wheel button
+// or an added one.
 SDL_FingerID sWheelPointer = 0;
 bool sWheelOpen = false;
 float sWheelCx = 0.f, sWheelCy = 0.f;
+int sWheelControl = -1;
 
 // The HUD's minimap rect (fractions, then 1 when drawn there), and the map button beside the eye.
 float sMinimapRect[5] = {};
@@ -539,6 +543,10 @@ const std::vector< std::string >& ButtonActions() {
     const PortInput::ActionInfo& info = PortInput::Info(a);
     list.emplace_back(info.key);
     list.emplace_back(info.label);
+    if (a == PortInput::Action::VisorPrev) {
+      list.insert(list.end(), std::begin(PortTouch::kTouchWheelActions),
+                  std::end(PortTouch::kTouchWheelActions));
+    }
   }
   for (const PortInput::CustomActionDef& def : PortInputDevices::UserBindings()->customActions) {
     const PortInput::Action a = PortInput::CustomAction(def.id);
@@ -802,6 +810,17 @@ void ResetControl(int control) {
 }
 
 bool Removed(int control) { return control >= 0 && control < kControls && sOvRemoved[control]; }
+
+// The wheel an added button opens (0 Visor, 1 Beam), or -1 for any other control.
+int CustomWheel(int control) {
+  if (control < kCCustom || control >= kAllControls) {
+    return -1;
+  }
+  const std::string& key = sCustomAction[control - kCCustom];
+  return key == PortTouch::kTouchWheelActions[0]   ? 0
+         : key == PortTouch::kTouchWheelActions[2] ? 1
+                                                   : -1;
+}
 
 // --- pages, labels, what is shown -------------------------------------------
 
@@ -1466,6 +1485,8 @@ void PressControl(int id) {
       PortTouch::SetBeamShift(true);
     } else if (id == kTurboFire) {
       PortTouch::SetTurboFire(true);
+    } else if (id == kMenuBack) {
+      PortTouch::SetMenuBack(true);
     } else if (id >= kAxisIdBase) {
       SetAxis(id - kAxisIdBase, 1.f);
     } else {
@@ -1490,6 +1511,8 @@ void ReleaseControl(int id) {
       PortTouch::SetBeamShift(false);
     } else if (id == kTurboFire) {
       PortTouch::SetTurboFire(false);
+    } else if (id == kMenuBack) {
+      PortTouch::SetMenuBack(false);
     } else if (id >= kAxisIdBase) {
       // Triggers are axes with the minimum as rest: releasing with 0 left them half pressed.
       SetAxis(id - kAxisIdBase, -1.f);
@@ -2236,6 +2259,32 @@ bool MapButtonState(float width, float height) {
   return true;
 }
 
+// A finger down on a wheel button (stock or added, centred on cx, cy) opens its wheel there; not
+// while one is open (the open map's overlay is handled before this). The touch is swallowed either
+// way.
+void OpenWheel(SDL_FingerID id, int wheel, int control, float x, float y, float cx, float cy) {
+  if (sWheelOpen) {
+    return;
+  }
+  TouchTarget target;
+  target.type = kWheel;
+  target.id = wheel;
+  target.x = target.startX = x;
+  target.y = target.startY = y;
+  target.startMs = SDL_GetTicks();
+  // A moved button must still open its wheel on screen.
+  const float reach = Dp(kWheelRadiusDp);
+  sWheelCx = std::max(reach, std::min(sW - reach, cx));
+  sWheelCy = std::max(reach, std::min(sH - reach, cy));
+  sWheelPointer = id;
+  sWheelControl = control;
+  sWheelOpen = true;
+  // Wheel 1 is Beam, 0 Visor; the game's radial menu takes over when it will, else the wheel drawn
+  // by DrawWheel.
+  BeginRadial(target, wheel == 1 ? int(PortRadial::kBeam) : int(PortRadial::kVisor), id);
+  sTargets[id] = target;
+}
+
 // Touch-down routing, first match wins: pills, added buttons, face buttons, the wheel buttons (a
 // hit swallows the touch even when no wheel opens), the D-pad, the HUD minimap, the left stick,
 // then the open map's pan (nothing else applies while the map is open), the classic C-stick zone,
@@ -2271,10 +2320,19 @@ void AssignPointer(SDL_FingerID id, float x, float y) {
     if (sCustomAction[control - kCCustom].empty() || CtrlHidden(control)) {
       continue;
     }
+    // An unusable wheel button is hidden and lets the touch through, like the stock ones.
+    const int wheel = CustomWheel(control);
+    if (wheel >= 0 && (uint32_t(PortTouch::WheelState()) & kWheelValidBit) == 0) {
+      continue;
+    }
     const FaceGeo geo = CustomGeometry(control, width, height);
     const float dx = x - geo.x, dy = y - geo.y;
     if (dx * dx + dy * dy > geo.radius * geo.radius) {
       continue;
+    }
+    if (wheel >= 0) {
+      OpenWheel(id, wheel, control, x, y, geo.x, geo.y);
+      return;
     }
     TouchTarget target;
     target.type = kButton;
@@ -2342,25 +2400,8 @@ void AssignPointer(SDL_FingerID id, float x, float y) {
   if (sWheels && (uint32_t(PortTouch::WheelState()) & kWheelValidBit) != 0) {
     const int wheel = WheelButtonAt(x, y, width, height);
     if (wheel != -1) {
-      // Not while the map is open (the overlay is handled before this).
-      if (!sWheelOpen && !false) {
-        TouchTarget target;
-        target.type = kWheel;
-        target.id = wheel;
-        target.x = target.startX = x;
-        target.y = target.startY = y;
-        target.startMs = SDL_GetTicks();
-        // A moved button must still open its wheel on screen.
-        const float reach = Dp(kWheelRadiusDp);
-        sWheelCx = std::max(reach, std::min(width - reach, WheelButtonX(wheel, width, height)));
-        sWheelCy = std::max(reach, std::min(height - reach, WheelButtonY(wheel, height)));
-        sWheelPointer = id;
-        sWheelOpen = true;
-        // Wheel 1 is Beam, 0 Visor; the game's radial menu takes over when it will, else the
-        // wheel drawn below.
-        BeginRadial(target, wheel == 1 ? int(PortRadial::kBeam) : int(PortRadial::kVisor), id);
-        sTargets[id] = target;
-      }
+      OpenWheel(id, wheel, kCVisor + wheel, x, y, WheelButtonX(wheel, width, height),
+                WheelButtonY(wheel, height));
       return;
     }
   }
@@ -3205,7 +3246,7 @@ void DrawEye(ImDrawList* dl, const Rect& bounds) {
 void DrawBackButton(ImDrawList* dl) {
   const float cx = sBackButtonRect.Cx(), cy = sBackButtonRect.Cy();
   const float radius = sBackButtonRect.Width() * 0.5f;
-  const ImU32 fill = Argb(sHeld.find(kBtnEast) != sHeld.end() ? 0xCC3A5A70 : 0x99081218);
+  const ImU32 fill = Argb(sHeld.find(kMenuBack) != sHeld.end() ? 0xCC3A5A70 : 0x99081218);
   const ImU32 stroke = Argb(0xBBFFFFFF);
   dl->AddCircleFilled(ImVec2(cx, cy), radius, fill, 32);
   dl->AddCircle(ImVec2(cx, cy), radius, stroke, 32, Dp(2));
@@ -3253,8 +3294,7 @@ void DrawWheelButtons(ImDrawList* dl, float width, float height) {
     const float cx = WheelButtonX(wheel, width, height);
     const float cy = WheelButtonY(wheel, height);
     const float radius = WheelButtonRadius(wheel, height);
-    const bool active = sWheelOpen && sTargets.count(sWheelPointer) != 0 &&
-                        sTargets.at(sWheelPointer).id == wheel;
+    const bool active = sWheelOpen && sWheelControl == kCVisor + wheel;
     dl->AddCircleFilled(ImVec2(cx, cy), radius,
                         Argb(active ? 0xCC48C8E8 : 0x77081218), 32);
     dl->AddCircle(ImVec2(cx, cy), radius, Argb(active ? 0xFFE1F8FF : 0xBBFFFFFF), 32, Dp(2));
@@ -3393,11 +3433,17 @@ std::string ShortLabel(const std::string& key) {
   return label;
 }
 
-// Round buttons with the game's icon for a beam or visor, else a short label.
+// Round buttons with the game's icon for a beam or visor, else a short label. A wheel button wears
+// its current item, and hides like the stock ones while the wheels are unusable.
 void DrawCustomButtons(ImDrawList* dl, float width, float height) {
+  const uint32_t mask = uint32_t(PortTouch::WheelState());
   for (int control = kCCustom; control < kAllControls; ++control) {
     const std::string& key = sCustomAction[control - kCCustom];
     if (key.empty()) {
+      continue;
+    }
+    const int wheel = CustomWheel(control);
+    if (wheel >= 0 && (mask & kWheelValidBit) == 0 && !sEditing) {
       continue;
     }
     ControlLayer layer(control);
@@ -3405,11 +3451,20 @@ void DrawCustomButtons(ImDrawList* dl, float width, float height) {
       continue;
     }
     const FaceGeo geo = CustomGeometry(control, width, height);
-    const bool active = sTouchHeld[control] > 0;
+    const bool active = sTouchHeld[control] > 0 || (sWheelOpen && sWheelControl == control);
     dl->AddCircleFilled(ImVec2(geo.x, geo.y), geo.radius,
                         Argb(active ? 0xCC48C8E8 : 0x77081218), 40);
     dl->AddCircle(ImVec2(geo.x, geo.y), geo.radius,
                   Argb(active ? 0xFFE1F8FF : 0xBBFFFFFF), 40, Dp(2));
+    if (wheel >= 0) {
+      RefreshWheelIcons();
+      const int current = wheel == 0 ? int((mask >> 8) & 3) : int((mask >> 10) & 3);
+      if (!DrawWheelIcon(dl, wheel, current, geo.x, geo.y, geo.radius * 1.3f)) {
+        TextFitted(dl, kWheelButtonLabels[wheel], geo.x, geo.y, Dp(14) * sOvScale[control],
+                   geo.radius * 1.7f, Argb(0xFFFFFFFF));
+      }
+      continue;
+    }
     const int icon = ActionIcon(key);
     if (icon >= 0) {
       RefreshWheelIcons();
@@ -3598,6 +3653,49 @@ void DrawControlButton(ImDrawList* dl, const ControlButton& button, float width,
   DrawButton(dl, button, width, height);
 }
 
+// The retired wheels setting put the stock Visor and Beam buttons in the classic and twin layouts in
+// place of the D-pad. Once, in such a layout, they become added wheel buttons where they were drawn
+// and the D-pad goes, so the layout plays as before; the stock pair goes too, or the default layout
+// (which shares the saved layout) would show both. The Java view does the same (MP1 5ef1edfe1).
+void MigrateLegacyWheels(float width, float height) {
+  if (sEditing || !PortTouch::WheelsEnabled() || width <= 0.f || height <= 0.f) {
+    return;
+  }
+  if (!sWheels) {
+    const float u = LayoutU(height);
+    int slot = 0;
+    for (int wheel = 0; wheel < 2; ++wheel) {
+      const int stock = kCVisor + wheel;
+      if (Removed(stock)) {
+        continue;
+      }
+      while (slot < kCustomSlots && !sCustomAction[slot].empty()) {
+        ++slot;
+      }
+      if (slot == kCustomSlots) {
+        break;
+      }
+      const int control = kCCustom + slot;
+      sCustomAction[slot] = PortTouch::kTouchWheelActions[wheel * 2];
+      sCustomPage[slot] = kPagePlay;
+      sOvDx[control] = std::clamp((WheelButtonX(wheel, width, height) - width * 0.5f) / u,
+                                  -kMaxOffset, kMaxOffset);
+      sOvDy[control] =
+          std::clamp((WheelButtonY(wheel, height) - height * 0.5f) / u, -kMaxOffset, kMaxOffset);
+      sOvScale[control] =
+          std::clamp(WheelButtonRadius(wheel, height) / (kCustomRadius * u), kMinScale, kMaxScale);
+      sOvAlpha[control] = sOvAlpha[stock];
+      sOvHidden[control] = sOvHidden[stock];
+      ResetControl(stock);
+      sOvRemoved[stock] = true;
+    }
+    sOvRemoved[kCDpad] = true;
+    sLayoutText = SerializeLayout();
+    PortTouch::SetLayout(sLayoutText);
+  }
+  PortTouch::SetWheelsEnabled(false);
+}
+
 // The gameplay controls: everything but the pointer menu's own buttons, which are drawn before this
 // (outside the opacity).
 void DrawControls(ImDrawList* dl, float width, float height, bool classic) {
@@ -3623,9 +3721,10 @@ void DrawControls(ImDrawList* dl, float width, float height, bool classic) {
   }
   sCStick = classic || sTwin;
   sAim = !classic || PortTouch::AimEnabled();
-  // The wheels are the default layout's only beam and visor control; classic and twin stick have
-  // the D-pad (twin: Beam held + D-pad) and the setting.
-  sWheels = (!classic && !sTwin) || PortTouch::WheelsEnabled();
+  // The stock wheels are the default layout's beam and visor control; classic and twin stick have
+  // the D-pad (twin: Beam held + D-pad), and either takes wheels as added buttons.
+  sWheels = !classic && !sTwin;
+  MigrateLegacyWheels(width, height);
   sVisorTapScan = PortTouch::VisorTapScan();
   sMapTap = PortMinimap::Enabled();
   if (!sEditing) {
@@ -3707,7 +3806,7 @@ void DrawControls(ImDrawList* dl, float width, float height, bool classic) {
     }
   }
   DrawCustomButtons(dl, width, height);
-  if (sWheels && sWheelOpen) {
+  if (sWheelOpen) {
     DrawWheel(dl);
   }
   if (sEditing) {
@@ -3898,6 +3997,17 @@ bool TouchDown(SDL_FingerID id, float x, float y) {
   }
   // In a pointer menu every finger but one on the back or cog button is the game's.
   const bool menu = !overlayVisible && PortPointer::ScreenActive();
+  if (menu && sControlsOn && (sAutoHidden || sHidden)) {
+    // A touch brings the back and cog buttons back here too; it stays the game's (a map pan or
+    // room tap), except over where those buttons now show, where it is not also a press.
+    sAutoHidden = false;
+    PortTouch::TakePhysicalInput();
+    SetHidden(false);
+    SetTouchDevice(sTwin);
+    if (OnBackButton(x, y) || OnCogButton(x, y)) {
+      return true;
+    }
+  }
   const bool toGame =
       overlayVisible || (menu && !OnBackButton(x, y) && !OnCogButton(x, y));
   if (toGame) {
@@ -3925,7 +4035,7 @@ bool TouchDown(SDL_FingerID id, float x, float y) {
   SetTouchDevice(sTwin);
   if (menu) {
     // Only the back and cog buttons get here (toGame took the rest).
-    const int target = OnCogButton(x, y) ? kToggleDebugOverlay : kBtnEast;
+    const int target = OnCogButton(x, y) ? kToggleDebugOverlay : kMenuBack;
     TouchTarget t;
     t.type = kButton;
     t.id = target;

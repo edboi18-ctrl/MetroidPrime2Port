@@ -4,6 +4,9 @@
 
 #include "debug_ui_internal.h"
 
+#include "port_actor_shadow_rules.h"
+#include "port_ao_rules.h"
+#include "port_bloom_rules.h"
 #include "port_gpu_driver.h"
 #include "port_input_remap_ui.h"
 #include "port_overlay.h"
@@ -176,7 +179,8 @@ void DrawVideoDisplay() {
   if (sAimCrosshair) {
     Changed(ImGui::SliderInt("Crosshair opacity", &sCrosshairOpacity, PortOverlay::kCrosshairOpacityMin,
                              PortOverlay::kCrosshairOpacityMax, "%d%%"));
-    ImGui::SetItemTooltip("The crosshair in the middle of the screen (mouse aim, twin stick, touch).");
+    ImGui::SetItemTooltip("The crosshair in the middle of the screen (mouse aim, twin stick, touch).\n"
+                          "100%% is the game's own; above it brightens the dim GameCube crosshair.");
     int style = sCrosshairStyle;
     static const char* const kStyles[] = {"Classic", "Remastered", "GameCube"};
     if (ImGui::Combo("Crosshair style", &style, kStyles, 3)) {
@@ -322,6 +326,33 @@ void DrawVideoQuality() {
     }
     ImGui::SetItemTooltip("Each side of the reflection, in game pixels: lower is cheaper on the GPU; a\n"
                           "blurred, matte reflection loses little.");
+    // Read each frame by CPlayer::Render and CScriptPlayerActor::Render (CCubeMaterial::CPortEnvProbeScope).
+    Changed(ImGui::Checkbox("Samus & morph ball reflections", &sBodyReflections));
+    ImGui::SetItemTooltip("Samus's suit and the morph ball reflect the room around them where the game\n"
+                          "gave them a shine (in third person, cutscenes and the morph ball); the\n"
+                          "reflection is captured around Samus while she is the one on screen.");
+    if (sBodyReflections) {
+      Changed(ImGui::SliderInt("Samus & morph ball blur", &sBodyReflectionBlur, 0, 100, "%d%%",
+                               ImGuiSliderFlags_AlwaysClamp));
+      ImGui::SetItemTooltip("0%% is a sharp mirror of the room; higher blurs it towards a soft sheen.");
+      Changed(ImGui::SliderInt("Samus & morph ball strength", &sBodyReflectionStrength, 0, 200, "%d%%",
+                               ImGuiSliderFlags_AlwaysClamp));
+      ImGui::SetItemTooltip("How bright Samus's and the morph ball's reflections are; 100%% is the room as\n"
+                            "captured.");
+    }
+    // Read each frame by CFluidPlaneCPU::RenderSetup.
+    Changed(ImGui::Checkbox("Water reflections", &sWaterReflections));
+    ImGui::SetItemTooltip("Water surfaces reflect the room around them: faint looking straight down,\n"
+                          "a mirror at a low angle, as real water does (Fresnel). Water without a\n"
+                          "reflection of its own gets one. Not from under the surface.");
+    if (sWaterReflections) {
+      Changed(ImGui::SliderInt("Water blur", &sWaterReflectionBlur, 0, 100, "%d%%", ImGuiSliderFlags_AlwaysClamp));
+      ImGui::SetItemTooltip("0%% is a still mirror; higher softens the reflection, as a rippled surface would.");
+      Changed(ImGui::SliderInt("Water strength", &sWaterReflectionStrength, 0, 400, "%d%%",
+                               ImGuiSliderFlags_AlwaysClamp));
+      ImGui::SetItemTooltip("How much of the surface the reflection covers. 100%% is real water's share (its\n"
+                            "Fresnel); higher turns it towards a mirror sooner, up to the whole surface.");
+    }
   }
   if (sPbrMaps) {
     // Applied by PortVideo::Frame through aurora_set_pbr_highlight, on change.
@@ -329,6 +360,56 @@ void DrawVideoQuality() {
                              ImGuiSliderFlags_AlwaysClamp));
     ImGui::SetItemTooltip("How bright the PBR maps' highlights are. 100%% is as computed; each light's\n"
                           "highlight is already held to what the game's lighting allows.");
+    // Read each frame by CSamusFaceReflection::Draw.
+    Changed(ImGui::SliderInt("Visor face PBR strength", &sFacePbrStrength, 0, 100, "%d%%",
+                             ImGuiSliderFlags_AlwaysClamp));
+    ImGui::SetItemTooltip("How much of the PBR maps' look Samus's face in the visor takes when a charge shot\n"
+                          "or a missile lights it up: lower is softer and closer to the original face,\n"
+                          "0%% the original's lighting.");
+  }
+  // Read each frame by CStateManager::DrawWorld.
+  Changed(ImGui::Checkbox("Bloom", &sBloom));
+  ImGui::SetItemTooltip("Bright lights and highlights glow into the picture around them, as a camera\n"
+                        "sees them: drawn over the world before the visor and the HUD, so the HUD\n"
+                        "stays sharp. Not in the Dark and Echo visors, which draw their own picture.\n"
+                        "Turn off a ReShade bloom (such as SOLARIS) with it, or both add up.");
+  if (sBloom) {
+    Changed(ImGui::SliderInt("Bloom strength", &sBloomStrength, PortBloom::kStrengthMin, PortBloom::kStrengthMax,
+                             "%d%%", ImGuiSliderFlags_AlwaysClamp));
+    ImGui::SetItemTooltip("How much the glow adds; 0%% adds none.");
+    Changed(ImGui::SliderInt("Bloom threshold", &sBloomThreshold, PortBloom::kThresholdMin,
+                             PortBloom::kThresholdMax, "%d%%", ImGuiSliderFlags_AlwaysClamp));
+    ImGui::SetItemTooltip("How bright a pixel must be drawn (of white) to glow: lower makes more of the\n"
+                          "picture glow, higher only the lights.");
+  }
+  // Read each frame by CSimpleShadow::PortRenderSilhouette.
+  Changed(ImGui::Checkbox("Actor shadows", &sActorShadows));
+  ImGui::SetItemTooltip("Enemies and objects cast their own shape onto the floor below them, moving with\n"
+                        "their animation, where the original draws a round blob. Up to 16 a frame; the\n"
+                        "rest keep the blob.");
+  if (sActorShadows) {
+    Changed(ImGui::SliderInt("Actor shadow strength", &sActorShadowStrength, PortActorShadow::kStrengthMin,
+                             PortActorShadow::kStrengthMax, "%d%%", ImGuiSliderFlags_AlwaysClamp));
+    ImGui::SetItemTooltip("How dark the actor shadows are.");
+  }
+  // Read each frame by CStateManager::DrawWorld.
+  Changed(ImGui::Checkbox("Ambient occlusion", &sAmbientOcclusion));
+  ImGui::SetItemTooltip("Darkens creases, corners and the ground around objects, where less of the room's\n"
+                        "light reaches, from the depth buffer. Drawn before the arm cannon, the visor and the\n"
+                        "HUD, so they stay clean, and with any anti-aliasing or resolution. Turn off a ReShade\n"
+                        "AO (such as LSAO or MXAO) with it, or both darken.");
+  if (sAmbientOcclusion) {
+    Changed(ImGui::SliderInt("Ambient occlusion strength", &sAoStrength, PortAo::kStrengthMin, PortAo::kStrengthMax,
+                             "%d%%", ImGuiSliderFlags_AlwaysClamp));
+    ImGui::SetItemTooltip("How dark the occlusion gets; 0%% is none.");
+    Changed(ImGui::SliderInt("Ambient occlusion radius", &sAoRadius, PortAo::kRadiusMin, PortAo::kRadiusMax, "%d%%",
+                             ImGuiSliderFlags_AlwaysClamp));
+    ImGui::SetItemTooltip("How far around a point geometry darkens it: 100%% is about a metre.");
+    Changed(ImGui::SliderInt("Ambient occlusion angle bias", &sAoAngleBias, PortAo::kAngleBiasMin,
+                             PortAo::kAngleBiasMax, "%d%%", ImGuiSliderFlags_AlwaysClamp));
+    ImGui::SetItemTooltip("How steeply something must rise above a surface to darken it. Higher ignores the\n"
+                          "shallow folds between a room's flat polygons (dark lines along their edges);\n"
+                          "lower darkens gentler creases too.");
   }
   // Applied by ApplyRenderScale from Draw, through PortVideo::DrawScale (dynamic resolution's while
   // it has lowered the scale).

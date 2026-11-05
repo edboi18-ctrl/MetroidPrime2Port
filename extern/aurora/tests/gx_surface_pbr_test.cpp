@@ -96,6 +96,96 @@ TEST(GxSurfacePbr, EnvironmentStageReadsTheProbe) {
   EXPECT_EQ(source.find("pbrs_"), std::string::npos);
 }
 
+// MP2's water (CFluidPlaneCPU::RenderSetup), unlit: C1 = colour map + base colour; PREV = gloss x K0;
+// PREV = gloss x PREV x 2; PREV = env x PREV + C1, its texture coordinates from the position (a flat
+// planar map, no normal), and no lit channel or per-pixel lights.
+ShaderConfig water_config() {
+  auto config = base_config(4);
+  set_stage(config.tevStages[0], GX_CC_ZERO, GX_CC_TEXC, GX_CC_ONE, GX_CC_KONST, GX_TEVREG1, 0);
+  set_stage(config.tevStages[1], GX_CC_ZERO, GX_CC_TEXC, GX_CC_KONST, GX_CC_ZERO, GX_TEVPREV, 1);
+  set_stage(config.tevStages[2], GX_CC_ZERO, GX_CC_TEXC, GX_CC_CPREV, GX_CC_ZERO, GX_TEVPREV, 1);
+  set_stage(config.tevStages[3], GX_CC_ZERO, GX_CC_TEXC, GX_CC_CPREV, GX_CC_C1, GX_TEVPREV, 2);
+  for (auto& stage : config.tevStages) {
+    stage.channelId = GX_COLOR_NULL;
+  }
+  for (u32 i = 0; i < 3; ++i) {
+    config.tcgs[i].src = GX_TG_POS;
+    config.tcgs[i].type = GX_TG_MTX2x4;
+  }
+  config.colorChannels[GX_COLOR0] = {};
+  config.perPixelLight = 0;
+  config.attrs[GX_VA_NRM] = {};
+  return config;
+}
+
+// GXPortSetWaterReflection: the env stage's painted sample gives way, and the probe off the water's facet
+// is blended over the finished water by water's Fresnel (alpha corrected), with no lit channel, normal
+// attribute or per-pixel lights.
+TEST(GxSurfacePbr, WaterStageReflectsTheProbe) {
+  auto config = water_config();
+  apply_port_surface_flags(config, 0, false, 4);
+  EXPECT_EQ(config.pbrKind, kPortWaterBit | 4);
+  EXPECT_EQ(port_water_stage(config), 3);
+  // Neither of the other modes reads the low bits as theirs.
+  EXPECT_EQ(port_surface_pbr_stage(config), -1);
+  EXPECT_EQ(port_env_probe_stages(config), 0u);
+  // The water keeps its own lighting: no per-pixel lights forced on.
+  EXPECT_FALSE(wants_per_pixel_light(config));
+  EXPECT_EQ(config.perPixelLight, 0);
+  const auto info = build_shader_info(config);
+  EXPECT_TRUE(info.usesSurfacePbr);
+  const std::string source = build_shader_source(config);
+  EXPECT_NE(source.find("TEV stage 3's painted reflection gives way to the live probe"), std::string::npos) << source;
+  EXPECT_NE(source.find("sampled3 = vec4f(vec3f(0.0), sampled3.a);"), std::string::npos);
+  EXPECT_NE(source.find("the live probe reflected off the water, blended over it by Fresnel"), std::string::npos);
+  EXPECT_NE(source.find("pw_pos: vec3f,"), std::string::npos);
+  EXPECT_NE(source.find("out.pw_pos = mv_pos;"), std::string::npos);
+  EXPECT_NE(source.find("let pw_dx = dpdx(in.pw_pos);"), std::string::npos);
+  EXPECT_NE(source.find("var pbr_cube: texture_cube<f32>;"), std::string::npos);
+  EXPECT_NE(source.find("let pw_f = 0.0204 + 0.9796 * pow(1.0 - pw_cos, 5.0);"), std::string::npos);
+  EXPECT_NE(source.find("let pw_a2 = pw_a + pw_fe * (1.0 - pw_a);"), std::string::npos);
+  EXPECT_NE(source.find("prev = vec4f((pw_rc * pw_fe + clamp(prev.rgb, vec3f(0.0), vec3f(1.0)) * (pw_a * (1.0 - pw_fe))) /"),
+            std::string::npos);
+  // The facet normal is taken before anything branches, the sample cleared before the stages run, and
+  // the reflection blended once the last stage has run.
+  EXPECT_LT(source.find("let pw_dx = dpdx(in.pw_pos);"), source.find("// TEV stage 0"));
+  EXPECT_LT(source.find("sampled3 = vec4f(vec3f(0.0), sampled3.a);"), source.find("// TEV stage 0"));
+  EXPECT_GT(source.find("let pw_a2 = pw_a + pw_fe * (1.0 - pw_a);"), source.find("// TEV stage 3"));
+  EXPECT_EQ(source.find("pp_nrm"), std::string::npos);
+  EXPECT_EQ(source.find("pbrs_"), std::string::npos);
+}
+
+TEST(GxSurfacePbr, WaterStageRefusesStagesWithoutTheirTexture) {
+  {
+    // A stage that doesn't read its texture's colour has no sample to replace.
+    auto config = water_config();
+    set_stage(config.tevStages[3], GX_CC_ZERO, GX_CC_CPREV, GX_CC_ONE, GX_CC_C1, GX_TEVPREV, 2);
+    apply_port_surface_flags(config, 0, false, 4);
+    EXPECT_EQ(config.pbrKind, 0);
+  }
+  {
+    // A stage past the draw's last.
+    auto config = water_config();
+    apply_port_surface_flags(config, 0, false, 9);
+    EXPECT_EQ(config.pbrKind, 0);
+  }
+  {
+    // GXSetPBR's draws are left alone.
+    auto config = water_config();
+    config.pbr = 1;
+    apply_port_surface_flags(config, 0, false, 4);
+    EXPECT_EQ(config.pbrKind, 0);
+    EXPECT_EQ(port_water_stage(config), -1);
+  }
+  {
+    // Off: as before.
+    auto config = water_config();
+    apply_port_surface_flags(config, 0, false, 0);
+    EXPECT_EQ(config.pbrKind, 0);
+    EXPECT_EQ(build_shader_source(config).find("pw_pos"), std::string::npos);
+  }
+}
+
 // populate_pipeline_config's step: the flags as a draw sets them (GXPortSetEnvProbe on), on a
 // config filled as populate fills it. The probe finds its stages by their texgen, so a config
 // whose texgens aren't filled yet gets no probe (populate once ran it before copying them, and
@@ -209,6 +299,8 @@ TEST(GxSurfacePbr, RoomDiffuseStageIsRelit) {
   EXPECT_NE(source.find("let pbrs_rast = (ubuf.cc0_mat * clamp(pbrs_lighting"), std::string::npos);
   EXPECT_NE(source.find("var diff = max(0.0, dot(ldir, pbrs_n));"), std::string::npos);
   EXPECT_NE(source.find("prev = vec4f(clamp(pbrs_lit, vec3f(0.0), vec3f(1.0)), prev.a);"), std::string::npos);
+  // GXPortSetSurfacePBRStrength: the result fades towards the stage's own, L x base.
+  EXPECT_NE(source.find("* pbrs_base, pbrs_pbr, clamp(ubuf.surface_pbr.w, 0.0, 1.0));"), std::string::npos);
   // The highlights: each light feeds at most 1.0, all of them together at most 1.0 (GX's clamped
   // sum), scaled by aurora_set_pbr_highlight through the surface_pbr uniform.
   EXPECT_NE(source.find("surface_pbr: vec4f,"), std::string::npos);

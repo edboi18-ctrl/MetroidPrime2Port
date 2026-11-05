@@ -382,6 +382,18 @@ extern "C" {
 // Port extension: environment-mapped stages of the following draws read the live probe
 // (GXPortSetEnvProbe). Payload: u8 on.
 #define GX_AURORA_PORT_ENV_PROBE 0x0072
+// Port extension: screen-space ambient occlusion over the EFB so far (GXPortAmbientOcclusion). Payload:
+// 16 f32 words (gfx/ssao.hpp's Params).
+#define GX_AURORA_PORT_AMBIENT_OCCLUSION 0x0073
+// Port extension: the probe level and strength the following draws' environment stages read
+// (GXPortSetEnvProbeLook). Payload: f32 level, f32 strength (below 0: aurora_set_env_probe_look's).
+#define GX_AURORA_PORT_ENV_PROBE_LOOK 0x0074
+// Port extension: the following draws are water, their TEV stage's painted reflection giving way to the
+// live probe blended over them (GXPortSetWaterReflection). Payload: u8 stage + 1, 0 off.
+#define GX_AURORA_PORT_WATER_REFLECTION 0x0075
+// Port extension: how much of the PBR maps' lighting the following draws take (GXPortSetSurfacePBRStrength).
+// Payload: f32 strength.
+#define GX_AURORA_PORT_SURFACE_PBR_STRENGTH 0x0076
 
 #define GX2_SET_POLYGON_OFFSET 0x1000
 

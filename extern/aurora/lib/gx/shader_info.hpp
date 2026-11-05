@@ -14,9 +14,12 @@ int port_surface_pbr_stage(const ShaderConfig& config) noexcept;
 // normal (GX_TG_NRM through a matrix: an environment map), which sample the live probe instead.
 // 0 when the bit isn't set, or the draw can't (GXSetPBR's, unlit channel 0, vertex lighting).
 u32 port_env_probe_stages(const ShaderConfig& config) noexcept;
+// GXPortSetWaterReflection: the TEV stage whose texture sample becomes the live probe reflected off
+// the water, or -1.
+int port_water_stage(const ShaderConfig& config) noexcept;
 // GXPortSetSurfacePBR (surfacePbr: the stage + 1, 0 off) and GXPortSetEnvProbe on a config whose
 // TEV stages, swap table, colour channels and texgens are already filled, with pbr 0: pbrKind
 // takes the stage + 1 and the probe bit, each kept only when it applies, so a draw they can't
 // change keeps the config, and the pipeline, it had; perPixelLight is set while either is.
-void apply_port_surface_flags(ShaderConfig& config, u8 surfacePbr, bool envProbe) noexcept;
+void apply_port_surface_flags(ShaderConfig& config, u8 surfacePbr, bool envProbe, u8 waterReflect = 0) noexcept;
 }; // namespace aurora::gx

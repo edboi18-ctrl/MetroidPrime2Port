@@ -223,67 +223,8 @@ std::string color_arg_reg(GXTevColorArg arg, size_t stageIdx, const ShaderConfig
     return "vec3f(1.0)";
   case GX_CC_HALF:
     return "vec3f(0.5)";
-  case GX_CC_KONST: {
-    switch (stage.kcSel) {
-      DEFAULT_FATAL("invalid kcSel {}", underlying(stage.kcSel));
-    case GX_TEV_KCSEL_8_8:
-      return "vec3f(1.0)";
-    case GX_TEV_KCSEL_7_8:
-      return "vec3f(7.0/8.0)";
-    case GX_TEV_KCSEL_6_8:
-      return "vec3f(6.0/8.0)";
-    case GX_TEV_KCSEL_5_8:
-      return "vec3f(5.0/8.0)";
-    case GX_TEV_KCSEL_4_8:
-      return "vec3f(4.0/8.0)";
-    case GX_TEV_KCSEL_3_8:
-      return "vec3f(3.0/8.0)";
-    case GX_TEV_KCSEL_2_8:
-      return "vec3f(2.0/8.0)";
-    case GX_TEV_KCSEL_1_8:
-      return "vec3f(1.0/8.0)";
-    case GX_TEV_KCSEL_K0:
-      return "ubuf.kcolor0.rgb";
-    case GX_TEV_KCSEL_K1:
-      return "ubuf.kcolor1.rgb";
-    case GX_TEV_KCSEL_K2:
-      return "ubuf.kcolor2.rgb";
-    case GX_TEV_KCSEL_K3:
-      return "ubuf.kcolor3.rgb";
-    case GX_TEV_KCSEL_K0_R:
-      return "vec3f(ubuf.kcolor0.r)";
-    case GX_TEV_KCSEL_K1_R:
-      return "vec3f(ubuf.kcolor1.r)";
-    case GX_TEV_KCSEL_K2_R:
-      return "vec3f(ubuf.kcolor2.r)";
-    case GX_TEV_KCSEL_K3_R:
-      return "vec3f(ubuf.kcolor3.r)";
-    case GX_TEV_KCSEL_K0_G:
-      return "vec3f(ubuf.kcolor0.g)";
-    case GX_TEV_KCSEL_K1_G:
-      return "vec3f(ubuf.kcolor1.g)";
-    case GX_TEV_KCSEL_K2_G:
-      return "vec3f(ubuf.kcolor2.g)";
-    case GX_TEV_KCSEL_K3_G:
-      return "vec3f(ubuf.kcolor3.g)";
-    case GX_TEV_KCSEL_K0_B:
-      return "vec3f(ubuf.kcolor0.b)";
-    case GX_TEV_KCSEL_K1_B:
-      return "vec3f(ubuf.kcolor1.b)";
-    case GX_TEV_KCSEL_K2_B:
-      return "vec3f(ubuf.kcolor2.b)";
-    case GX_TEV_KCSEL_K3_B:
-      return "vec3f(ubuf.kcolor3.b)";
-    case GX_TEV_KCSEL_K0_A:
-      return "vec3f(ubuf.kcolor0.a)";
-    case GX_TEV_KCSEL_K1_A:
-      return "vec3f(ubuf.kcolor1.a)";
-    case GX_TEV_KCSEL_K2_A:
-      return "vec3f(ubuf.kcolor2.a)";
-    case GX_TEV_KCSEL_K3_A:
-      return "vec3f(ubuf.kcolor3.a)";
-    }
-  }
+  case GX_CC_KONST:
+    return fmt::format("ubuf.tev_konst[{}].rgb", stageIdx); // tev_konst (ShaderInfo::usesTevKonst)
   case GX_CC_ZERO:
     return "vec3f(0.0)";
   }
@@ -325,59 +266,8 @@ std::string alpha_arg_reg(GXTevAlphaArg arg, size_t stageIdx, const ShaderConfig
     const auto& swap = config.tevSwapTable[stage.tevSwapRas];
     return fmt::format("rast{}.{}", idx, chan_comp(swap.alpha));
   }
-  case GX_CA_KONST: {
-    switch (stage.kaSel) {
-      DEFAULT_FATAL("invalid kaSel {}", underlying(stage.kaSel));
-    case GX_TEV_KASEL_8_8:
-      return "1.0";
-    case GX_TEV_KASEL_7_8:
-      return "(7.0/8.0)";
-    case GX_TEV_KASEL_6_8:
-      return "(6.0/8.0)";
-    case GX_TEV_KASEL_5_8:
-      return "(5.0/8.0)";
-    case GX_TEV_KASEL_4_8:
-      return "(4.0/8.0)";
-    case GX_TEV_KASEL_3_8:
-      return "(3.0/8.0)";
-    case GX_TEV_KASEL_2_8:
-      return "(2.0/8.0)";
-    case GX_TEV_KASEL_1_8:
-      return "(1.0/8.0)";
-    case GX_TEV_KASEL_K0_R:
-      return "ubuf.kcolor0.r";
-    case GX_TEV_KASEL_K1_R:
-      return "ubuf.kcolor1.r";
-    case GX_TEV_KASEL_K2_R:
-      return "ubuf.kcolor2.r";
-    case GX_TEV_KASEL_K3_R:
-      return "ubuf.kcolor3.r";
-    case GX_TEV_KASEL_K0_G:
-      return "ubuf.kcolor0.g";
-    case GX_TEV_KASEL_K1_G:
-      return "ubuf.kcolor1.g";
-    case GX_TEV_KASEL_K2_G:
-      return "ubuf.kcolor2.g";
-    case GX_TEV_KASEL_K3_G:
-      return "ubuf.kcolor3.g";
-    case GX_TEV_KASEL_K0_B:
-      return "ubuf.kcolor0.b";
-    case GX_TEV_KASEL_K1_B:
-      return "ubuf.kcolor1.b";
-    case GX_TEV_KASEL_K2_B:
-      return "ubuf.kcolor2.b";
-    case GX_TEV_KASEL_K3_B:
-      return "ubuf.kcolor3.b";
-    case GX_TEV_KASEL_K0_A:
-      return "ubuf.kcolor0.a";
-    case GX_TEV_KASEL_K1_A:
-      return "ubuf.kcolor1.a";
-    case GX_TEV_KASEL_K2_A:
-      return "ubuf.kcolor2.a";
-    case GX_TEV_KASEL_K3_A:
-      return "ubuf.kcolor3.a";
-    }
-  }
+  case GX_CA_KONST:
+    return fmt::format("ubuf.tev_konst[{}].a", stageIdx);
   case GX_CA_ZERO:
     return "0.0";
   }
@@ -565,8 +455,9 @@ AlphaCompareExpr alpha_compare_xnor(const AlphaCompareExpr& lhs, const AlphaComp
   return {fmt::format("({} == {})", lhs.expr, rhs.expr), -1};
 }
 
-AlphaCompareExpr alpha_compare(GXCompare comp, u8 ref) {
-  const auto iref = static_cast<u32>(ref);
+// ref is the pipeline's (pipeline_alpha_ref): AlphaRefUniform reads it from alpha_ref.x (comp0) or .y.
+AlphaCompareExpr alpha_compare(GXCompare comp, u32 ref, char slot) {
+  const auto iref = ref == AlphaRefUniform ? fmt::format("ubuf.alpha_ref.{}", slot) : fmt::format("{}u", ref);
   switch (comp) {
     DEFAULT_FATAL("invalid alpha comp {}", underlying(comp));
   case GX_NEVER:
@@ -575,26 +466,26 @@ AlphaCompareExpr alpha_compare(GXCompare comp, u8 ref) {
     if (ref == 0) {
       return alpha_compare_const(false);
     }
-    return {fmt::format("(alphaCompare < {}u)", iref), -1};
+    return {fmt::format("(alphaCompare < {})", iref), -1};
   case GX_LEQUAL:
     if (ref == 255) {
       return alpha_compare_const(true);
     }
-    return {fmt::format("(alphaCompare <= {}u)", iref), -1};
+    return {fmt::format("(alphaCompare <= {})", iref), -1};
   case GX_EQUAL:
-    return {fmt::format("(alphaCompare == {}u)", iref), -1};
+    return {fmt::format("(alphaCompare == {})", iref), -1};
   case GX_NEQUAL:
-    return {fmt::format("(alphaCompare != {}u)", iref), -1};
+    return {fmt::format("(alphaCompare != {})", iref), -1};
   case GX_GEQUAL:
     if (ref == 0) {
       return alpha_compare_const(true);
     }
-    return {fmt::format("(alphaCompare >= {}u)", iref), -1};
+    return {fmt::format("(alphaCompare >= {})", iref), -1};
   case GX_GREATER:
     if (ref == 255) {
       return alpha_compare_const(false);
     }
-    return {fmt::format("(alphaCompare > {}u)", iref), -1};
+    return {fmt::format("(alphaCompare > {})", iref), -1};
   case GX_ALWAYS:
     return alpha_compare_const(true);
   }
@@ -602,8 +493,8 @@ AlphaCompareExpr alpha_compare(GXCompare comp, u8 ref) {
 
 // When the alpha compare drops a pixel, in terms of alphaCompare (the alpha as 0-255).
 AlphaCompareExpr alpha_compare_discard(const ShaderConfig& config) {
-  const auto comp0 = alpha_compare(config.alphaCompare.comp0, config.alphaCompare.ref0);
-  const auto comp1 = alpha_compare(config.alphaCompare.comp1, config.alphaCompare.ref1);
+  const auto comp0 = alpha_compare(config.alphaCompare.comp0, config.alphaCompare.ref0, 'x');
+  const auto comp1 = alpha_compare(config.alphaCompare.comp1, config.alphaCompare.ref1, 'y');
   AlphaCompareExpr pass;
   switch (config.alphaCompare.op) {
     DEFAULT_FATAL("invalid alpha compare op {}", underlying(config.alphaCompare.op));
@@ -1009,6 +900,46 @@ static std::string port_env_probe(u32 stages) {
   return out;
 }
 
+// GXPortSetWaterReflection (pbr 0, pbrKind = kPortWaterBit | stage + 1; port_water_stage): once the
+// probe is filled, the stage's texture (retail's painted environment map, or the black one the port
+// adds) reads black, so the stage passes the water's colour on without it.
+static std::string port_water_reflection(u32 stage) {
+  return fmt::format(R"""(
+    // GXPortSetWaterReflection: TEV stage {0}'s painted reflection gives way to the live probe
+    if (ubuf.surface_probe[0].w > 0.0) {{
+        sampled{0} = vec4f(vec3f(0.0), sampled{0}.a);
+    }})""",
+                     stage);
+}
+
+// GXPortSetWaterReflection, after the last TEV stage: the live probe along the view reflected off the
+// water's facet, blended over the water by Schlick's Fresnel for water, F = F0 + (1 - F0)(1 - cos)^5 with
+// F0 = ((1.333 - 1) / (1.333 + 1))^2 = 0.0204 (n of water 1.333 at 589 nm), times the strength
+// (GXPortSetEnvProbeLook) and the probe's weight: the surface shows F of the reflection R and 1 - F of
+// what the water lets through. Retail draws the water W at alpha a over what lies behind (B), so that
+// is a W + (1 - a) B; with the reflection, F R + (1 - F)(a W + (1 - a) B), which the same blend
+// (SRCALPHA, INVSRCALPHA) gives from alpha a' = a + F (1 - a) and colour (F R + (1 - F) a W) / a'.
+// Opaque water (a = 1) is F R + (1 - F) W. The display-referred colours are mixed, as GX blends them,
+// before the fog, which then fogs the reflection with the water.
+static std::string port_water_blend() {
+  return R"""(
+    // GXPortSetWaterReflection: the live probe reflected off the water, blended over it by Fresnel
+    if (ubuf.surface_probe[0].w > 0.0) {
+        let pw_v = select(vec3f(0.0, 0.0, -1.0), normalize(in.pw_pos), dot(in.pw_pos, in.pw_pos) > 1e-12);
+        let pw_r = reflect(pw_v, pw_n);
+        let pw_d = ubuf.surface_probe[0].xyz * pw_r.x + ubuf.surface_probe[1].xyz * pw_r.y +
+                   ubuf.surface_probe[2].xyz * pw_r.z;
+        let pw_rc = textureSampleLevel(pbr_cube, pbr_cube_samp, pw_d, ubuf.surface_pbr.y).rgb;
+        let pw_cos = clamp(dot(-pw_v, pw_n), 0.0, 1.0);
+        let pw_f = 0.0204 + 0.9796 * pow(1.0 - pw_cos, 5.0);
+        let pw_fe = clamp(pw_f * max(ubuf.surface_pbr.z, 0.0) * clamp(ubuf.surface_probe[0].w, 0.0, 1.0), 0.0, 1.0);
+        let pw_a = clamp(prev.a, 0.0, 1.0);
+        let pw_a2 = pw_a + pw_fe * (1.0 - pw_a);
+        prev = vec4f((pw_rc * pw_fe + clamp(prev.rgb, vec3f(0.0), vec3f(1.0)) * (pw_a * (1.0 - pw_fe))) /
+                         max(pw_a2, 1e-4), pw_a2);
+    })""";
+}
+
 // GXPortSetSurfacePBR (pbr 0, pbrKind = stage + 1; port_surface_pbr_stage says when it applies):
 // the TEV stage that lights the surface's base colour, 0 + lerp(0, L, TEXC) with L channel 0's lit
 // colour or a register an earlier stage set to it plus something (a room's lightmap stage: C0 =
@@ -1116,7 +1047,9 @@ static std::string port_surface_pbr(const ShaderConfig& config, u32 idx, std::st
       }}
       let pbrs_env = pbrs_envl * (pbrs_f0 * pbrs_ab.x + pbrs_ab.y) * pbrs_ao;
       let pbrs_diff = pbrs_base * (1.0 - pbrs_metal) * pbrs_light * pbrs_ao;
-      let pbrs_lit = pow(pow(pbrs_diff, vec3f(2.2)) + pbrs_spec + max(pbrs_env, vec3f(0.0)), vec3f(1.0 / 2.2));
+      let pbrs_pbr = pow(pow(pbrs_diff, vec3f(2.2)) + pbrs_spec + max(pbrs_env, vec3f(0.0)), vec3f(1.0 / 2.2));
+      // GXPortSetSurfacePBRStrength: towards the stage's own result, 0 + lerp(0, L, TEXC).
+      let pbrs_lit = mix(max({light}, vec3f(0.0)) * pbrs_base, pbrs_pbr, clamp(ubuf.surface_pbr.w, 0.0, 1.0));
       {out} = vec4f({result}, {out}.a);
     }})""",
       fmt::arg("stage", idx), fmt::arg("uv", fmt::format("tex{}_uv", underlying(stage.texCoordId))),
@@ -3496,9 +3429,22 @@ std::string build_shader_source(const ShaderConfig& config) noexcept {
         "\n    out.pos = vec4f(clip.xy + offset_ndc * clip.w, clip.zw);";
   } else {
     // GX_LINES / GX_LINESTRIP: expand line segment perpendicular to direction
+    // Port: GX clips a line at the near plane before widening it. An endpoint behind the eye has a
+    // negative w, so its NDC flips to the far side and the widened quad spans the screen (Echo
+    // Visor sound waves around Quadraxis filled the view, #65): move it onto w = eps along the
+    // segment first, and drop a segment with both ends behind (z = -2w is clipped).
     vtxXfrAttrsPre +=
-        "\n    let clip_a = vec4f(mv_pos_a, 1.0) * ubuf.proj;"
-        "\n    let clip_b = vec4f(mv_pos_b, 1.0) * ubuf.proj;"
+        "\n    var clip_a = vec4f(mv_pos_a, 1.0) * ubuf.proj;"
+        "\n    var clip_b = vec4f(mv_pos_b, 1.0) * ubuf.proj;"
+        "\n    let line_near_w = 1e-4;"
+        "\n    if (clip_a.w < line_near_w && clip_b.w < line_near_w) {"
+        "\n        clip_a = vec4f(0.0, 0.0, -2.0, 1.0);"
+        "\n        clip_b = clip_a;"
+        "\n    } else if (clip_a.w < line_near_w) {"
+        "\n        clip_a = mix(clip_a, clip_b, (line_near_w - clip_a.w) / (clip_b.w - clip_a.w));"
+        "\n    } else if (clip_b.w < line_near_w) {"
+        "\n        clip_b = mix(clip_b, clip_a, (line_near_w - clip_b.w) / (clip_a.w - clip_b.w));"
+        "\n    }"
         "\n    let ndc_a = clip_a.xy / clip_a.w;"
         "\n    let ndc_b = clip_b.xy / clip_b.w;"
         "\n    let viewport_scale = ubuf.render_viewport_size / max(ubuf.logical_viewport_size, vec2f(1.0));"
@@ -3515,6 +3461,11 @@ std::string build_shader_source(const ShaderConfig& config) noexcept {
       "\n    let nrm_tmp = vec4f({}, 0.0) * ubuf.nrm_mtx[in_pnmtxidx];"
       "\n    let mv_nrm = select(nrm_tmp, normalize(nrm_tmp), dot(nrm_tmp, nrm_tmp) > 1e-10);",
       vtx_attr(config, GX_VA_NRM));
+  if (port_water_stage(config) >= 0) {
+    // GXPortSetWaterReflection: the fragment stage reflects the view off the surface's own facet.
+    vtxOutAttrs += fmt::format("\n    @location({}) pw_pos: vec3f,", vtxOutIdx++);
+    vtxXfrAttrsPre += "\n    out.pw_pos = mv_pos;";
+  }
   if (config.actorDecal != 0 && config.lineMode == 0) {
     // Remastered's projected actor shadow (gfx/actor_shadow.hpp): the fragment stage needs the view-space
     // position, and the decal sits 0.015 m toward the camera so it wins LEQUAL against the surface it paints.
@@ -3537,6 +3488,19 @@ std::string build_shader_source(const ShaderConfig& config) noexcept {
   const int portPbrStage = port_surface_pbr_stage(config);
   if (const u32 envStages = port_env_probe_stages(config); envStages != 0) {
     fragmentFn += port_env_probe(envStages);
+  }
+  if (const int waterStage = port_water_stage(config); waterStage >= 0) {
+    // The facet normal from screen-space derivatives, at the top of the fragment stage where control
+    // flow is uniform, turned to face the camera.
+    fragmentFnPre +=
+        "\n    let pw_dx = dpdx(in.pw_pos);"
+        "\n    let pw_dy = dpdy(in.pw_pos);"
+        "\n    let pw_c = cross(pw_dx, pw_dy);"
+        "\n    var pw_n = select(vec3f(0.0, 0.0, 1.0), normalize(pw_c), dot(pw_c, pw_c) > 1e-24);"
+        "\n    if (dot(pw_n, in.pw_pos) > 0.0) {"
+        "\n        pw_n = -pw_n;"
+        "\n    }";
+    fragmentFn += port_water_reflection(static_cast<u32>(waterStage));
   }
   std::array<bool, MaxTevRegs> colorNormalized{};
   std::array<bool, MaxTevRegs> alphaNormalized{};
@@ -3596,6 +3560,9 @@ std::string build_shader_source(const ShaderConfig& config) noexcept {
   }
   if (lastStage.alphaOp.outReg != 0) {
     fragmentFn += fmt::format("\n    prev.a = {0}.a;", regName[lastStage.alphaOp.outReg]);
+  }
+  if (port_water_stage(config) >= 0) {
+    fragmentFn += port_water_blend();
   }
 
   if (info.loadsTevReg.test(0)) {
@@ -3681,10 +3648,9 @@ std::string build_shader_source(const ShaderConfig& config) noexcept {
       fragmentFnPre += fmt::format("\n    var rast{0} = in.cc{0};", i);
     }
   }
-  for (int i = 0; i < info.sampledKColors.size(); ++i) {
-    if (info.sampledKColors.test(i)) {
-      uniBufAttrs += fmt::format("\n    kcolor{}: vec4f,", i);
-    }
+  if (info.usesTevKonst) {
+    // Each stage's konst input (its kcSel and kaSel), so a konst selection needs no new pipeline.
+    uniBufAttrs += fmt::format("\n    tev_konst: array<vec4f, {}>,", config.tevStageCount);
   }
   for (int i = 0; i < info.sampledTexCoords.size(); ++i) {
     if (!info.sampledTexCoords.test(i)) {
@@ -4378,7 +4344,7 @@ fn vf_apply_hdr(c: vec4f, fog: vec4f, w: f32) -> vec4f {
     uniBufAttrs += "\n    hud_dyin: vec4f,";
   }
   if (info.usesSurfacePbr) {
-    uniBufAttrs += "\n    surface_pbr: vec4f, // x: highlight strength, y: env stages' probe level, z: their reflection strength";
+    uniBufAttrs += "\n    surface_pbr: vec4f, // x: highlight strength, y: env stages' probe level, z: their reflection strength, w: PBR strength";
     uniBufAttrs += "\n    surface_probe: mat3x4f, // GXSetPBRProbe: view to probe rows, weight in [0].w";
   }
   if (info.usesPTTexMtx.any()) {
@@ -4392,47 +4358,33 @@ fn vf_apply_hdr(c: vec4f, fog: vec4f, w: f32) -> vec4f {
         "    a: f32,\n"
         "    b: f32,\n"
         "    c: f32,\n"
-        "    range_center: f32,\n"
-        "    range_k: array<vec4f, 3>,\n"
+        "    kind: u32,\n"
         "}";
     uniBufAttrs += "\n    fog: Fog,";
 
     const std::string_view fogDepth = UseReversedZ ? "(1.0 - in.pos.z)" : "in.pos.z";
-    if ((config.fogType & 0x08) != 0) {
-      fragmentFn += fmt::format("\n    // Orthographic fog\n    var fogBase = ubuf.fog.a * {};", fogDepth);
-    } else {
-      fragmentFn +=
-          fmt::format("\n    // Perspective fog\n    var fogBase = ubuf.fog.a / (ubuf.fog.b - {});", fogDepth);
-    }
+    // The GXFogType from the uniform: one pipeline for every fog type (ShaderConfig::fogType).
+    fragmentFn += fmt::format(
+        "\n    var fogBase: f32;"
+        "\n    if ((ubuf.fog.kind & 8u) != 0u) {{"
+        "\n        fogBase = ubuf.fog.a * {0};"
+        "\n    }} else {{"
+        "\n        fogBase = ubuf.fog.a / (ubuf.fog.b - {0});"
+        "\n    }}",
+        fogDepth);
     if (config.fogRangeEnabled) {
       fragmentFn += "\n        fogBase *= bitcast<f32>(abuf[imm.fog_range_base + u32(in.pos.x)]);";
     }
-    fragmentFn += "\n    var fogF = clamp(fogBase - ubuf.fog.c, 0.0, 1.0);";
-    switch (config.fogType) {
-      DEFAULT_FATAL("invalid fog type {}", config.fogType);
-    case GX_FOG_PERSP_LIN:
-    case GX_FOG_ORTHO_LIN:
-      fragmentFn += "\n    var fogZ = fogF;";
-      break;
-    case GX_FOG_PERSP_EXP:
-    case GX_FOG_ORTHO_EXP:
-      fragmentFn += "\n    var fogZ = 1.0 - exp2(-8.0 * fogF);";
-      break;
-    case GX_FOG_PERSP_EXP2:
-    case GX_FOG_ORTHO_EXP2:
-      fragmentFn += "\n    var fogZ = 1.0 - exp2(-8.0 * fogF * fogF);";
-      break;
-    case GX_FOG_PERSP_REVEXP:
-    case GX_FOG_ORTHO_REVEXP:
-      fragmentFn += "\n    var fogZ = exp2(-8.0 * (1.0 - fogF));";
-      break;
-    case GX_FOG_PERSP_REVEXP2:
-    case GX_FOG_ORTHO_REVEXP2:
-      fragmentFn +=
-          "\n    fogF = 1.0 - fogF;"
-          "\n    var fogZ = exp2(-8.0 * fogF * fogF);";
-      break;
-    }
+    fragmentFn +=
+        "\n    var fogF = clamp(fogBase - ubuf.fog.c, 0.0, 1.0);"
+        "\n    var fogZ = fogF;" // GX_FOG_PERSP_LIN, GX_FOG_ORTHO_LIN
+        "\n    switch ubuf.fog.kind & 7u {"
+        "\n        case 4u: { fogZ = 1.0 - exp2(-8.0 * fogF); }"
+        "\n        case 5u: { fogZ = 1.0 - exp2(-8.0 * fogF * fogF); }"
+        "\n        case 6u: { fogZ = exp2(-8.0 * (1.0 - fogF)); }"
+        "\n        case 7u: { fogZ = exp2(-8.0 * (1.0 - fogF) * (1.0 - fogF)); }"
+        "\n        default: {}"
+        "\n    }";
     if (config.sceneHdr && pbrEmitted) {
       // The PBR light is exposed linear here: the display fog colour goes back through the curve
       // (an approximation of fogging before the tone; the display-domain mix is not reproduced).
@@ -4480,6 +4432,9 @@ fn vf_apply_hdr(c: vec4f, fog: vec4f, w: f32) -> vec4f {
     uniBufAttrs += "\n    shadow_color: vec4f,";
     uniBufAttrs += "\n    shadow_splits: vec4f,";
     uniBufAttrs += "\n    shadow_fade: vec4f,";
+  }
+  if (info.usesAlphaRef) {
+    uniBufAttrs += "\n    alpha_ref: vec4u,"; // the alpha compare references (pipeline_alpha_ref)
   }
   // HDR PBR light above 1 is light, not a TEV byte overflow: only its alpha wraps.
   const bool hdrPbrColor = config.sceneHdr && pbrEmitted;

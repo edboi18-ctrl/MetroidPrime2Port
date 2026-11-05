@@ -530,7 +530,13 @@ uint CCubeMaterial::HandleReflection(const GXTexMapID indTexSlot, const int indM
                                      const uint kColorCount) {
   bool usesTevReg2 = false;
   for (uint i = 0; i < tevCount; ++i) {
+#ifdef TARGET_PC
+    // Retail 0x80304040: rlwinm r0,r0,9,21,22; cmpwi r0,0x3 tests ((ops & 3) << 9) == 3,
+    // which never holds, so retail never takes the TEVREG2 path below.
+    if (((CGX::GetTevState(static_cast< GXTevStageID >(i)).mColorOps & 3) << 9) == GX_TEVREG2) {
+#else
     if ((CGX::GetTevState(static_cast< GXTevStageID >(i)).mColorOps >> 9 & 3) == GX_TEVREG2) {
+#endif
       usesTevReg2 = true;
       break;
     }
@@ -960,9 +966,49 @@ static void PortChooseSurfacePbr(const CTexture* const* textures, uint texCount,
 }
 
 bool CCubeMaterial::sPortEnvProbe = false;
+float CCubeMaterial::sPortEnvProbeLevel = 0.f;
+float CCubeMaterial::sPortEnvProbeStrength = -1.f;
+bool CCubeMaterial::sPortProbeFocusSet = false;
+CVector3f CCubeMaterial::sPortProbeFocus = CVector3f::Zero();
 bool CCubeMaterial::sPortCapturingProbe = false;
+float CCubeMaterial::sPortPbrStrength = 1.f;
+
+CCubeMaterial::CPortPbrStrengthScope::CPortPbrStrengthScope(float strength) : mSaved(sPortPbrStrength) {
+  sPortPbrStrength = strength < 0.f ? 0.f : strength > 1.f ? 1.f : strength;
+}
+
+CCubeMaterial::CPortPbrStrengthScope::~CPortPbrStrengthScope() { sPortPbrStrength = mSaved; }
 uint CCubeMaterial::sPortProbeDraws = 0;
 float CCubeMaterial::sPortProbeWeight = 0.f;
+
+CCubeMaterial::CPortEnvProbeScope::CPortEnvProbeScope(bool on, float level, float strength,
+                                                      const CVector3f& focus)
+: mOn(on)
+, mSavedProbe(sPortEnvProbe)
+, mSavedLevel(sPortEnvProbeLevel)
+, mSavedStrength(sPortEnvProbeStrength)
+, mDraws(sPortProbeDraws)
+, mFocus(focus) {
+  if (!mOn) {
+    return;
+  }
+  sPortEnvProbe = true;
+  sPortEnvProbeLevel = level;
+  sPortEnvProbeStrength = strength;
+}
+
+CCubeMaterial::CPortEnvProbeScope::~CPortEnvProbeScope() {
+  if (!mOn) {
+    return;
+  }
+  if (sPortProbeDraws != mDraws) {
+    sPortProbeFocus = mFocus;
+    sPortProbeFocusSet = true;
+  }
+  sPortEnvProbe = mSavedProbe;
+  sPortEnvProbeLevel = mSavedLevel;
+  sPortEnvProbeStrength = mSavedStrength;
+}
 
 uint CCubeMaterial::PortBeginSurfaceDraw() {
   uint begun = 0;
@@ -973,36 +1019,54 @@ uint CCubeMaterial::PortBeginSurfaceDraw() {
     CTexture::InvalidateTexmap(GX_TEXMAP7);
     GXPortSetSurfacePBR(sPortPbrChoice.stage);
     begun |= 1;
+    if (sPortPbrStrength < 1.f) {
+      GXPortSetSurfacePBRStrength(sPortPbrStrength);
+      begun |= 8;
+    }
   }
   const bool liveReflections = PortOverlay::LiveReflections();
   if (sPortEnvProbe && liveReflections && !sPortCapturingProbe) {
     GXPortSetEnvProbe(GX_TRUE);
     begun |= 2;
-  }
-  if (begun != 0) {
-    // The probe is in world space with Y and Z swapped (world Z-up to the cube's Y-up), and the
-    // shader's reflection vector is in view space (right, up, -forward): the rows that take one
-    // to the other, as the MP1 port's CCubeModel builds them for its PBR draws.
-    const CTransform4f& view = CGraphics::GetViewMatrix();
-    const f32 viewToProbe[3][3] = {
-        {view.Get00(), view.Get02(), -view.Get01()},
-        {view.Get20(), view.Get22(), -view.Get21()},
-        {view.Get10(), view.Get12(), -view.Get11()},
-    };
-    GXSetPBRProbe(viewToProbe, liveReflections ? sPortProbeWeight : 0.f);
-    if (!sPortCapturingProbe) {
-      ++sPortProbeDraws;
+    if (sPortEnvProbeStrength >= 0.f) {
+      GXPortSetEnvProbeLook(sPortEnvProbeLevel, sPortEnvProbeStrength);
+      begun |= 4;
     }
   }
+  if (begun != 0) {
+    PortLoadProbe();
+  }
   return begun;
+}
+
+void CCubeMaterial::PortLoadProbe() {
+  // The probe is in world space with Y and Z swapped (world Z-up to the cube's Y-up), and the
+  // shader's reflection vector is in view space (right, up, -forward): the rows that take one
+  // to the other, as the MP1 port's CCubeModel builds them for its PBR draws.
+  const CTransform4f& view = CGraphics::GetViewMatrix();
+  const f32 viewToProbe[3][3] = {
+      {view.Get00(), view.Get02(), -view.Get01()},
+      {view.Get20(), view.Get22(), -view.Get21()},
+      {view.Get10(), view.Get12(), -view.Get11()},
+  };
+  GXSetPBRProbe(viewToProbe, PortOverlay::LiveReflections() ? sPortProbeWeight : 0.f);
+  if (!sPortCapturingProbe) {
+    ++sPortProbeDraws;
+  }
 }
 
 void CCubeMaterial::PortEndSurfaceDraw(uint begun) {
   if ((begun & 1) != 0) {
     GXPortSetSurfacePBR(-1);
   }
+  if ((begun & 8) != 0) {
+    GXPortSetSurfacePBRStrength(1.f);
+  }
   if ((begun & 2) != 0) {
     GXPortSetEnvProbe(GX_FALSE);
+  }
+  if ((begun & 4) != 0) {
+    GXPortSetEnvProbeLook(0.f, -1.f);
   }
 }
 
@@ -1216,9 +1280,17 @@ void CCubeMaterial::SetCurrent(const CModelFlags& flags, const CCubeSurface& sur
       finalTevCount += addedTevs;
       texCount += 1;
       finalKColorCount += 1;
+#ifdef TARGET_PC
+    // Retail 0x80303594: rlwinm. r0,r0,9,21,22 (0x54004D6D); beq tests ((ops & 3) << 9) != 0,
+    // the op's low bits, not the outReg field (ops >> 9 & 3).
+    } else if (finalTevCount != 0 &&
+               ((CGX::GetTevState(static_cast< GXTevStageID >(finalTevCount - 1)).mColorOps & 3)
+                << 9) != 0) {
+#else
     } else if (finalTevCount != 0 &&
                (CGX::GetTevState(static_cast< GXTevStageID >(finalTevCount - 1)).mColorOps >> 9 &
                 3) != 0) {
+#endif
       DoPassthru(finalTevCount);
       finalTevCount += 1;
     }

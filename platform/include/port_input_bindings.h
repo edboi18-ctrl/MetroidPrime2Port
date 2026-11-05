@@ -16,7 +16,7 @@
 //   renamed = true                   # the player set the name: keep it
 //   preset = "setting"               # what it does (a catalogue key)
 //   arg = "invert_y"                 # the preset's option
-//   mode = "toggle"                  # toggle, on, off, or "" for no mode
+//   mode = "toggle"                  # toggle, on, off, hold, or "" for no mode
 //   command = ""                     # "command" preset: the console line
 //
 //   [[profile]]
@@ -102,7 +102,7 @@ struct CustomActionDef {
   bool renamed = false;     // the player set the name; keep it when the options change
   std::string preset;       // catalogue key, e.g. "setting", "phazon_beam", "warp", "command"
   std::string arg;          // the preset's option (setting key, item, "MLVL:MREA", slot, ...)
-  std::string mode;         // "toggle", "on", "off" or "" (presets that have no mode)
+  std::string mode;         // "toggle", "on", "off", "hold" or "" (presets that have no mode)
   std::string command;      // "command" preset: the console line
   bool operator==(const CustomActionDef&) const = default;
 };
@@ -230,6 +230,72 @@ const BallRow* BallRowForGame(Action game);
 // bindings in each keyboard or controller family that binds the row (not with
 // layers). A row that isn't bound changes nothing.
 void ApplyBallButtons(Profile& profile);
+
+// The map rows (issue #31): each tilts a stick direction, only on the map screen,
+// where its inputs do nothing else. Unbound, the stick's own inputs rotate and pan
+// as before. The game rotates the map with the control stick, pans with the C-stick.
+struct MapRow {
+  Action row;
+  Action game;
+};
+inline constexpr MapRow kMapRows[] = {
+    {Action::MapRotateUp, Action::MainUp},     {Action::MapRotateDown, Action::MainDown},
+    {Action::MapRotateLeft, Action::MainLeft}, {Action::MapRotateRight, Action::MainRight},
+    {Action::MapPanUp, Action::CUp},           {Action::MapPanDown, Action::CDown},
+    {Action::MapPanLeft, Action::CLeft},       {Action::MapPanRight, Action::CRight},
+};
+// The row of `a`, or nullptr.
+const MapRow* FindMapRow(Action a);
+// Before a poll: scopes the map rows to the map (layers are dropped) and blocks the
+// map for the other bindings on their inputs.
+void ApplyMapRows(Profile& profile);
+
+// The touch overlay's stock buttons (TouchControlsView's C_* ids) and Turbo's
+// pulse (kTouchTurboCode): fixed GameCube actions in all three layouts (default,
+// GameCube, twin stick), not remappable; the layout editor shows, hides and adds
+// buttons instead. A control with a binding sends only its code
+// (TouchControlBound), so these bypass the overlay's virtual pad, which the pad
+// presets remap (Remastered left touch B with nothing to do and put the map on
+// START). The sticks, D-pad, Visor, Beam, map, eye, the Turbo buttons, the twin
+// Missile and the Morph Ball page keep their own paths and stay remappable, as do
+// added buttons. The menus' back arrow is PortTouch::TakeMenuBack; the minimap
+// tap is PortMinimap's.
+struct TouchStockControl {
+  int control;
+  Action action;
+};
+inline constexpr TouchStockControl kTouchStockControls[] = {
+    {3, Action::PadA},      // A
+    {4, Action::PadB},      // B
+    {5, Action::PadX},      // X
+    {6, Action::PadY},      // Y
+    {7, Action::PadL},      // L Lock
+    {7, Action::LAnalog},   //
+    {8, Action::PadR},      // R Look
+    {8, Action::RAnalog},   //
+    {9, Action::PadZ},      // Z Map
+    {12, Action::PadStart}, // START
+    {17, Action::PadB},     // twin Jump
+    {18, Action::PadA},     // twin Fire
+    {19, Action::PadX},     // twin Morph
+    {21, Action::PadL},     // LT Lock
+    {21, Action::LAnalog},  //
+    {22, Action::PadB},     // LB Jump
+    {23, Action::PadA},     // RT Fire
+    {24, Action::PadY},     // RB Missile
+    {25, Action::PadZ},     // twin Map
+    {26, Action::PadR},     // twin R
+    {26, Action::RAnalog},  //
+    {33, Action::PadA},     // Turbo's pulse ("turbo_held"; PortTouch::TurboDown)
+};
+constexpr int kTouchTurboCode = 33;
+// True for a touch input on a stock code.
+bool StockTouchInput(const Input& in);
+// `user` less its bindings that use a stock touch code: those can't be remapped.
+UserProfile WithoutStockTouch(const UserProfile& user);
+// Appends kTouchStockControls' bindings; after the user's overlay, so neither its
+// unbinds nor a replace can drop them.
+void BindStockTouch(Profile& profile);
 
 // The touch overlay's own buttons (issue #92): the layout editor adds up to
 // kTouchButtonSlots, each with one action, on touch codes kTouchButtonBase + slot. They live in the touch layout string

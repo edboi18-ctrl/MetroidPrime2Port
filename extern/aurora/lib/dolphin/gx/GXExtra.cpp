@@ -6,6 +6,7 @@
 #include "../../gfx/probe.hpp"
 #include "../../gfx/shadow.hpp"
 #include "../../gfx/actor_shadow.hpp"
+#include "../../gfx/ssao.hpp"
 #include "../../gfx/volfog.hpp"
 #include "../../gfx/thermal.hpp"
 #include "../../gfx/xray.hpp"
@@ -200,6 +201,23 @@ GXBool GXPortVolumetricFog(const GXPortFogParams* fog) {
 }
 
 void GXPortVolumetricFogEnd() { GX_WRITE_AURORA(GX_AURORA_PORT_VOLUMETRIC_FOG_END); }
+
+GXBool GXPortAmbientOcclusion(const GXPortAoParams* ao) {
+  static_assert(sizeof(GXPortAoParams) == sizeof(aurora::gfx::ssao::Params));
+  if (ao == nullptr || GXGetPBRCostTest() == 10 || sDrawIdMode || !(ao->intensity > 0.f) || !(ao->radius > 0.f)) {
+    return true;
+  }
+  if (!aurora::gfx::ssao::ensure_task()) {
+    return false;
+  }
+  u32 words[sizeof(GXPortAoParams) / sizeof(u32)];
+  std::memcpy(words, ao, sizeof(words));
+  GX_WRITE_AURORA(GX_AURORA_PORT_AMBIENT_OCCLUSION);
+  for (const u32 word : words) {
+    GX_WRITE_U32(word);
+  }
+  return true;
+}
 
 void GXPortSetParticleFog(GXBool on) {
   static_assert(GX_PORT_PARTICLE_UNFOGGED == aurora::gx::GXState::kParticleUnfogged);
@@ -440,9 +458,25 @@ void GXPortSetSurfacePBR(s32 stage) {
   GX_WRITE_U8(stage >= 0 && stage < GX_MAX_TEVSTAGE ? static_cast<u8>(stage + 1) : 0);
 }
 
+void GXPortSetSurfacePBRStrength(f32 strength) {
+  GX_WRITE_AURORA(GX_AURORA_PORT_SURFACE_PBR_STRENGTH);
+  GX_WRITE_F32(strength);
+}
+
 void GXPortSetEnvProbe(GXBool on) {
   GX_WRITE_AURORA(GX_AURORA_PORT_ENV_PROBE);
   GX_WRITE_U8(on ? 1 : 0);
+}
+
+void GXPortSetWaterReflection(s32 stage) {
+  GX_WRITE_AURORA(GX_AURORA_PORT_WATER_REFLECTION);
+  GX_WRITE_U8(stage >= 0 && stage < GX_MAX_TEVSTAGE ? static_cast<u8>(stage + 1) : 0);
+}
+
+void GXPortSetEnvProbeLook(f32 level, f32 strength) {
+  GX_WRITE_AURORA(GX_AURORA_PORT_ENV_PROBE_LOOK);
+  GX_WRITE_F32(level);
+  GX_WRITE_F32(strength);
 }
 
 void GXSetSDF(u8 edge) {

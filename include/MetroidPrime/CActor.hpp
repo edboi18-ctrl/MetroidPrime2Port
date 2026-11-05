@@ -225,6 +225,9 @@ public:
   void SetMuted(bool b);
   void SetRenderParticleDatabaseInside(bool b) { mRenderParticleDBInside = b; }
   void SetEnableRender(bool b) { mEnableRender = b; } // Guessed name
+#ifdef TARGET_PC
+  bool PortRenderEnabled() const { return mEnableRender; }
+#endif
   void SetDrawEnabled(bool enabled) { mDrawEnabled = enabled; }
 
   void SetDamageHighlight(bool enabled) { mDamageHighlight = enabled; } // Guessed accessor name.
