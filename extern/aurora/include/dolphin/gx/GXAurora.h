@@ -403,6 +403,8 @@ extern "C" {
 // Port extension: the waves on the following water draws (GXPortSetWaterWaves). Payload: 68 f32
 // (GX_PORT_WATER_WAVE_ROWS rows of 4).
 #define GX_AURORA_PORT_WATER_WAVES 0x0079
+// Port extension: the following draws' PBR map scales (GXPortSetSurfacePBRParams). Payload: 5 f32.
+#define GX_AURORA_PORT_SURFACE_PBR_PARAMS 0x007A
 
 #define GX2_SET_POLYGON_OFFSET 0x1000
 

@@ -429,6 +429,10 @@ struct GXState {
   std::array<Vec4<float>, GX_PORT_WATER_WAVE_ROWS> waterWaves{};
   u8 waterWaveCount = 0;
   f32 surfacePbrStrength = 1.f; // GX_AURORA_PORT_SURFACE_PBR_STRENGTH: 0 the stage's own result, 1 full PBR
+  // GX_AURORA_PORT_SURFACE_PBR_PARAMS: roughness, metal, normal and occlusion scales, then the
+  // highlight's (surface_params, and surface_pbr.x times it).
+  Vec4<float> surfacePbrParams{1.f, 1.f, 1.f, 1.f};
+  f32 surfacePbrHighlight = 1.f;
   bool envProbe = false; // GX_AURORA_PORT_ENV_PROBE: environment-mapped stages read the probe (GXPortSetEnvProbe)
   // GX_AURORA_PORT_ENV_PROBE_LOOK (GXPortSetEnvProbeLook): x the probe level, y the strength; y below 0
   // takes aurora_set_env_probe_look's (env_probe_look).

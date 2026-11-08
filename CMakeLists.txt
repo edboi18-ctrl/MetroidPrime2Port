@@ -440,6 +440,7 @@ add_library(mp_platform OBJECT
     platform/port_collision_view.cpp
     platform/port_mods.cpp
     platform/port_mods_pak.cpp
+    platform/port_material_overrides.cpp
     platform/port_suit_colours.cpp
     platform/port_suit_colours_disc.cpp
     platform/input/port_input_engine.cpp
@@ -922,6 +923,11 @@ if(AURORA_SDL3_TARGET)
     target_include_directories(port_bloom_rules_tests PRIVATE platform/include)
     add_test(NAME port_bloom_rules_tests COMMAND port_bloom_rules_tests)
     set_tests_properties(port_bloom_rules_tests PROPERTIES TIMEOUT 30 LABELS port)
+    # Header-only (port_material_overrides.h): the material editor's key and materials.json reader.
+    add_executable(port_material_overrides_tests tests/port_material_overrides.cpp)
+    target_include_directories(port_material_overrides_tests PRIVATE platform/include)
+    add_test(NAME port_material_overrides_tests COMMAND port_material_overrides_tests)
+    set_tests_properties(port_material_overrides_tests PROPERTIES TIMEOUT 30 LABELS port)
     # Header-only (port_water_waves.h): the splash rings' deep-water motion and GXPortSetWaterWaves' rows.
     add_executable(port_water_waves_tests tests/port_water_waves.cpp)
     target_include_directories(port_water_waves_tests PRIVATE platform/include)

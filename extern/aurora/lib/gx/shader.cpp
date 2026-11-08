@@ -1045,7 +1045,9 @@ static std::string port_surface_pbr(const ShaderConfig& config, u32 idx, std::st
       let pbrs_t = pbrs_dp2perp * pbrs_duv1.x + pbrs_dp1perp * pbrs_duv2.x;
       let pbrs_b = pbrs_dp2perp * pbrs_duv1.y + pbrs_dp1perp * pbrs_duv2.y;
       let pbrs_tlen = max(dot(pbrs_t, pbrs_t), dot(pbrs_b, pbrs_b));
-      let pbrs_ts = pbrs_nmap.rg * 1.9921875 - 1.0;
+      // GXPortSetSurfacePBRParams: the tilt scaled, kept short of lying flat.
+      let pbrs_ts0 = (pbrs_nmap.rg * 1.9921875 - 1.0) * ubuf.surface_params.z;
+      let pbrs_ts = pbrs_ts0 * min(1.0, 0.999 * inverseSqrt(max(dot(pbrs_ts0, pbrs_ts0), 1e-8)));
       var pbrs_n = pp_nrm;
       if (pbrs_tlen > 1e-24) {{
           let pbrs_s = inverseSqrt(pbrs_tlen);
@@ -1053,9 +1055,9 @@ static std::string port_surface_pbr(const ShaderConfig& config, u32 idx, std::st
                              pp_nrm * sqrt(max(0.0, 1.0 - dot(pbrs_ts, pbrs_ts))));
       }}
       let pbrs_v = select(vec3f(0.0, 0.0, 1.0), normalize(-in.mv_pos), dot(in.mv_pos, in.mv_pos) > 1e-12);
-      let pbrs_ao = clamp(pbrs_orm.r, 0.0, 1.0);
-      let pbrs_rough = clamp(pbrs_orm.g, 0.0, 1.0);
-      let pbrs_metal = clamp(pbrs_orm.b, 0.0, 1.0);
+      let pbrs_ao = mix(1.0, clamp(pbrs_orm.r, 0.0, 1.0), clamp(ubuf.surface_params.w, 0.0, 1.0));
+      let pbrs_rough = clamp(pbrs_orm.g * ubuf.surface_params.x, 0.0, 1.0);
+      let pbrs_metal = clamp(pbrs_orm.b * ubuf.surface_params.y, 0.0, 1.0);
       let pbrs_a = max(pbrs_rough, 0.02) * max(pbrs_rough, 0.02);
       let pbrs_a2 = pbrs_a * pbrs_a;
       let pbrs_k = (pbrs_rough + 1.0) * (pbrs_rough + 1.0) * 0.125;
@@ -4413,6 +4415,7 @@ fn vf_apply_hdr(c: vec4f, fog: vec4f, w: f32) -> vec4f {
   }
   if (info.usesSurfacePbr) {
     uniBufAttrs += "\n    surface_pbr: vec4f, // x: highlight strength, y: env stages' probe level, z: their reflection strength, w: PBR strength";
+    uniBufAttrs += "\n    surface_params: vec4f, // GXPortSetSurfacePBRParams: roughness, metal, normal, occlusion scales";
     uniBufAttrs += "\n    surface_probe: mat3x4f, // GXSetPBRProbe: view to probe rows, weight in [0].w";
     if (info.usesWaterRipples) {
       uniBufAttrs += fmt::format("\n    water_waves: array<vec4f, {}>, // GXPortSetWaterWaves", GX_PORT_WATER_WAVE_ROWS);

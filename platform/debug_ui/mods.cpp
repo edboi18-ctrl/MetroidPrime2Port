@@ -5,6 +5,7 @@
 #include "port_mobile.h"
 #include "debug_ui_internal.h"
 
+#include "port_material_overrides.h"
 #include "port_mods.h"
 #include "port_savestate.h"
 
@@ -82,6 +83,16 @@ void DrawMods() {
   }
   if (!listed) {
     ImGui::TextDisabled("No other mods.");
+  }
+  // The material editor's files (tools/material_editor, docs/MATERIAL_EDITOR.md), read again on change.
+  if (PortMaterialOverrides::Files() != 0 || !PortMaterialOverrides::Problems().empty()) {
+    ImGui::Text("Material overrides: %d material(s) from %d materials.json file(s)", PortMaterialOverrides::Count(),
+                PortMaterialOverrides::Files());
+    ImGui::SetItemTooltip("Set with the Material Editor (mp2_material_editor.exe beside the game). Saved\n"
+                          "changes show within a couple of seconds, no Reload mods needed.");
+    if (!PortMaterialOverrides::Problems().empty()) {
+      ImGui::TextColored(ThemeBadColor(), "%s", PortMaterialOverrides::Problems().c_str());
+    }
   }
   if (!status.folder.empty()) {
     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));

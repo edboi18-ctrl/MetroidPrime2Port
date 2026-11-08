@@ -1598,6 +1598,19 @@ void handle_aurora(ByteReader& reader) noexcept {
       g_gxState.waterWaveCount = count;
       g_gxState.dirty |= DirtyUniform;
     }
+  } else if (subCmd == GX_AURORA_PORT_SURFACE_PBR_PARAMS) {
+    f32 v[5];
+    for (f32& x : v) {
+      x = reader.read<f32>();
+    }
+    const auto clampTo = [](f32 x, f32 hi) { return x >= 0.f ? (x <= hi ? x : hi) : 0.f; }; // NaN -> 0
+    const Vec4<float> params{clampTo(v[0], 4.f), clampTo(v[1], 4.f), clampTo(v[2], 4.f), clampTo(v[3], 1.f)};
+    const f32 highlight = clampTo(v[4], 4.f);
+    if (g_gxState.surfacePbrParams != params || g_gxState.surfacePbrHighlight != highlight) {
+      g_gxState.surfacePbrParams = params;
+      g_gxState.surfacePbrHighlight = highlight;
+      g_gxState.dirty |= DirtyUniform;
+    }
   } else if (subCmd == GX_AURORA_PORT_BLOCKING_DRAWS) {
     const bool on = reader.read<u8>() != 0;
     if (g_gxState.blockingDraws != on) {

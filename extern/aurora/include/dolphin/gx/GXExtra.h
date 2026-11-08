@@ -68,6 +68,12 @@ void GXPortSetWaterRipples(f32 strength);
 // for any other draw. For the few draws whose absence shows, like a water surface that would flicker
 // out while a variant of its shader builds; the first frame that needs it stalls instead.
 void GXPortSetBlockingDraws(GXBool on);
+// Port extension: how the following draws read GXPortSetSurfacePBR's maps (the material editor's
+// overrides): the roughness and metal times their scales, the normal map's tilt times `normal` (kept
+// short of lying flat), the occlusion mixed in by `occlusion` (0 none, 1 as mapped), and the highlights
+// times `highlight` (over aurora_set_pbr_highlight's). All 1 is the maps as they are. Each is clamped
+// to 0..4 (occlusion 0..1).
+void GXPortSetSurfacePBRParams(f32 roughness, f32 metal, f32 normal, f32 occlusion, f32 highlight);
 // Port extension: expanding rings on GXPortSetWaterReflection's water (a splash's waves), which tip
 // its normal as GXPortSetWaterRipples' height does (they share the rippled variant). Row 0: x the
 // number of waves (0..GX_PORT_WATER_WAVES); then two rows a wave: (centre in view space xyz,

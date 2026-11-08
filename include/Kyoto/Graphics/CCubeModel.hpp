@@ -108,6 +108,10 @@ public:
   uint PortAssetId() const { return mPortAssetId; }
   // "area 5 world model 3" or "CMDL 0x...": what the model is, for logs and the texture manifest.
   void PortDescribe(char* out, int len) const;
+  // Material `index`'s bytes as the disc holds them, and the set's texture ids (big-endian words), for
+  // the material editor's key (port_material_overrides.h). False past the set's materials.
+  bool PortMaterialSpan(int index, const uchar*& data, uint& size, const uchar*& textureIds,
+                        uint& textureCount) const;
   // A material that draws nothing: big-endian zeros except a flag bit DrawSurface always skips.
   static const uchar* PortNeutralMaterial();
 #endif

@@ -504,7 +504,7 @@ ShaderInfo build_shader_info(const ShaderConfig& config) noexcept {
     // surface_pbr (highlight strength, the environment stages' probe level and weight) and
     // surface_probe (GXSetPBRProbe's view-to-probe rows and weight).
     info.usesSurfacePbr = true;
-    info.uniformSize += sizeof(Vec4<float>) + sizeof(Mat3x4<float>);
+    info.uniformSize += sizeof(Vec4<float>) * 2 + sizeof(Mat3x4<float>); // surface_pbr, surface_params, surface_probe
     if (info.usesWaterRipples) {
       info.uniformSize += sizeof(Vec4<float>) * GX_PORT_WATER_WAVE_ROWS; // water_waves
     }
@@ -755,8 +755,9 @@ static void fill_uniform(ByteBuffer& buf, const ShaderInfo& info) noexcept {
       envStrength = g_gxState.envProbeLook.y();
     }
     // w: GXPortSetSurfacePBRStrength, or on rippled water (which has no PBR stage) GXPortSetWaterRipples.
-    buf.append(Vec4<float>{surface_pbr_highlight(), envLevel, envStrength,
+    buf.append(Vec4<float>{surface_pbr_highlight() * g_gxState.surfacePbrHighlight, envLevel, envStrength,
                            info.usesWaterRipples ? g_gxState.waterRipples : g_gxState.surfacePbrStrength});
+    buf.append(g_gxState.surfacePbrParams);
     buf.append(g_gxState.pbrProbe);
     if (info.usesWaterRipples) {
       for (const auto& row : g_gxState.waterWaves) {

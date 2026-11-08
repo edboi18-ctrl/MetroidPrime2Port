@@ -2,6 +2,7 @@
 // they replace and which PAKs their loose resources patch, and registers the
 // result with Aurora's DVD overlays.
 
+#include "port_material_overrides.h"
 #include "port_mods.h"
 
 #include "port_entry.h"
@@ -243,6 +244,7 @@ void Initialize(const std::string& userPath) {
   sStatus.active = sEnabled;
   PortSuitColours::SetServed({});
   if (sStatus.folder.empty()) {
+    PortMaterialOverrides::Load();
     return;
   }
   const std::vector<std::string> disabled = SplitDisabled(sDisabled);
@@ -461,6 +463,8 @@ void Initialize(const std::string& userPath) {
     }
   }
   std::fprintf(stderr, "mods: %d disc file(s) served from %s\n", sStatus.overlays, sStatus.folder.c_str());
+  // The material editor's materials.json files (port_material_overrides.h), with the same mods.
+  PortMaterialOverrides::Load();
 }
 
 // Reads the mods folder again with the current settings. The caller (CResLoader::PortReopenPaks)

@@ -388,6 +388,16 @@ TEST(GxSurfacePbr, RoomDiffuseStageIsRelit) {
             std::string::npos);
   EXPECT_NE(source.find("pbrs_spec *= min(vec3f(1.0), 1.0 / max(pbrs_feed, vec3f(1e-4))) * ubuf.surface_pbr.x;"),
             std::string::npos);
+  // GXPortSetSurfacePBRParams (the material editor): the maps' scales, after surface_pbr.
+  EXPECT_LT(source.find("surface_pbr: vec4f,"), source.find("surface_params: vec4f,"));
+  EXPECT_LT(source.find("surface_params: vec4f,"), source.find("surface_probe: mat3x4f,"));
+  EXPECT_NE(source.find("let pbrs_ts0 = (pbrs_nmap.rg * 1.9921875 - 1.0) * ubuf.surface_params.z;"), std::string::npos);
+  EXPECT_NE(source.find("let pbrs_ts = pbrs_ts0 * min(1.0, 0.999 * inverseSqrt(max(dot(pbrs_ts0, pbrs_ts0), 1e-8)));"),
+            std::string::npos);
+  EXPECT_NE(source.find("let pbrs_ao = mix(1.0, clamp(pbrs_orm.r, 0.0, 1.0), clamp(ubuf.surface_params.w, 0.0, 1.0));"),
+            std::string::npos);
+  EXPECT_NE(source.find("let pbrs_rough = clamp(pbrs_orm.g * ubuf.surface_params.x, 0.0, 1.0);"), std::string::npos);
+  EXPECT_NE(source.find("let pbrs_metal = clamp(pbrs_orm.b * ubuf.surface_params.y, 0.0, 1.0);"), std::string::npos);
 }
 
 TEST(GxSurfacePbr, ModelStageIsRelit) {

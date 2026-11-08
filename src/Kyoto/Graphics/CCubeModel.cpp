@@ -53,6 +53,24 @@ const uchar* CCubeModel::PortNeutralMaterial() {
   return sNeutral;
 }
 
+bool CCubeModel::PortMaterialSpan(int index, const uchar*& data, uint& size, const uchar*& textureIds,
+                                  uint& textureCount) const {
+  const uint* set = static_cast< const uint* >(mInstance.GetMaterialPointer());
+  if (set == nullptr || mMaterialData == nullptr || static_cast< uint >(index) >= mPortMaterialCount) {
+    return false;
+  }
+  const uint start = index != 0 ? CBasics::SwapBytes(mMaterialOffsets[index - 1]) : 0;
+  const uint end = CBasics::SwapBytes(mMaterialOffsets[index]);
+  if (end < start) {
+    return false;
+  }
+  data = mMaterialData + start;
+  size = end - start;
+  textureCount = CBasics::SwapBytes(set[0]);
+  textureIds = reinterpret_cast< const uchar* >(set + 1);
+  return true;
+}
+
 void CCubeModel::PortDescribe(char* out, int len) const {
   if (mPortAreaId >= 0) {
     snprintf(out, len, "area %d world model %d", mPortAreaId, mPortModelIndex);
@@ -273,7 +291,8 @@ void CCubeModel::DrawSurface(const CCubeSurface& surface, const CModelFlags& mod
     PortDrawDebug::OnDraw(this, &modelFlags, surface.mData);
   }
   // The surface's PBR maps and live reflections, for its display list only (other draws keep
-  // their TEV result).
+  // their TEV result), with the material editor's overrides for its material.
+  CCubeMaterial::PortSetMaterialOverride(*this, surface.GetMaterialIndex());
   const uint portBegun = CCubeMaterial::PortBeginSurfaceDraw();
 #endif
   CGX::CallDisplayList(surface.GetDisplayList(), surface.GetDisplayListSize());

@@ -24,6 +24,7 @@
 
 #ifdef TARGET_PC
 #include "Kyoto/Basics/CBasics.hpp"
+#include "port_material_overrides.h"
 #include "port_overlay.h"
 #include "port_pbr_maps.h"
 #include "port_texture_manifest.h"
@@ -1010,26 +1011,90 @@ CCubeMaterial::CPortEnvProbeScope::~CPortEnvProbeScope() {
   sPortEnvProbeStrength = mSavedStrength;
 }
 
+// The material editor's override for the surface about to draw (PortSetMaterialOverride).
+static const PortMaterialOverrides::Override* sPortMaterialOverride = nullptr;
+
+// Keys already worked out, by the material bytes' address: a direct-mapped cache checked against the
+// span's size and first and last words, so a set unloaded and another loaded in its place is hashed
+// again.
+namespace {
+struct SPortKeyCacheEntry {
+  const uchar* data;
+  const uchar* textureIds;
+  uint size;
+  uint head;
+  uint tail;
+  uint64_t key;
+};
+SPortKeyCacheEntry sPortKeyCache[2048];
+} // namespace
+
+void CCubeMaterial::PortSetMaterialOverride(const CCubeModel& model, int materialIndex) {
+  sPortMaterialOverride = nullptr;
+  if (!PortMaterialOverrides::Any()) {
+    return;
+  }
+  const uchar* data;
+  uint size;
+  const uchar* textureIds;
+  uint textureCount;
+  if (!model.PortMaterialSpan(materialIndex, data, size, textureIds, textureCount) || size < 8) {
+    return;
+  }
+  const uint head = PortMaterialOverrides::BigWord(data);
+  const uint tail = PortMaterialOverrides::BigWord(data + size - 4);
+  SPortKeyCacheEntry& entry = sPortKeyCache[(reinterpret_cast< uintptr_t >(data) >> 2) & 2047];
+  if (entry.data != data || entry.textureIds != textureIds || entry.size != size || entry.head != head ||
+      entry.tail != tail) {
+    entry.data = data;
+    entry.textureIds = textureIds;
+    entry.size = size;
+    entry.head = head;
+    entry.tail = tail;
+    entry.key = PortMaterialOverrides::MaterialKey(data, size, textureIds, textureCount);
+  }
+  sPortMaterialOverride = PortMaterialOverrides::Find(entry.key);
+}
+
 uint CCubeMaterial::PortBeginSurfaceDraw() {
   uint begun = 0;
-  if (sPortPbrChoice.maps != nullptr && sPortPbrChoice.generation == PortPbrMaps::Generation()) {
+  const PortMaterialOverrides::Override* edit = sPortMaterialOverride;
+  const bool pbrOff = edit != nullptr && edit->pbr == 0;
+  if (!pbrOff && sPortPbrChoice.maps != nullptr && sPortPbrChoice.generation == PortPbrMaps::Generation()) {
     PortPbrMaps::Load(*sPortPbrChoice.maps);
     // The slots now hold the maps: the next CTexture bound to them must load again.
     CTexture::InvalidateTexmap(GX_TEXMAP6);
     CTexture::InvalidateTexmap(GX_TEXMAP7);
     GXPortSetSurfacePBR(sPortPbrChoice.stage);
     begun |= 1;
-    if (sPortPbrStrength < 1.f) {
-      GXPortSetSurfacePBRStrength(sPortPbrStrength);
+    const float strength = sPortPbrStrength * (edit != nullptr && edit->pbrStrength >= 0.f ? edit->pbrStrength : 1.f);
+    if (strength < 1.f) {
+      GXPortSetSurfacePBRStrength(strength);
       begun |= 8;
+    }
+    if (edit != nullptr && edit->PbrParams()) {
+      GXPortSetSurfacePBRParams(edit->roughness, edit->metal, edit->normal, edit->occlusion, edit->highlight);
+      begun |= 16;
     }
   }
   const bool liveReflections = PortOverlay::LiveReflections();
-  if (sPortEnvProbe && liveReflections && !sPortCapturingProbe) {
+  // The editor's reflection: on reads the live probe in the environment-mapped stages (as the
+  // scopes do for Samus and the cannon), off keeps the painted map even inside such a scope.
+  const bool envProbe = edit != nullptr && edit->reflection >= 0 ? edit->reflection == 1 : sPortEnvProbe;
+  if (envProbe && liveReflections && !sPortCapturingProbe) {
     GXPortSetEnvProbe(GX_TRUE);
     begun |= 2;
-    if (sPortEnvProbeStrength >= 0.f) {
-      GXPortSetEnvProbeLook(sPortEnvProbeLevel, sPortEnvProbeStrength);
+    float level = sPortEnvProbeLevel;
+    float strength = sPortEnvProbeStrength;
+    if (edit != nullptr && (edit->reflectionBlur >= 0.f || edit->reflectionStrength >= 0.f)) {
+      if (edit->reflectionBlur >= 0.f) {
+        level = edit->reflectionBlur * PortOverlay::kReflectionLevelPerBlurPercent;
+      }
+      // A blur alone keeps the full strength rather than the frame's look.
+      strength = edit->reflectionStrength >= 0.f ? edit->reflectionStrength : (strength >= 0.f ? strength : 1.f);
+    }
+    if (strength >= 0.f) {
+      GXPortSetEnvProbeLook(level, strength);
       begun |= 4;
     }
   }
@@ -1061,6 +1126,9 @@ void CCubeMaterial::PortEndSurfaceDraw(uint begun) {
   }
   if ((begun & 8) != 0) {
     GXPortSetSurfacePBRStrength(1.f);
+  }
+  if ((begun & 16) != 0) {
+    GXPortSetSurfacePBRParams(1.f, 1.f, 1.f, 1.f, 1.f);
   }
   if ((begun & 2) != 0) {
     GXPortSetEnvProbe(GX_FALSE);

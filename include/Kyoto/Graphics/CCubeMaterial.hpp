@@ -77,6 +77,9 @@ public:
   // and for either the live probe's matrix (GXSetPBRProbe). Begin returns what End undoes.
   static uint PortBeginSurfaceDraw();
   static void PortEndSurfaceDraw(uint begun);
+  // The material editor's override for material `materialIndex` of `model` (port_material_overrides.h),
+  // which the next PortBeginSurfaceDraw applies; none when no materials.json is loaded.
+  static void PortSetMaterialOverride(const CCubeModel& model, int materialIndex);
   // GXSetPBRProbe for the current view (the live probe's matrix and weight), and counts a draw
   // that reads it (sPortProbeDraws). PortBeginSurfaceDraw's, and the water's (CFluidPlaneCPU).
   static void PortLoadProbe();

@@ -3053,6 +3053,32 @@ TEST_F(GXFifoTest, PortWaterWaves_DecodesClamped) {
   EXPECT_FLOAT_EQ(g_gxState.waterWaves[1].w(), 0.f);
 }
 
+// GXPortSetSurfacePBRParams: the scales reach the state surface_params and surface_pbr.x take,
+// clamped (occlusion to 1, the rest to 4; NaN and below 0 to 0).
+TEST_F(GXFifoTest, PortSurfacePbrParams_DecodesClamped) {
+  GXPortSetSurfacePBRParams(1.5f, 0.5f, 2.f, 0.25f, 3.f);
+  auto bytes = capture_fifo();
+  EXPECT_TRUE(has_aurora_cmd(bytes, GX_AURORA_PORT_SURFACE_PBR_PARAMS));
+
+  reset_gx_state();
+  EXPECT_FLOAT_EQ(g_gxState.surfacePbrParams.x(), 1.f);
+  EXPECT_FLOAT_EQ(g_gxState.surfacePbrHighlight, 1.f);
+  decode_fifo(bytes);
+  EXPECT_FLOAT_EQ(g_gxState.surfacePbrParams.x(), 1.5f);
+  EXPECT_FLOAT_EQ(g_gxState.surfacePbrParams.y(), 0.5f);
+  EXPECT_FLOAT_EQ(g_gxState.surfacePbrParams.z(), 2.f);
+  EXPECT_FLOAT_EQ(g_gxState.surfacePbrParams.w(), 0.25f);
+  EXPECT_FLOAT_EQ(g_gxState.surfacePbrHighlight, 3.f);
+
+  GXPortSetSurfacePBRParams(9.f, -1.f, std::numeric_limits<f32>::quiet_NaN(), 5.f, 100.f);
+  decode_fifo(capture_fifo());
+  EXPECT_FLOAT_EQ(g_gxState.surfacePbrParams.x(), 4.f);
+  EXPECT_FLOAT_EQ(g_gxState.surfacePbrParams.y(), 0.f);
+  EXPECT_FLOAT_EQ(g_gxState.surfacePbrParams.z(), 0.f);
+  EXPECT_FLOAT_EQ(g_gxState.surfacePbrParams.w(), 1.f);
+  EXPECT_FLOAT_EQ(g_gxState.surfacePbrHighlight, 4.f);
+}
+
 // GXPortSetBlockingDraws: the flag reaches the state the draw's pipeline lookup reads, and a change
 // makes the next draw look its pipeline up again.
 TEST_F(GXFifoTest, PortBlockingDraws_Decodes) {

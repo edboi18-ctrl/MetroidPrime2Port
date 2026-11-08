@@ -482,6 +482,15 @@ void GXPortSetWaterWaves(const f32 waves[GX_PORT_WATER_WAVE_ROWS][4]) {
   }
 }
 
+void GXPortSetSurfacePBRParams(f32 roughness, f32 metal, f32 normal, f32 occlusion, f32 highlight) {
+  GX_WRITE_AURORA(GX_AURORA_PORT_SURFACE_PBR_PARAMS);
+  GX_WRITE_F32(roughness);
+  GX_WRITE_F32(metal);
+  GX_WRITE_F32(normal);
+  GX_WRITE_F32(occlusion);
+  GX_WRITE_F32(highlight);
+}
+
 void GXPortSetBlockingDraws(GXBool on) {
   GX_WRITE_AURORA(GX_AURORA_PORT_BLOCKING_DRAWS);
   GX_WRITE_U8(on ? 1 : 0);
