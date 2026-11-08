@@ -18,6 +18,7 @@ import json
 import os
 import struct
 import sys
+import threading
 import zlib
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -246,6 +247,16 @@ class Library:
         if problem:
             raise ValueError(problem)
         self.iso = ed.Iso(disc_path)
+        # One reader at a time: the window reads thumbnails while the preview loads in the background,
+        # and every read is a seek and a read of the one file.
+        lock = threading.RLock()
+        unlocked_read = self.iso.read
+
+        def read(*args, **kwargs):
+            with lock:
+                return unlocked_read(*args, **kwargs)
+
+        self.iso.read = read
         self.paks = ed.load_paks(self.iso)
         self.scanner = ds.Scanner(self.paks, log)
         self.where = self.scanner.where
@@ -316,6 +327,11 @@ class Library:
     def _set_materials(section, set_index):
         ids, datas = ds.parse_material_set(section)
         return [Material(i, d, ids, set_index) for i, d in enumerate(datas)]
+
+    def resource(self, rid):
+        """A resource's whole bytes (inflated), as its PAK holds it."""
+        pak, _t = self.where[rid]
+        return pak.get(rid)
 
     def texture(self, txtr_id):
         """The TXTR's bytes, or None."""

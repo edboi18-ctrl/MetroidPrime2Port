@@ -4,8 +4,9 @@ picked from the disc's own worlds, areas and models, saved to materials.json in 
 
 Run it beside the game (the Windows build ships mp2_material_editor.exe next to
 metroid_prime2_port.exe): it reads the game's settings.cfg for the disc image and the mods folder.
-Changes are saved as you make them, and the running game picks them up within a couple of seconds.
-Docs: docs/MATERIAL_EDITOR.md. The workings (disc, keys, textures, files) are in material_core.py.
+Changes are saved as you make them, and the running game picks them up within a couple of seconds;
+the 3D preview (viewer.py) shows them at once. Docs: docs/MATERIAL_EDITOR.md. The workings (disc,
+keys, textures, files) are in material_core.py, the preview's geometry in geometry.py and preview.py.
 """
 
 import argparse
@@ -21,6 +22,8 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 import material_core as mc  # noqa: E402
+import preview  # noqa: E402
+import viewer  # noqa: E402
 
 TITLE = "MP2 Material Editor"
 THUMB = 96
@@ -39,8 +42,10 @@ class Editor(tk.Tk):
     def __init__(self, args):
         super().__init__()
         self.title(TITLE)
-        self.geometry("1280x780")
-        self.minsize(980, 600)
+        width = min(1560, max(1100, self.winfo_screenwidth() - 80))
+        height = min(960, max(680, self.winfo_screenheight() - 100))
+        self.geometry("%dx%d" % (width, height))
+        self.minsize(1050, 640)
         self.library = None
         self.overrides = None
         self.pack_index = {}
@@ -51,11 +56,20 @@ class Editor(tk.Tk):
         self.save_after = None
         self.loading_fields = False
         self.clipboard = None
+        self.view = None  # the 3D preview (None without OpenGL)
+        self.preview_token = 0
+        self.source = None  # (kind, id) of the area or model listed
 
         self.game = args.game or game_folder()
         self.user = args.user or mc.find_user_folder(self.game)
         self.settings = mc.read_settings(self.user)
         self.mods = mc.mods_folder(self.user)
+        # The game's settings the preview follows (settings.cfg; the game's defaults otherwise).
+        self.view_settings = {
+            "pbr_maps": mc.setting_bool(self.settings.get("pbr_maps"), False),
+            "live_reflections": mc.setting_bool(self.settings.get("live_reflections"), False),
+            "pbr_highlight": preview.setting_percent(self.settings, "pbr_highlight", 100),
+        }
         self._build()
         self._set_overrides(args.output or mc.overrides_path(self.mods))
         disc = args.disc or mc.find_disc(self.settings, self.game)
@@ -91,6 +105,7 @@ class Editor(tk.Tk):
 
         panes = ttk.PanedWindow(self, orient="horizontal")
         panes.pack(fill="both", expand=True, padx=8, pady=4)
+        self.panes = panes
 
         # Browser: worlds and areas, then models.
         left = ttk.Frame(panes)
@@ -107,12 +122,14 @@ class Editor(tk.Tk):
         self.browser.bind("<<TreeviewSelect>>", self._browse_pick)
         panes.add(left, weight=2)
 
-        # Materials of the chosen area or model.
-        middle = ttk.Frame(panes)
+        # The 3D preview over the materials of the chosen area or model.
+        middle = ttk.PanedWindow(panes, orient="vertical")
+        self._build_preview(middle)
+        listing = ttk.Frame(middle)
         self.list_title = tk.StringVar(value="Pick an area or a model")
-        ttk.Label(middle, textvariable=self.list_title, font=("TkDefaultFont", 10, "bold")).pack(anchor="w")
+        ttk.Label(listing, textvariable=self.list_title, font=("TkDefaultFont", 10, "bold")).pack(anchor="w")
         cols = ("edited", "textures", "info")
-        self.mats = ttk.Treeview(middle, columns=cols, show="tree headings", selectmode="browse")
+        self.mats = ttk.Treeview(listing, columns=cols, show="tree headings", selectmode="browse")
         self.mats.heading("#0", text="Material")
         self.mats.heading("edited", text="Changed")
         self.mats.heading("textures", text="Textures")
@@ -121,12 +138,13 @@ class Editor(tk.Tk):
         self.mats.column("edited", width=70, stretch=False, anchor="center")
         self.mats.column("textures", width=170)
         self.mats.column("info", width=170)
-        mscroll = ttk.Scrollbar(middle, orient="vertical", command=self.mats.yview)
+        mscroll = ttk.Scrollbar(listing, orient="vertical", command=self.mats.yview)
         self.mats.configure(yscrollcommand=mscroll.set)
         self.mats.pack(side="left", fill="both", expand=True)
         mscroll.pack(side="right", fill="y")
         self.mats.bind("<<TreeviewSelect>>", self._material_pick)
-        panes.add(middle, weight=3)
+        middle.add(listing, weight=2)
+        panes.add(middle, weight=5)
 
         # The material's settings.
         right = ttk.Frame(panes, padding=(8, 0, 0, 0))
@@ -200,6 +218,147 @@ class Editor(tk.Tk):
         self.status_var = tk.StringVar()
         ttk.Label(self, textvariable=self.status_var, relief="sunken", anchor="w", padding=(6, 2)).pack(fill="x", side="bottom")
         self.bind_all("<Control-s>", lambda e: self.save())
+        self.sashes_placed = False
+        self.panes.bind("<Configure>", self._place_sashes, add="+")
+
+    def _place_sashes(self, _event=None):
+        """Once the window has its size: the browser and the settings at a useful width, the rest for
+        the preview and the list."""
+        if self.sashes_placed:
+            return
+        try:
+            width = self.panes.winfo_width()
+            if width > 900:
+                self.panes.sashpos(0, 270)
+                self.panes.sashpos(1, width - 420)
+                self.sashes_placed = True
+        except tk.TclError:
+            pass
+
+    def _build_preview(self, parent):
+        box = ttk.Frame(parent)
+        parent.add(box, weight=3)
+        bar = ttk.Frame(box)
+        bar.pack(fill="x")
+        self.preview_var = tk.StringVar(value="Pick an area or a model to see it here.")
+        self.only_var = tk.BooleanVar(value=False)
+        self.compare_var = tk.BooleanVar(value=False)
+        self.wire_var = tk.BooleanVar(value=False)
+        self.pbr_var = tk.BooleanVar(value=self.view_settings["pbr_maps"])
+        self.live_var = tk.BooleanVar(value=self.view_settings["live_reflections"])
+        problem = viewer.available()
+        if problem is None:
+            try:
+                self.view = viewer.ModelView(box, self._view_fields, self._view_pick, self.view_settings,
+                                             width=480, height=320)
+            except Exception as e:  # noqa: BLE001 - the editor works without the preview
+                problem = "The 3D preview couldn't start: %s" % e
+                self.view = None
+        controls = [
+            ("Frame all", lambda: self.view and self.view.frame_all(), "Show the whole area or model (Home)."),
+            ("Frame material", lambda: self.view and self.view.frame_selected(),
+             "Zoom to the picked material (F)."),
+        ]
+        for text, command, tip in controls:
+            b = ttk.Button(bar, text=text, command=command)
+            b.pack(side="left", padx=(0, 4))
+            self._tip(b, tip)
+        checks = [
+            ("Only this material", self.only_var, "Draw the picked material alone."),
+            ("Outline", self.wire_var, "Outline the picked material's triangles."),
+            ("Without my changes", self.compare_var,
+             "Draw every material with the game's own settings, to compare with yours."),
+        ]
+        for text, var, tip in checks:
+            c = ttk.Checkbutton(bar, text=text, variable=var, command=self._view_options)
+            c.pack(side="left", padx=(4, 0))
+            self._tip(c, tip)
+        game = ttk.Frame(box)
+        game.pack(fill="x")
+        ttk.Label(game, text="Game settings:", foreground="#555").pack(side="left")
+        for text, var, tip in [
+            ("PBR maps", self.pbr_var, "Video > Quality > PBR maps in the game (read from its settings.cfg). "
+             "Off in the game, the PBR settings change nothing there; tick it here to preview them anyway."),
+            ("Live reflections", self.live_var, "Video > Quality > Live reflections in the game. The preview's "
+             "live reflections show a studio around the model; the game's show the room."),
+        ]:
+            c = ttk.Checkbutton(game, text=text, variable=var, command=self._view_options)
+            c.pack(side="left", padx=(4, 0))
+            self._tip(c, tip)
+        hint = ttk.Label(game, text="Drag: turn  Right-drag: move  Wheel: zoom  Shift-drag: light  Click: pick  "
+                         "Double-click: turn around there  W/A/S/D/Q/E: fly", foreground="#777")
+        hint.pack(side="left", padx=(12, 0))
+        if self.view is not None:
+            self.view.pack(fill="both", expand=True, pady=(4, 0))
+            self.view.on_problem = lambda text: self.preview_var.set(text)
+        else:
+            ttk.Label(box, text=problem + "\nThe editor works without it.", foreground="#b35c00",
+                      justify="center", anchor="center").pack(fill="both", expand=True)
+        ttk.Label(box, textvariable=self.preview_var, foreground="#555").pack(fill="x")
+
+    def _view_fields(self, material):
+        return self.overrides.get(material.key_text) if self.overrides else {}
+
+    def _view_options(self):
+        if self.view is None:
+            return
+        self.view.only_selected = self.only_var.get()
+        self.view.compare = self.compare_var.get()
+        self.view.wire = self.wire_var.get()
+        self.view_settings["pbr_maps"] = self.pbr_var.get()
+        self.view_settings["live_reflections"] = self.live_var.get()
+        self.view.request()
+
+    def _view_pick(self, index):
+        """A material clicked in the preview: pick it in the list."""
+        if not self.selected or self.view is None or self.view.scene is None:
+            return
+        set_index = self.view.scene.set_index
+        for n, m in enumerate(self.selected[1]):
+            if m.index == index and m.set_index == set_index:
+                self.mats.selection_set(str(n))
+                self.mats.see(str(n))
+                return
+
+    def _load_preview(self, set_index=0, frame=True):
+        if self.view is None or self.source is None or self.library is None:
+            return
+        self.preview_token += 1
+        token = self.preview_token
+        kind, rid = self.source
+        library, pack = self.library, self.pack_index
+        self.preview_var.set("Loading the preview...")
+        if frame:
+            self.view.set_scene(None)
+
+        def work():
+            try:
+                return token, preview.build_scene(library, kind, rid, set_index, pack), None
+            except Exception as e:  # noqa: BLE001 - shown under the preview
+                return token, None, "%s: %s" % (type(e).__name__, e)
+
+        self._run(work, lambda result: self._preview_ready(result, frame), "Couldn't load the preview")
+
+    def _preview_ready(self, result, frame):
+        token, scene, error = result
+        if token != self.preview_token or self.view is None:
+            return
+        if error:
+            self.view.set_scene(None)
+            self.preview_var.set("No preview: %s" % error)
+            return
+        self.view.set_scene(scene, frame=frame)
+        if self.material is not None:
+            self.view.select(self.material.index if self.material.set_index == scene.set_index else None)
+        drawn = len(scene.batches)
+        with_maps = sum(1 for k in scene.batches if scene.has_maps(k))
+        parts = ["%d triangles, %d material(s) drawn" % (scene.triangles, drawn)]
+        if with_maps:
+            parts.append("%d with PBR maps" % with_maps)
+        if scene.set_index:
+            parts.append("material set %d" % scene.set_index)
+        parts += [note.rstrip(".") for note in scene.notes]
+        self.preview_var.set(". ".join(parts) + ". Studio lighting, not the room's.")
 
     def _tip(self, widget, text):
         widget.bind("<Enter>", lambda e: self.help_var.set(text))
@@ -282,6 +441,9 @@ class Editor(tk.Tk):
         if self.library is not None:
             self.library.close()
         self.library = library
+        self.source = None
+        if self.view is not None:
+            self.view.set_scene(None)
         self.pack_index = mc.index_pack(mc.user_texture_folder(self.user))
         self._fill_browser()
         areas = sum(len(w["areas"]) for w in library.worlds)
@@ -318,13 +480,13 @@ class Editor(tk.Tk):
         label = self.browser.item(sel[0], "text")
         self.status("Reading %s..." % label)
         if kind == "MREA":
-            self._run(lambda: [self.library.area_materials(rid)], lambda sets: self._show_materials(label, sets),
-                      "Couldn't read the area")
+            self._run(lambda: [self.library.area_materials(rid)],
+                      lambda sets: self._show_materials(label, sets, (kind, rid)), "Couldn't read the area")
         else:
-            self._run(lambda: self.library.model_materials(rid), lambda sets: self._show_materials(label, sets),
-                      "Couldn't read the model")
+            self._run(lambda: self.library.model_materials(rid),
+                      lambda sets: self._show_materials(label, sets, (kind, rid)), "Couldn't read the model")
 
-    def _show_materials(self, label, sets):
+    def _show_materials(self, label, sets, source=None):
         materials = [m for s in sets for m in s]
         self.selected = (label, materials)
         self.list_title.set("%s: %d material(s)" % (label, len(materials)))
@@ -337,8 +499,15 @@ class Editor(tk.Tk):
         self.status("%s: %d material(s)." % (label, len(materials)))
         self.material = None
         self._enable_fields(False)
+        if self.view is not None:
+            self.view.select(None)
+        if source is not None:
+            self.source = source
+            self._load_preview()
 
     def _refresh_list_marks(self):
+        if self.view is not None:
+            self.view.request()  # every change of the settings comes through here
         if not self.selected or not hasattr(self, "mats"):
             return
         for n, m in enumerate(self.selected[1]):
@@ -360,6 +529,14 @@ class Editor(tk.Tk):
         self.same_box["values"] = ["%08X" % t for t in m.textures if t is not None]
         if self.same_box["values"]:
             self.same_box.current(0)
+        if self.view is not None:
+            scene = self.view.scene
+            if scene is not None and scene.kind == "CMDL" and m.set_index != scene.set_index:
+                self._load_preview(m.set_index, frame=False)  # draw the model with this material's set
+            self.view.select(m.index)
+            if scene is not None and m.set_index == scene.set_index and m.index not in scene.batches:
+                self.status("Material %d isn't drawn by any of this %s's triangles."
+                            % (m.index, "area" if scene.kind == "MREA" else "model"))
 
     def _show_textures(self, m):
         for child in self.thumb_frame.winfo_children():

@@ -1,5 +1,7 @@
 """tools/material_editor/material_core.py: the key (as the game computes it), paths and settings, the
-disc's worlds/areas/models and their materials, texture decoding, PNG, materials.json.
+disc's worlds/areas/models and their materials, texture decoding, PNG, materials.json. And the 3D
+preview's data (geometry.py, preview.py): CMDL and MREA geometry, display lists, each material's base
+texture and environment stage, and the settings as the game applies them.
 
 Usage: material_editor.py <repo root>. Standard library only; no disc needed: the disc, PAK, MLVL,
 STRG, MREA, CMDL and TXTR are built here (with tests/pbr_disc_scan.py's builders).
@@ -18,6 +20,8 @@ sys.argv = sys.argv[:1]
 sys.path.insert(0, str(ROOT / "tools" / "material_editor"))
 sys.path.insert(0, str(ROOT / "tests"))
 import material_core as mc  # noqa: E402
+import geometry  # noqa: E402
+import preview  # noqa: E402
 import pbr_disc_scan as builders  # noqa: E402
 
 be = builders.be
@@ -317,6 +321,213 @@ class Files(unittest.TestCase):
         header = (ROOT / "platform" / "include" / "port_material_overrides.h").read_text()
         for name in mc.FIELD_NAMES:
             self.assertIn('"%s"' % name, header, name)
+
+
+# ------------------------------------------------------------------------------- the 3D preview
+ARGS = builders.ARGS
+POS8, POS16, NRM8, TEX0_8, TEX0_16, TEX1_8, PNMTX = 2, 3, 2 << 2, 2 << 8, 3 << 8, 2 << 10, 1 << 24
+LIT = (ARGS(15, 10, 8, 15), 0, 0, 0, 0, 0 | 0 << 8)  # 0 + lerp(0, RASC, TEXC): texcoord 0, texmap 0
+
+
+def with_vtx(data, vtx):
+    """A builders.material with its vertex description set (the builder writes 0x11111111)."""
+    (count,) = struct.unpack_from(">I", data, 4)
+    at = 8 + 4 * count
+    return data[:at] + be(vtx) + data[at + 4:]
+
+
+def surface(material_index, dl, extra=0):
+    """A surface section: the 0x30-byte header, `extra` bytes, padding to (0x4F + extra) & ~31, the
+    display list."""
+    head = struct.pack(">3f", 0, 0, 0) + be(material_index, len(dl) | 0x80000000, 0, 0, extra)
+    head += struct.pack(">3f", 0, 0, 1) + struct.pack(">h", 0) + b"\0\0"
+    head += b"\0" * extra
+    head += b"\0" * (((0x4F + extra) & ~31) - len(head))
+    return head + dl
+
+
+def cmdl_with_geometry(flags, sets, arrays, surfaces):
+    sections = list(sets) + list(arrays) + [be(len(surfaces))] + list(surfaces)
+    padded = [x + b"\0" * (-len(x) % 32) for x in sections]
+    head = b"\xDE\xAD\xBA\xBE" + be(2, flags) + b"\0" * 24 + be(len(padded), len(sets)) + be(*map(len, padded))
+    head += b"\0" * (-len(head) % 32)
+    return head + b"".join(padded)
+
+
+def floats(*values):
+    return struct.pack(">%df" % len(values), *values)
+
+
+QUAD = floats(0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0)
+UP = floats(*([0, 0, 1] * 4))
+UVS = floats(0, 0, 0.25, 0.5, 0.5, 1.0, 0.75, 1.5)
+
+
+def strip_dl():
+    """A strip of the quad's 4 vertices: PNMTXIDX, POS u16, NRM u8, TEX0 u16 each."""
+    return bytes([0x98]) + struct.pack(">H", 4) + b"".join(
+        bytes([0]) + struct.pack(">H", i) + bytes([0]) + struct.pack(">H", i) for i in range(4))
+
+
+def quads_dl():
+    """One quad: POS u8, NRM u8, TEX1 u8 per vertex."""
+    return bytes([0x80]) + struct.pack(">H", 4) + b"".join(bytes([i, 0, i]) for i in range(4))
+
+
+def test_model():
+    m0 = with_vtx(builders.material(0, [0], 0x00000001, [LIT], [4 << 4]), PNMTX | POS16 | NRM8 | TEX0_16)
+    env = (ARGS(15, 8, 14, 0), 0, 0, 0, 0x0C << 8, 0 | 0 << 8)  # CPREV + TEXC x KONST(K0), from the normal
+    m1 = with_vtx(builders.material(geometry.FLAG_KONST, [0, 1], 4 | 5 << 16,
+                                    [(ARGS(15, 8, 2, 15), 0, 0, 0, 0, 1 | 1 << 8), env], [1 << 4, 5 << 4],
+                                    konst=(0x80402000,)), POS8 | NRM8 | TEX1_8)
+    mset = builders.material_set([0x7001, 0x7002], [m0, m1])
+    return cmdl_with_geometry(0, [mset], [QUAD, UP, b"", UVS], [surface(0, strip_dl()), surface(1, quads_dl(), 0x18)])
+
+
+class PreviewGeometry(unittest.TestCase):
+    def test_cmdl_triangles_by_material(self):
+        sets, model = geometry.cmdl_geometry(test_model())
+        self.assertEqual(len(sets), 1)
+        self.assertEqual([s.material_index for s in model.surfaces], [0, 1])
+        ids, datas = builders.ds.parse_material_set(sets[0])
+        materials = [mc.Material(i, d, ids) for i, d in enumerate(datas)]
+        batches, looks = geometry.build_batches([model], materials)
+        # The strip 0 1 2 3 is the triangles (0, 1, 2) and (2, 1, 3) (GX flips every other one).
+        pos = list(batches[0].positions)
+        corner = [QUAD[i * 12:i * 12 + 12] for i in range(4)]
+        expect = b"".join(corner[i] for i in (0, 1, 2, 2, 1, 3))
+        self.assertEqual(floats(*pos), expect)
+        self.assertEqual(list(batches[0].uvs)[:6], [0, 0, 0.25, 0.5, 0.5, 1.0])
+        self.assertEqual(list(batches[0].normals)[:3], [0, 0, 1])
+        # The quad 0 1 2 3: (0, 1, 2) and (0, 2, 3), with TEX1's UVs (the base stage's texcoord 1).
+        self.assertEqual(batches[1].count, 6)
+        self.assertEqual(list(batches[1].uvs)[4:8], [0.5, 1.0, 0, 0])  # vertices 2, then 0 again
+        self.assertEqual(list(batches[1].uvs)[10:12], [0.75, 1.5])
+        look0, look1 = looks[0], looks[1]
+        self.assertEqual((look0.base_slot, look0.base_uv), (0, 0))
+        self.assertFalse(look0.blended)
+        self.assertIsNone(look0.env_slot)
+        self.assertEqual((look1.base_slot, look1.base_uv), (1, 1))
+        self.assertEqual(look1.env_slot, 0)
+        self.assertFalse(look1.env_mix)
+        for got, want in zip(look1.env_weight, (128 / 255.0, 64 / 255.0, 32 / 255.0)):
+            self.assertAlmostEqual(got, want)
+        self.assertTrue(look1.blended)
+        self.assertFalse(look1.additive)
+        self.assertEqual(geometry.bounds(batches), ([0, 0, 0], [1, 1, 0]))
+
+    def test_display_list_kinds(self):
+        vtx = POS8
+        tri = bytes([0x90]) + struct.pack(">H", 3) + bytes([0, 1, 2])
+        fan = bytes([0xA0]) + struct.pack(">H", 4) + bytes([0, 1, 2, 3])
+        lines = bytes([0xA8]) + struct.pack(">H", 2) + bytes([0, 1])
+        prims = geometry.decode_display_list(tri + b"\0\0" + fan + lines, vtx)
+        self.assertEqual([[v["POS"] for v in tris] for _f, tris in prims], [[0, 1, 2], [0, 1, 2, 0, 2, 3]])
+        with self.assertRaises(ValueError):
+            geometry.decode_display_list(tri, 1)  # direct positions: not in these models
+
+    def test_area_world_models(self):
+        m0 = with_vtx(builders.material(geometry.FLAG_ALPHA_TEST | geometry.FLAG_LIGHTMAP_UV_ARRAY, [0],
+                                        4 | 5 << 16, [LIT], [4 << 4]), POS8 | NRM8 | TEX0_8)
+        mset = builders.material_set([0x7001], [m0])
+        transform = floats(1, 0, 0, 10, 0, 1, 0, 0, 0, 0, 1, 0)
+        header = be(0) + transform + floats(0, 0, 0, 1, 1, 1)
+        normals = struct.pack(">9h", 0, 0, 16384, 0, 16384, 0, 16384, 0, 0)
+        packed = struct.pack(">6H", 0, 0, 16384, 0, 0, 32768)
+        dl = bytes([0x90 | 2]) + struct.pack(">H", 3) + bytes([0, 0, 0, 1, 1, 1, 2, 2, 2])
+        model0 = [header, QUAD[:36], normals, b"", b"", packed, be(1), surface(0, dl), b"\0" * 4, b"\0" * 4]
+        model1 = [header, b"", b"", b"", b"", b"", be(0)]  # no surfaces: no records or groups
+        sections = [b"\x01" * 32, mset] + model0 + model1
+        sections = [x + b"\0" * (-len(x) % 32) for x in sections] + [b"\x05" * 64]
+        h = [0] * 32
+        h[0], h[1], h[14], h[16], h[17], h[28] = 0xDEADBEEF, 0x19, 2, len(sections), 1, 2
+        body = be(*h) + be(*map(len, sections))
+        body += b"\0" * (-len(body) % 32)
+        stored = sum(map(len, sections[:-1]))
+        # The last block claims LZO data it hasn't got: read only if a section in it is asked for.
+        body += be(stored, stored, 0, len(sections) - 1) + be(64, 64, 32, 1)
+        body += b"\0" * (-len(body) % 32)
+        body += b"".join(sections[:-1]) + b"\xFF" * 32
+        material_section, models = geometry.area_geometry(body)
+        self.assertEqual(material_section[:len(mset)], mset)
+        self.assertEqual(len(models), 1)
+        ids, datas = builders.ds.parse_material_set(mset)
+        batches, looks = geometry.build_batches(models, [mc.Material(0, datas[0], ids)])
+        self.assertEqual(list(batches[0].positions)[:6], [10, 0, 0, 11, 0, 0])  # moved by the transform
+        self.assertEqual(list(batches[0].normals)[:6], [0, 0, 1, 0, 1, 0])      # s16, 14 fraction bits
+        self.assertEqual(list(batches[0].uvs), [0, 0, 0.5, 0, 0, 1.0])          # packed, 15 fraction bits
+        self.assertTrue(looks[0].alpha_test)
+        self.assertFalse(looks[0].blended)  # alpha-tested: drawn opaque (SetupBlendMode)
+
+
+class PreviewSettings(unittest.TestCase):
+    def setUp(self):
+        sets, _model = geometry.cmdl_geometry(test_model())
+        ids, datas = builders.ds.parse_material_set(sets[0])
+        self.plain, self.shiny = geometry.Look(datas[0]), geometry.Look(datas[1])
+
+    def test_as_the_game_applies_them(self):
+        game = {"pbr_maps": True, "live_reflections": True, "pbr_highlight": 1.5}
+        p = preview.params({}, self.plain, True, game)
+        self.assertTrue(p["pbr"])
+        self.assertEqual((p["roughness"], p["strength"], p["env"]), (1.0, 1.0, "none"))
+        self.assertAlmostEqual(p["highlight"], 1.5)
+        p = preview.params({"pbr": False, "roughness": 9}, self.plain, True, game)
+        self.assertFalse(p["pbr"])
+        self.assertEqual(p["roughness"], 4.0)  # clamped as the game clamps it
+        self.assertFalse(preview.params({}, self.plain, False, game)["pbr"])  # no maps
+        self.assertFalse(preview.params({}, self.plain, True, dict(game, pbr_maps=False))["pbr"])
+        # The reflection: the painted map unless switched on (and Live reflections on in the game).
+        self.assertEqual(preview.params({}, self.shiny, False, game)["env"], "painted")
+        p = preview.params({"reflection": True, "reflection_blur": 50, "reflection_strength": 2}, self.shiny,
+                           False, game)
+        self.assertEqual((p["env"], p["env_blur"], p["env_strength"]), ("live", 0.5, 2.0))
+        p = preview.params({"reflection": True}, self.shiny, False, dict(game, live_reflections=False))
+        self.assertEqual(p["env"], "painted")
+        self.assertEqual(preview.setting_percent({"pbr_highlight": "150"}, "pbr_highlight", 100), 1.5)
+        self.assertEqual(preview.setting_percent({}, "pbr_highlight", 100), 1.0)
+
+
+class PreviewScene(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = pathlib.Path(self.tmp.name)
+        resources = [("CMDL", 0x3001, test_model()), ("TXTR", 0x7001, txtr_i8(16, 8)),
+                     ("TXTR", 0x7002, txtr_i8(8, 4))]
+        image = builders.gc_disc({"Metroid4.pak": pak(resources)})
+        self.path = self.dir / "echoes.iso"
+        self.path.write_bytes(image)
+        self.lib = mc.Library(str(self.path))
+
+    def tearDown(self):
+        self.lib.close()
+        self.tmp.cleanup()
+
+    def test_disc_textures(self):
+        scene = preview.build_scene(self.lib, "CMDL", 0x3001)
+        self.assertEqual(sorted(scene.batches), [0, 1])
+        self.assertEqual(scene.triangles, 4)
+        self.assertEqual(scene.base_texture(0), 0x7001)
+        self.assertEqual(scene.base_texture(1), 0x7002)
+        self.assertEqual(scene.env_texture(1), 0x7001)
+        self.assertEqual(scene.pictures[0x7001].source, "disc")
+        self.assertEqual((scene.pictures[0x7001].width, scene.pictures[0x7001].height), (16, 8))
+        self.assertFalse(scene.has_maps(0))
+
+    @unittest.skipUnless(preview.Image is not None, "Pillow isn't installed")
+    def test_pack_textures_and_maps(self):
+        pack = self.dir / "pack"
+        pack.mkdir()
+        stem = self.lib.texture_pack_name(0x7001)[:-4]
+        for suffix, colour in (("", (200, 10, 10, 255)), ("_nrm", (128, 128, 255, 255)), ("_orm", (255, 128, 0, 255))):
+            preview.Image.new("RGBA", (32, 16), colour).save(str(pack / (stem + suffix + ".png")))
+        scene = preview.build_scene(self.lib, "CMDL", 0x3001, pack_index=mc.index_pack(str(pack)))
+        self.assertEqual(scene.pictures[0x7001].source, "pack")
+        self.assertEqual(scene.pictures[0x7001].rgba[:4], bytes((200, 10, 10, 255)))
+        self.assertTrue(scene.has_maps(0))
+        self.assertFalse(scene.has_maps(1))
+        nrm, orm = scene.maps[0x7001]
+        self.assertEqual(orm.rgba[:4], bytes((255, 128, 0, 255)))
 
 
 if __name__ == "__main__":

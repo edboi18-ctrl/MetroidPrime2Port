@@ -4,7 +4,8 @@
 enhancements per material: whether a surface uses the PBR maps of your texture pack and how it reads
 them, and whether its reflection shows the room live. It reads the materials straight from your disc
 image and saves the settings to a `materials.json` in your mods folder. The disc's own data is never
-changed, so removing the file (or switching the mod off) brings every surface back.
+changed, so removing the file (or switching the mod off) brings every surface back. A 3D preview shows
+the model or area with your settings as you change them.
 
 ## Using it
 
@@ -14,9 +15,10 @@ changed, so removing the file (or switching the mod off) brings every surface ba
    picks another image (`.iso`, `.gcm` or `.ciso`; convert RVZ/WIA/GCZ to ISO in Dolphin first), and
    **Change...** another file (any mod folder's `materials.json`).
 2. On the left, pick an area (under its world) or a model. The filter box matches area names, model
-   names and ids.
-3. In the middle list, pick a material: its textures show on the right (marked **PBR maps** when your
-   texture pack, `user\user_textures`, has normal and ORM maps for them), with its settings below.
+   names and ids. It shows in the 3D preview, its materials in the list below it.
+3. Pick a material, in the list or by clicking it in the preview: its textures show on the right
+   (marked **PBR maps** when your texture pack, `user\user_textures`, has normal and ORM maps for
+   them), with its settings below.
 4. Change a setting: tick it (moving a slider ticks it for you) to use the value here; untick it for
    the game's own. With **Save as I change** on, every change is saved at once, and **the running game
    picks it up within a couple of seconds**: keep the game open beside the editor and watch the
@@ -24,6 +26,41 @@ changed, so removing the file (or switching the mod off) brings every surface ba
 
 Mods must be on in the game (F1 > Mods > Load mods) and the mod folder switched on; F1 > Mods shows how
 many materials were read and any problem with a file.
+
+## The 3D preview
+
+The area or model you picked, drawn with your texture pack's textures (the disc's where the pack has
+none) and with each material's settings, redrawn as you move a slider. The picked material flashes
+when you pick it.
+
+| To | Do |
+| --- | --- |
+| Turn around the model | Drag |
+| Move | Right-drag (or middle-drag) |
+| Zoom | Mouse wheel |
+| Turn the light | Shift-drag |
+| Pick a material | Click it |
+| Turn around a point | Double-click it |
+| Fly (areas) | Click the preview, then W/A/S/D, Q/E down/up (Shift for faster) |
+| Frame the picked material / everything | F / Home, or the buttons |
+
+**Only this material** draws the picked material alone, **Outline** outlines its triangles, and
+**Without my changes** draws everything with the game's own settings, to compare. **Game settings**
+start as your game has them (its `settings.cfg`): with **PBR maps** off in the game (Video > Quality),
+the PBR settings change nothing there, and with **Live reflections** off, the reflection settings
+don't either; tick them here to preview anyway.
+
+The shading is the game's PBR (the same normal map, roughness, metal, occlusion, highlight and
+strength maths as the port's shader), but the light is a studio light (an ambient light plus one key
+light you turn), not the room's lights and lightmaps, so a surface can look brighter or darker than in
+the room. Live reflections show a studio around the model where the game shows the room. A material's
+painted reflection is its own environment map. Effects the game adds while drawing (fog, bloom,
+animated textures, the TEV's other stages) aren't in the preview: check the result in the game, which
+picks the changes up within a couple of seconds.
+
+The preview needs OpenGL 2.1, which any GPU driver from the last fifteen years or so has. Without it
+(over Remote Desktop, or with Windows' basic display driver) the line under the preview says so and
+the editor works the same without it.
 
 ## Settings
 
@@ -74,10 +111,19 @@ works the same; the editor keeps other top-level keys you add.
 - `tools/material_editor/material_core.py`: paths, the disc (through `tools/echoes_disc.py` and
   `tools/pbr/disc_texture_scan.py`), keys, GX texture decoding, the file. Standard library only.
   Tests: `tests/material_editor.py` (ctest `material_editor`).
+- `tools/material_editor/geometry.py`: CMDL and MREA geometry, display lists, each material's base
+  texture and environment stage, as the engine reads them (the file's comment names the code).
+  `preview.py`: a model's or area's triangles and textures for the preview, and the settings as
+  `CCubeMaterial::PortBeginSurfaceDraw` applies them. Standard library, plus Pillow for the texture
+  pack. Tests: `tests/material_editor.py`.
+- `tools/material_editor/viewer.py`: the preview (PyOpenGL in a pyopengltk frame, GLSL 1.20). Its
+  shader follows Aurora's `port_surface_pbr` (`extern/aurora/lib/gx/shader.cpp`).
 - `tools/material_editor/mp2_material_editor.py`: the window (tkinter). Runs with Python 3.8+:
   `py -3 tools\material_editor\mp2_material_editor.py --game "C:\path\to\the game folder"`
-  (`--user`, `--disc`, `--output` override what it finds).
-- The Windows CI builds the .exe with PyInstaller (`.github/workflows/windows.yml`, x64).
+  (`--user`, `--disc`, `--output` override what it finds). For the preview:
+  `py -3 -m pip install PyOpenGL pyopengltk pillow`.
+- The Windows CI builds the .exe with PyInstaller (`.github/workflows/windows.yml`, x64), PyOpenGL,
+  pyopengltk and Pillow inside; their licences go to `licenses\` (`bundle_licenses.py`).
 - The game: `platform/port_material_overrides.cpp` (reading and re-reading the files),
   `CCubeMaterial::PortSetMaterialOverride` / `PortBeginSurfaceDraw` (applying them), and Aurora's
   `GXPortSetSurfacePBRParams` (the map scales).

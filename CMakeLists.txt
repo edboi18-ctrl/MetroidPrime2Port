@@ -777,7 +777,9 @@ if(AURORA_SDL3_TARGET)
     set_tests_properties(pbr_disc_scan PROPERTIES TIMEOUT 60 LABELS port)
     # The material editor's workings (tools/material_editor/material_core.py): the key the game
     # computes, paths and settings, worlds/areas/models and materials from a built disc, texture
-    # decoding, materials.json.
+    # decoding, materials.json. And its 3D preview's data (geometry.py, preview.py): CMDL and MREA
+    # geometry, display lists, the settings as the game applies them (the texture pack part skipped
+    # without Pillow).
     add_test(NAME material_editor
         COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/tests/material_editor.py
                 ${CMAKE_CURRENT_SOURCE_DIR})
