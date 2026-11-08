@@ -251,6 +251,34 @@ jobs:
           if ($license) { Copy-Item $license dist/licenses/openssl.txt }
           else { Invoke-WebRequest https://raw.githubusercontent.com/openssl/openssl/openssl-3.5/LICENSE.txt -OutFile dist/licenses/openssl.txt }
 
+      # The material editor (tools/material_editor, docs/MATERIAL_EDITOR.md) as one .exe beside the
+      # game, which it finds its settings and mods folder from; its Python sources go along too. x64
+      # only (it runs on Windows on Arm through emulation). Built with PyInstaller, which bundles the
+      # runner's Python and Tcl/Tk: their licences go into licenses/. A failure here leaves the
+      # game's package as it is (the Python sources still run with Python installed).
+      - name: Material editor
+        if: matrix.arch == 'x64'
+        shell: pwsh
+        continue-on-error: true
+        timeout-minutes: 10
+        run: |
+          New-Item -ItemType Directory -Force -Path dist/tools/material_editor | Out-Null
+          Copy-Item tools/material_editor/material_core.py, tools/material_editor/mp2_material_editor.py dist/tools/material_editor/
+          Copy-Item docs/MATERIAL_EDITOR.md dist/MATERIAL_EDITOR.md
+          py -3 -m pip install --disable-pip-version-check --only-binary=:all: "pyinstaller>=6.11,<7"
+          if ($LASTEXITCODE) { throw "pip failed ($LASTEXITCODE)" }
+          py -3 -m PyInstaller --noconfirm --onefile --windowed --name mp2_material_editor `
+            --distpath build-editor --workpath build-editor/work --specpath build-editor `
+            --paths tools --paths tools/pbr --paths tools/material_editor `
+            tools/material_editor/mp2_material_editor.py
+          if ($LASTEXITCODE) { throw "PyInstaller failed ($LASTEXITCODE)" }
+          Copy-Item build-editor/mp2_material_editor.exe dist/
+          $base = py -3 -c "import sys; print(sys.base_prefix)"
+          if (Test-Path "$base/LICENSE.txt") { Copy-Item "$base/LICENSE.txt" dist/licenses/python.txt }
+          $tcl = Get-ChildItem -Path "$base/tcl" -Recurse -Filter license.terms -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($tcl) { Copy-Item $tcl.FullName dist/licenses/tcl-tk.txt }
+          Get-Item dist/mp2_material_editor.exe | Format-List Name, Length
+
       # The port's own grant and notice, the vendored snapshots', every fetched
       # package's and packaging/licenses/, as the Linux packages collect them.
       - name: Collect licences

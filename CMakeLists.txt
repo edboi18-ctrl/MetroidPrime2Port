@@ -775,6 +775,13 @@ if(AURORA_SDL3_TARGET)
         COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/tests/pbr_disc_scan.py
                 ${CMAKE_CURRENT_SOURCE_DIR})
     set_tests_properties(pbr_disc_scan PROPERTIES TIMEOUT 60 LABELS port)
+    # The material editor's workings (tools/material_editor/material_core.py): the key the game
+    # computes, paths and settings, worlds/areas/models and materials from a built disc, texture
+    # decoding, materials.json.
+    add_test(NAME material_editor
+        COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/tests/material_editor.py
+                ${CMAKE_CURRENT_SOURCE_DIR})
+    set_tests_properties(material_editor PROPERTIES TIMEOUT 60 LABELS port)
     # The PBR map generator (tools/pbr/make_pbr_maps.py): the normal and ORM conventions Aurora's PBR
     # shader reads, the DDS it writes, settings, a whole run. Skipped without numpy and Pillow.
     add_test(NAME pbr_make_maps

@@ -14,7 +14,9 @@ Inside a mod:
 - a file named `<8 hex digits>.<TYPE>` (`1A2B3C4D.TXTR`, `0552A456.STRG`), anywhere in the mod, replaces
   that resource, uncompressed, in every PAK holding it. The PAK is served as a virtual file whose table
   points past the original data, where the loose file is appended (32-byte aligned).
-- `.txt/.md/.json/.png/...` files are ignored silently.
+- `.txt/.md/.json/.png/...` files are ignored silently, except `materials.json`: per-material settings
+  (PBR maps and reflections) the Material Editor writes, read by the game and re-read when it changes
+  (`docs/MATERIAL_EDITOR.md`).
 
 `platform/port_mods.cpp` (scan, plan, register with Aurora's DVD overlays) runs from `main.cpp` right
 after the disc mounts; `platform/port_mods_pak.cpp` is the unit-tested PAK table / virtual file / reader
