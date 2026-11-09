@@ -228,6 +228,7 @@ class Look:
             self.blend_src, self.blend_dst = GX_BL_ONE, GX_BL_ZERO
         self.base_slot, self.base_uv = self._base()
         self.env_slot, self.env_mix, self.env_weight = self._env()
+        self.glow_slot, self.glow_uv, self.glow_weight = self._glow()
 
     @property
     def blended(self):
@@ -261,6 +262,33 @@ class Look:
             if uv is not None:
                 return texmap, uv
         return None, None
+
+    def _glow(self):
+        """(slot, UV set, RGB weight) of the first glow stage (material_core.glow_stages: what the
+        game's Luminance scales), or (None, None, None). The weight is the texture's factor."""
+        stages = mc.glow_stages(self.stages, self.texgens)
+        if not stages:
+            return None, None, None
+        st = self.stages[stages[0]]
+        order, kcsel = st[0], st[5]
+        a, b, c, d = _args(st[1])
+        if d == CC_TEXC:
+            factor = CC_ONE
+        elif c == CC_TEXC:
+            factor = b
+        elif b == CC_TEXC:
+            factor = c
+        else:  # d + (1 - c) TEXC
+            factor = CC_ONE if c == CC_ZERO else None
+        if factor == CC_KONST:
+            weight = _kcolor(kcsel, self.konst)
+        elif factor == CC_ONE:
+            weight = (1.0, 1.0, 1.0)
+        elif factor == CC_HALF:
+            weight = (0.5, 0.5, 0.5)
+        else:
+            weight = (0.5, 0.5, 0.5)  # a register the engine sets: unknown here
+        return (order >> 8) & 0xFF, self._uv_set(order & 0xFF), tuple(weight)
 
     def _env(self):
         """(slot, mixes rather than adds, RGB weight) of the first stage sampling a texture through
@@ -351,13 +379,15 @@ def decode_display_list(dl, vtx_desc):
 
 
 class Batch:
-    """A material's triangles: flat arrays of positions (x3), normals (x3) and base UVs (x2)."""
+    """A material's triangles: flat arrays of positions (x3), normals (x3), the base texture's UVs
+    (x2) and the glow texture's (x2)."""
 
     def __init__(self, material_index):
         self.material_index = material_index
         self.positions = array("f")
         self.normals = array("f")
         self.uvs = array("f")
+        self.uvs2 = array("f")
 
     @property
     def count(self):
@@ -407,11 +437,16 @@ def build_batches(models, materials):
             except (struct.error, ValueError):
                 continue
             batch = batches.setdefault(mi, Batch(mi))
-            uv_name = "TEX%d" % look.base_uv if look.base_uv is not None else None
-            use_packed = uv_name == "TEX0" and look.packed_tex0 and bool(packed)
-            uv_src, uv_scale = (packed, 1.0 / 32768.0) if use_packed else (uvs, 1.0)
-            nuv = len(uv_src) // 2
-            out_p, out_n, out_t = batch.positions, batch.normals, batch.uvs
+
+            def uv_source(uv_set):
+                name = "TEX%d" % uv_set if uv_set is not None else None
+                if name == "TEX0" and look.packed_tex0 and packed:
+                    return name, packed, 1.0 / 32768.0, len(packed) // 2
+                return name, uvs, 1.0, len(uvs) // 2
+
+            uv_name, uv_src, uv_scale, nuv = uv_source(look.base_uv)
+            uv2_name, uv2_src, uv2_scale, nuv2 = uv_source(look.glow_uv)
+            out_p, out_n, out_t, out_t2 = batch.positions, batch.normals, batch.uvs, batch.uvs2
             for fmt, tris in prims:
                 if fmt in (1, 2):
                     if nrm_s is None:
@@ -447,6 +482,12 @@ def build_batches(models, materials):
                             out_t.append(uv_src[2 * ui + 1] * uv_scale)
                         else:
                             out_t.extend((0.0, 0.0))
+                        ui = v.get(uv2_name) if uv2_name else None
+                        if ui is not None and ui < nuv2:
+                            out_t2.append(uv2_src[2 * ui] * uv2_scale)
+                            out_t2.append(uv2_src[2 * ui + 1] * uv2_scale)
+                        else:
+                            out_t2.extend((0.0, 0.0))
     return {k: b for k, b in batches.items() if b.count}, looks
 
 

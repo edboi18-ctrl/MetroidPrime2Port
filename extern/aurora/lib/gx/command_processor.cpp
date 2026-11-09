@@ -1611,6 +1611,13 @@ void handle_aurora(ByteReader& reader) noexcept {
       g_gxState.surfacePbrHighlight = highlight;
       g_gxState.dirty |= DirtyUniform;
     }
+  } else if (subCmd == GX_AURORA_PORT_EMISSIVE) {
+    const f32 scale = reader.read<f32>();
+    const f32 clamped = scale >= 0.f ? (scale <= 32.f ? scale : 32.f) : (scale < 0.f ? 0.f : 1.f); // NaN -> 1
+    if (g_gxState.emissiveScale != clamped) {
+      g_gxState.emissiveScale = clamped;
+      g_gxState.dirty |= DirtyUniform;
+    }
   } else if (subCmd == GX_AURORA_PORT_BLOCKING_DRAWS) {
     const bool on = reader.read<u8>() != 0;
     if (g_gxState.blockingDraws != on) {

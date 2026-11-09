@@ -1,5 +1,6 @@
 """The Material Editor's 3D preview: an OpenGL view (PyOpenGL in a pyopengltk frame) of a model or an
-area (preview.Scene), each material drawn as the game's PBR stage would draw it with your settings.
+area (preview.Scene), each material drawn as the game's PBR stage would draw it with your settings,
+with its glow layer (scaled by Luminance) and its reflection.
 
 The shading follows Aurora's port_surface_pbr (extern/aurora/lib/gx/shader.cpp): the same normal-map
 decode and cotangent frame, GGX highlights capped by the light's strength, the environment BRDF
@@ -47,17 +48,20 @@ VERTEX_SHADER = """
 attribute vec3 a_pos;
 attribute vec3 a_nrm;
 attribute vec2 a_uv;
+attribute vec2 a_uv2;
 uniform mat4 u_mv;
 uniform mat4 u_proj;
 uniform mat3 u_nmat;
 varying vec3 v_pos;
 varying vec3 v_nrm;
 varying vec2 v_uv;
+varying vec2 v_uv2;
 void main() {
     vec4 p = u_mv * vec4(a_pos, 1.0);
     v_pos = p.xyz;
     v_nrm = u_nmat * a_nrm;
     v_uv = a_uv;
+    v_uv2 = a_uv2;
     gl_Position = u_proj * p;
 }
 """
@@ -68,6 +72,8 @@ uniform sampler2D u_base;
 uniform sampler2D u_nrm;
 uniform sampler2D u_orm;
 uniform sampler2D u_envtex;
+uniform sampler2D u_glowtex;
+uniform vec4 u_glow;         // the glow layer: its factor (rgb), Luminance (w, 0: no glow layer)
 uniform int u_mode;          // 0 shaded, 1 flat colour (picking, the selection's wireframe)
 uniform vec4 u_flat;
 uniform int u_pbr;           // the material uses its PBR maps
@@ -86,6 +92,7 @@ uniform vec4 u_tint;         // the selection's tint, amount in a
 varying vec3 v_pos;
 varying vec3 v_nrm;
 varying vec2 v_uv;
+varying vec2 v_uv2;
 
 const float PI = 3.14159265;
 
@@ -183,6 +190,11 @@ void main() {
         vec3 pbr = pow(pow(diff, vec3(2.2)) + spec + max(env, vec3(0.0)), vec3(1.0 / 2.2));
         lit = mix(light_game * base, pbr, clamp(u_pbr2.y, 0.0, 1.0));
     }
+    if (u_glow.w > 0.0) {
+        // The glow stage: PREV + its texture x its factor, the texture scaled by Luminance (Aurora's
+        // port_emissive_stages).
+        lit = clamp(lit, 0.0, 1.0) + texture2D(u_glowtex, v_uv2).rgb * u_glow.w * u_glow.rgb;
+    }
     if (u_env_mode != 0) {
         vec3 ec;
         if (u_env_mode == 2) {
@@ -198,7 +210,7 @@ void main() {
 }
 """
 
-UNIFORMS = ("u_mv", "u_proj", "u_nmat", "u_base", "u_nrm", "u_orm", "u_envtex", "u_mode", "u_flat", "u_pbr",
+UNIFORMS = ("u_mv", "u_proj", "u_nmat", "u_base", "u_nrm", "u_orm", "u_envtex", "u_glowtex", "u_glow", "u_mode", "u_flat", "u_pbr",
             "u_params", "u_pbr2", "u_live", "u_env_mode", "u_env", "u_env_look", "u_alpha_ref", "u_key_dir",
             "u_key_col", "u_amb", "u_to_world", "u_tint")
 SELECT_TINT = (1.0, 0.55, 0.1)
@@ -386,7 +398,7 @@ class ModelView(OpenGLFrame):
         program = GL.glCreateProgram()
         GL.glAttachShader(program, self._compile(GL.GL_VERTEX_SHADER, vs))
         GL.glAttachShader(program, self._compile(GL.GL_FRAGMENT_SHADER, fs))
-        for i, name in enumerate(("a_pos", "a_nrm", "a_uv")):
+        for i, name in enumerate(("a_pos", "a_nrm", "a_uv", "a_uv2")):
             GL.glBindAttribLocation(program, i, name)
         GL.glLinkProgram(program)
         if not GL.glGetProgramiv(program, GL.GL_LINK_STATUS):
@@ -441,7 +453,8 @@ class ModelView(OpenGLFrame):
         scene = self.scene
         gpu = {"batches": {}, "textures": {}, "maps": {}}
         for index, batch in scene.batches.items():
-            buffers = [self._buffer(batch.positions), self._buffer(batch.normals), self._buffer(batch.uvs)]
+            buffers = [self._buffer(batch.positions), self._buffer(batch.normals), self._buffer(batch.uvs),
+                       self._buffer(batch.uvs2)]
             gpu["batches"][index] = (buffers, batch.count)
         for tid, pic in scene.pictures.items():
             gpu["textures"][tid] = self._texture(pic.width, pic.height, pic.rgba)
@@ -569,13 +582,13 @@ class ModelView(OpenGLFrame):
         GL.glUniformMatrix4fv(loc["u_proj"], 1, GL.GL_TRUE, _flat(proj))
         GL.glUniformMatrix3fv(loc["u_nmat"], 1, GL.GL_TRUE, _flat(rot))
         GL.glUniformMatrix3fv(loc["u_to_world"], 1, GL.GL_TRUE, _flat(to_world))
-        for i, name in enumerate(("u_base", "u_nrm", "u_orm", "u_envtex")):
+        for i, name in enumerate(("u_base", "u_nrm", "u_orm", "u_envtex", "u_glowtex")):
             GL.glUniform1i(loc[name], i)
         GL.glUniform3f(loc["u_key_dir"], *self._key_dir())
         GL.glUniform3f(loc["u_key_col"], *KEY_COLOR)
         GL.glUniform3f(loc["u_amb"], *AMBIENT)
         GL.glUniform1i(loc["u_mode"], 1 if pick else 0)
-        for i in range(3):
+        for i in range(4):
             GL.glEnableVertexAttribArray(i)
         opaque, blended = self._order(view)
         self._tint = 0.0 if pick or self.only_selected else self._flash()
@@ -604,7 +617,7 @@ class ModelView(OpenGLFrame):
             self._draw_batch(self.selected, True, flat_color=False)
             GL.glDisable(GL.GL_POLYGON_OFFSET_LINE)
             GL.glPolygonMode(GL.GL_FRONT_AND_BACK, GL.GL_FILL)
-        for i in range(3):
+        for i in range(4):
             GL.glDisableVertexAttribArray(i)
         GL.glUseProgram(0)
 
@@ -649,10 +662,18 @@ class ModelView(OpenGLFrame):
             weight = look.env_weight if look is not None and look.env_weight else (0.5, 0.5, 0.5)
             GL.glUniform4f(loc["u_env"], weight[0], weight[1], weight[2], 1.0 if look is not None and look.env_mix else 0.0)
             GL.glUniform2f(loc["u_env_look"], p["env_strength"], p["env_blur"])
+            glow_tid = scene.glow_texture(k)
+            glow = look.glow_weight if look is not None and look.glow_weight else None
+            if glow is not None and glow_tid in self._gpu["textures"]:
+                self._use_texture(4, self._gpu["textures"][glow_tid])
+                GL.glUniform4f(loc["u_glow"], glow[0], glow[1], glow[2], max(p["glow"], 1e-6))
+            else:
+                self._use_texture(4, self._white)
+                GL.glUniform4f(loc["u_glow"], 0.0, 0.0, 0.0, 0.0)
             amount = self._tint if k == self.selected else 0.0
             GL.glUniform4f(loc["u_tint"], SELECT_TINT[0], SELECT_TINT[1], SELECT_TINT[2], amount)
         GL.glActiveTexture(GL.GL_TEXTURE0)
-        for i, (bid, size) in enumerate(zip(buffers, (3, 3, 2))):
+        for i, (bid, size) in enumerate(zip(buffers, (3, 3, 2, 2))):
             GL.glBindBuffer(GL.GL_ARRAY_BUFFER, bid)
             GL.glVertexAttribPointer(i, size, GL.GL_FLOAT, GL.GL_FALSE, 0, None)
         GL.glDrawArrays(GL.GL_TRIANGLES, 0, count)

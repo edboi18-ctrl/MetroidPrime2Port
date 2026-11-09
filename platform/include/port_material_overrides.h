@@ -14,7 +14,7 @@
 // The file is JSON: {"version": 1, "materials": {"<key>": {"<field>": <value>, ...}, ...}}. Fields
 // (all optional; one left out keeps the port's own choice): "pbr" (true/false), "pbr_strength" (0..1),
 // "roughness", "metal", "normal" (0..4, 1 = the map), "occlusion" (0..1), "highlight" (0..4),
-// "reflection" (true: the environment-mapped stages reflect the live probe; false: the painted map),
+// "luminance" (0..8: the glow layer's brightness, times the Luminance setting), "reflection" (true: the environment-mapped stages reflect the live probe; false: the painted map),
 // "reflection_strength" (0..4), "reflection_blur" (0..100, percent), "note" (text, unused). Unknown
 // fields and values of the wrong kind are skipped. Header-only parts here for tests/port_material_overrides.cpp.
 
@@ -37,6 +37,7 @@ struct Override {
   float normal = 1.f;
   float occlusion = 1.f;
   float highlight = 1.f;
+  float luminance = -1.f;        // 0..8, the glow stages' brightness; -1 unset (1)
   int reflection = -1;           // 0 the painted environment map, 1 the live probe, -1 the port's choice
   float reflectionStrength = -1.f; // 0..4, -1 unset
   float reflectionBlur = -1.f;   // 0..100 (percent), -1 unset
@@ -296,6 +297,8 @@ inline void ParseFields(JsonReader& in, Override& o) {
         o.occlusion = Clamp(n, 0.f, 1.f);
       } else if (name == "highlight") {
         o.highlight = Clamp(n, 0.f, 4.f);
+      } else if (name == "luminance") {
+        o.luminance = Clamp(n, 0.f, 8.f);
       } else if (name == "reflection_strength") {
         o.reflectionStrength = Clamp(n, 0.f, 4.f);
       } else if (name == "reflection_blur") {

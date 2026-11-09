@@ -28,8 +28,9 @@ class Picture:
         self.source = source
 
 
-def pack_picture(path, max_size=PACK_TEXTURE_SIZE):
-    """A texture pack file as a Picture (None without Pillow or if it can't be read)."""
+def pack_picture(path, max_size=PACK_TEXTURE_SIZE, problems=None):
+    """A texture pack file as a Picture (None without Pillow or if it can't be read; why goes in
+    `problems`, {path: reason}, when given)."""
     if Image is None or not path:
         return None
     try:
@@ -39,7 +40,9 @@ def pack_picture(path, max_size=PACK_TEXTURE_SIZE):
             if max(img.size) > max_size:
                 img.thumbnail((max_size, max_size))
             return Picture(img.width, img.height, img.tobytes(), "pack")
-    except (OSError, ValueError, SyntaxError, NotImplementedError):
+    except Exception as e:  # noqa: BLE001 - Pillow raises many kinds for a file it can't read
+        if problems is not None:
+            problems[path] = "%s: %s" % (type(e).__name__, e)
         return None
 
 
@@ -65,6 +68,9 @@ class Scene:
         self.pictures = {}
         self.maps = {}
         self.notes = []
+        self.pack_found = 0     # base textures the pack replaces
+        self.maps_found = 0     # ... and has PBR maps for
+        self.problems = {}      # pack files that couldn't be read: {path: why}
 
     def texture_of(self, index, slot):
         m = self.materials[index] if index < len(self.materials) else None
@@ -80,6 +86,10 @@ class Scene:
         look = self.looks.get(index)
         return self.texture_of(index, look.env_slot) if look else None
 
+    def glow_texture(self, index):
+        look = self.looks.get(index)
+        return self.texture_of(index, look.glow_slot) if look else None
+
     def has_maps(self, index):
         return self.base_texture(index) in self.maps
 
@@ -88,8 +98,9 @@ class Scene:
         return sum(b.count for b in self.batches.values()) // 3
 
 
-def build_scene(library, kind, rid, set_index=0, pack_index=None):
-    """The Scene of an area ("MREA") or a model ("CMDL"), its textures read."""
+def build_scene(library, kind, rid, set_index=0, pack=None):
+    """The Scene of an area ("MREA") or a model ("CMDL"), its textures read (`pack` a
+    material_core.TexturePack, or None for the disc's)."""
     data = library.resource(rid)
     if kind == "MREA":
         _section, models = geometry.area_geometry(data)
@@ -103,41 +114,49 @@ def build_scene(library, kind, rid, set_index=0, pack_index=None):
         models = [model]
     batches, looks = geometry.build_batches(models, materials)
     scene = Scene(kind, rid, set_index, materials, batches, looks)
-    load_textures(scene, library, pack_index or {})
+    load_textures(scene, library, pack)
     if not batches:
         scene.notes.append("No triangles to show.")
     return scene
 
 
-def load_textures(scene, library, pack_index):
+def load_textures(scene, library, pack):
     wanted = set()
     for index in scene.batches:
-        for tid in (scene.base_texture(index), scene.env_texture(index)):
+        for tid in (scene.base_texture(index), scene.env_texture(index), scene.glow_texture(index)):
             if tid is not None:
                 wanted.add(tid)
-    pack_used = maps_missing_pillow = False
+    bases = {scene.base_texture(index) for index in scene.batches} - {None}
+    maps_missing_pillow = False
     for tid in sorted(wanted):
-        pack_name = library.texture_pack_name(tid)
-        tex, nrm, orm = mc.pack_maps(pack_index, pack_name)
-        picture = pack_picture(tex) if tex else None
+        tex = nrm = orm = None
+        if pack is not None:
+            tex, nrm, orm = pack.find(library.texture_pack_name(tid))
+        picture = pack_picture(tex, problems=scene.problems) if tex else None
         if picture is None:
             data = library.texture(tid)
             picture = disc_picture(data) if data else None
-        else:
-            pack_used = True
+        elif tid in bases:
+            scene.pack_found += 1
         if picture is not None:
             scene.pictures[tid] = picture
-        if nrm and orm:
+        if nrm and orm and tid in bases:
             if Image is None:
                 maps_missing_pillow = True
                 continue
-            n, o = pack_picture(nrm), pack_picture(orm)
+            n = pack_picture(nrm, problems=scene.problems)
+            o = pack_picture(orm, problems=scene.problems)
             if n is not None and o is not None:
                 scene.maps[tid] = (n, o)
-    if pack_used:
-        scene.notes.append("Textures from your texture pack.")
+                scene.maps_found += 1
+    if pack is not None and bases:
+        scene.notes.append("Texture pack: %d of %d base textures, %d with PBR maps"
+                           % (scene.pack_found, len(bases), scene.maps_found))
+    if scene.problems:
+        scene.notes.append("%d pack file(s) couldn't be read (first: %s)"
+                           % (len(scene.problems), next(iter(scene.problems.values()))))
     if maps_missing_pillow:
-        scene.notes.append("PBR maps not shown: this build can't read the texture pack.")
+        scene.notes.append("PBR maps not shown: this build can't read the texture pack")
 
 
 # ------------------------------------------------------------------------------------- settings
@@ -171,6 +190,9 @@ def params(fields, look, has_maps, game):
         "env_strength": 1.0,
         "env_blur": 0.0,
         "live_probe": bool(game.get("live_reflections")),
+        # The glow layer's brightness: the game's Luminance times the material's (Aurora clamps the
+        # product to 0..32; CCubeMaterial::PortBeginSurfaceDraw).
+        "glow": min(32.0, num("luminance") * game.get("luminance", 1.0)),
     }
     if look is not None and look.env_slot is not None:
         live = fields.get("reflection") is True and bool(game.get("live_reflections"))

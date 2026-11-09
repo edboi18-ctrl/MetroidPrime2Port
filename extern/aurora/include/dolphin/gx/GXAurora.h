@@ -405,6 +405,9 @@ extern "C" {
 #define GX_AURORA_PORT_WATER_WAVES 0x0079
 // Port extension: the following draws' PBR map scales (GXPortSetSurfacePBRParams). Payload: 5 f32.
 #define GX_AURORA_PORT_SURFACE_PBR_PARAMS 0x007A
+// Port extension: how bright the following draws' glow stages are (GXPortSetEmissive). Payload: f32
+// scale.
+#define GX_AURORA_PORT_EMISSIVE 0x007B
 
 #define GX2_SET_POLYGON_OFFSET 0x1000
 

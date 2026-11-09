@@ -176,6 +176,11 @@ std::string color_arg_reg(GXTevColorArg arg, size_t stageIdx, const ShaderConfig
     CHECK(stage.texMapId >= GX_TEXMAP0 && stage.texMapId <= GX_TEXMAP7, "invalid texture {} for stage {}",
           underlying(stage.texMapId), stageIdx);
     const auto& swap = config.tevSwapTable[stage.tevSwapTex];
+    if ((port_emissive_stages(config) & (1u << stageIdx)) != 0) {
+      // GXPortSetEmissive: a glow stage's texture colour times the draw's emissive scale.
+      return fmt::format("(sampled{}.{}{}{} * ubuf.emissive.x)", stageIdx, chan_comp(swap.red), chan_comp(swap.green),
+                         chan_comp(swap.blue));
+    }
     return fmt::format("sampled{}.{}{}{}", stageIdx, chan_comp(swap.red), chan_comp(swap.green), chan_comp(swap.blue));
   }
   case GX_CC_TEXA: {
@@ -4420,6 +4425,9 @@ fn vf_apply_hdr(c: vec4f, fog: vec4f, w: f32) -> vec4f {
     if (info.usesWaterRipples) {
       uniBufAttrs += fmt::format("\n    water_waves: array<vec4f, {}>, // GXPortSetWaterWaves", GX_PORT_WATER_WAVE_ROWS);
     }
+  }
+  if (info.usesEmissive) {
+    uniBufAttrs += "\n    emissive: vec4f, // GXPortSetEmissive: x the glow stages' texture colour scale";
   }
   if (info.usesPTTexMtx.any()) {
     uniBufAttrs += fmt::format("\n    postmtx: array<mat3x4f, {}>,", MaxPTTexMtx);

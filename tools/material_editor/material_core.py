@@ -51,6 +51,10 @@ FIELDS = [
      "How much the occlusion map darkens creases: 0 none, 1 as made."),
     ("highlight", "Highlights", "float", 0.0, 4.0, 1.0,
      "Times the PBR highlights (over the Video > Quality PBR highlight setting)."),
+    ("luminance", "Luminance", "float", 0.0, 8.0, 1.0,
+     "How bright the material's light-emitting texels are (its glow layer: lights, screens, Phazon), "
+     "times the game's Luminance setting (Video > Quality). 0 turns the glow off; materials without a "
+     "glow layer (the list marks those with one *glows*) don't change."),
     ("reflection", "Live reflection", "bool", None, None, None,
      "For materials with a reflection (environment map): on reflects the room as it is (the live "
      "probe, Video > Quality > Live reflections on); off keeps the painted reflection."),
@@ -196,6 +200,60 @@ def key_text(key):
 
 # ------------------------------------------------------------------------------------ materials
 GX_TG_NRM = 1
+# GXEnum.h: GXTevColorArg, GXTexGenSrc, GXTevOp, GXTevRegID
+CC_CPREV, CC_TEXC, CC_RASC, CC_RASA, CC_ZERO = 0, 8, 10, 11, 15
+GX_TG_TEX0, GX_TG_TEX7 = 4, 11
+GX_TEV_ADD, GX_TEVPREV = 0, 0
+NO_TEX = 0xFF  # GX_TEXMAP_NULL, GX_TEXCOORD_NULL
+
+
+def _color_args(color_in):
+    return color_in & 0x1F, (color_in >> 5) & 0x1F, (color_in >> 10) & 0x1F, (color_in >> 15) & 0x1F
+
+
+def glow_stages(stages, texgens):
+    """The indices of a material's glow stages: those the game's Luminance scales (Aurora's
+    port_emissive_stages, extern/aurora/lib/gx/shader_info.cpp, is the same rule over the GX state).
+    `stages` as disc_texture_scan.parse_material gives them ([order, colour in, alpha in, colour op,
+    ...]), `texgens` its texgen words. A glow stage (GX: out = d + lerp(a, b, c)), after the first:
+      - adds its texture onto what came before: d is the previous colour and the texture is in the
+        lerp (as a plain term, or as the factor c of a lerp from 0), or d is the texture and the
+        previous colour is in the lerp (tools/pbr/texture_report.py's glow, as the disc has it:
+        CPREV + TEXC after the lit diffuse);
+      - is not lit: neither the lit colour nor its alpha (RASC, RASA) is in the lerp, and no later
+        stage multiplies the previous colour by them;
+      - takes its texture's coordinates from the model's UVs (not an environment or projected map),
+        and writes the previous colour with an add."""
+    out = []
+    for i in range(1, len(stages)):
+        order, color_in, color_op = stages[i][0], stages[i][1], stages[i][3]
+        texmap, texcoord = (order >> 8) & 0xFF, order & 0xFF
+        if texmap == NO_TEX or texcoord == NO_TEX or texcoord >= len(texgens):
+            continue
+        if not GX_TG_TEX0 <= (texgens[texcoord] >> 4) & 0x1F <= GX_TG_TEX7:
+            continue
+        if (color_op & 0xF) != GX_TEV_ADD or (color_op >> 9) & 3 != GX_TEVPREV:
+            continue
+        a, b, c, d = _color_args(color_in)
+        if CC_RASC in (a, b, c) or CC_RASA in (a, b, c):
+            continue
+        if d == CC_CPREV:
+            glow = a == CC_ZERO if c == CC_TEXC else CC_TEXC in (a, b)
+        elif d == CC_TEXC:
+            glow = CC_CPREV in (a, b)
+        else:
+            glow = False
+        if not glow:
+            continue
+        lit_later = False
+        for later in stages[i + 1:]:
+            la, lb, lc, _ld = _color_args(later[1])
+            if CC_CPREV in (la, lb, lc) and (CC_RASC in (la, lb, lc) or CC_RASA in (la, lb, lc)):
+                lit_later = True
+                break
+        if not lit_later:
+            out.append(i)
+    return out
 
 
 class Material:
@@ -230,10 +288,17 @@ class Material:
         """A texgen from the normal: an environment map, which Live reflection can replace."""
         return any(((t >> 4) & 0x1F) == GX_TG_NRM for t in self.texgens)
 
+    @property
+    def glows(self):
+        """A glow layer (light-emitting texels), which Luminance scales."""
+        return bool(glow_stages(self.stages, self.texgens))
+
     def summary(self):
         parts = ["%d texture(s)" % len(self.textures), "%d stage(s)" % len(self.stages)]
         if self.reflective:
             parts.append("reflective")
+        if self.glows:
+            parts.append("glows")
         if self.problem:
             parts.append("unreadable: " + self.problem)
         return ", ".join(parts)
@@ -352,32 +417,217 @@ class Library:
             return None
 
 
-# ------------------------------------------------------------------------- texture pack's PBR maps
-def index_pack(folder):
-    """{lower-case file name: path} of every file under a texture pack folder."""
-    out = {}
-    if folder and os.path.isdir(folder):
-        for root, _dirs, files in os.walk(folder):
+# ------------------------------------------------------------------------------ the texture pack
+# How the game finds a texture's replacement and its PBR maps, so the editor finds the same files:
+#   names     Aurora's parse_replacement_filename (extern/aurora/lib/gfx/texture_replacement.cpp):
+#             tex1_<w>x<h>[_m]_<texture hash>[_<palette hash>]_<format>[_arb].dds/.png, a hash may be
+#             "$" (any), the format a number or a GameCube format name. The name's other parts don't
+#             matter: a file is the texture whose key it parses to, wherever it sits in the folder.
+#   lookup    find_source_replacement_key_locked: the exact key, then any palette, then any texels.
+#   order     load_replacement_directory: files sorted by path (case-insensitive), the first of a key
+#             wins; the user pack before the built-in set.
+#   device    PortTextures' ResolveDirectory: a pack with device folders (xbox, keyboard, ...) is read
+#             from the active device's folder only.
+#   PBR maps  PortPbrMaps (platform/port_pbr_maps.cpp, port_pbr_rules.h SplitMapName): "<name>_nrm"
+#             and "<name>_orm" (.dds or .png) anywhere in the folder, keyed by the name without the
+#             suffix, looked up in the same order; both are needed.
+DEVICE_DIRS = ("xbox", "playstation", "switch", "gamecube", "standard", "keyboard")
+# PortTextures' first device is "keyboard" (sDevice) until a pad is used.
+DEVICE_PREFERENCE = ("keyboard", "xbox", "standard", "playstation", "switch", "gamecube")
+WILDCARD_TEXTURE = 0xFFFFFFFFFFFFFFFF  # aurora/texture.hpp kWildcardTextureHash
+WILDCARD_TLUT = 0xFFFFFFFFFFFFFFFE     # kWildcardTlutHash
+GX_FORMAT_NAMES = {"i4": 0x0, "i8": 0x1, "ia4": 0x2, "ia8": 0x3, "rgb565": 0x4, "rgb5a3": 0x5, "rgba8": 0x6,
+                   "cmpr": 0xE, "c4": 0x8, "c8": 0x9, "c14x2": 0xA}  # GXEnum.h GXTexFmt
+
+
+def _u32(text):
+    if not text or not all("0" <= ch <= "9" for ch in text):
+        return None
+    value = int(text)
+    return value if value <= 0xFFFFFFFF else None
+
+
+def _hex64(text):
+    if not text or not all(ch in "0123456789abcdefABCDEF" for ch in text):
+        return None
+    return int(text, 16) & 0xFFFFFFFFFFFFFFFF  # as the C++ shift does
+
+
+def parse_pack_name(filename):
+    """The key (texture hash, palette hash, width, height, GX format, has a palette) of a pack file's
+    name, or None where the game would skip the file (Aurora's parse_replacement_filename)."""
+    dot = filename.rfind(".")
+    if dot < 0 or filename[dot:].lower() not in (".dds", ".png"):
+        return None
+    stem = filename[:dot]
+    if not stem.startswith("tex1_"):
+        return None
+    parts = stem.split("_")
+    if len(parts) < 4 or len(parts) > 6 or parts[0] != "tex1":
+        return None
+    if "x" not in parts[1]:
+        return None
+    w_text, h_text = parts[1].split("x", 1)
+    width, height = _u32(w_text), _u32(h_text)
+    if width is None or height is None:
+        return None
+    index = 3 if parts[2] == "m" else 2
+    remaining = len(parts) - index
+    if remaining not in (2, 3):
+        return None
+    tex_hash = WILDCARD_TEXTURE if parts[index] == "$" else _hex64(parts[index])
+    if tex_hash is None:
+        return None
+    fmt_part = parts[-1]
+    if fmt_part == "arb":
+        fmt_part = parts[-2]
+        remaining -= 1
+    fmt = _u32(fmt_part)
+    if fmt is None:
+        fmt = GX_FORMAT_NAMES.get(fmt_part.lower())
+    if fmt is None:
+        return None
+    tlut_hash = 0
+    has_tlut = remaining == 3
+    if has_tlut:
+        tlut_part = parts[index + 1]
+        tlut_hash = WILDCARD_TLUT if tlut_part == "$" else _hex64(tlut_part)
+        if tlut_hash is None:
+            return None
+    return (tex_hash, tlut_hash, width, height, fmt, has_tlut)
+
+
+def split_map_name(filename):
+    """(the pack name it belongs to, "nrm" or "orm") of a PBR map's file name, or None
+    (port_pbr_rules.h SplitMapName)."""
+    lower = filename.lower()
+    for ext in (".dds", ".png"):
+        for kind in ("nrm", "orm"):
+            suffix = "_%s%s" % (kind, ext)
+            if len(lower) > len(suffix) and lower.endswith(suffix):
+                return filename[:-len(suffix)] + ".dds", kind
+    return None
+
+
+def _is_sidecar_mip(stem):
+    """Aurora's is_sidecar_mip: "<name>_mip<digits>" is a mip level of <name>, not a texture."""
+    i = len(stem)
+    while i > 0 and stem[i - 1].isdigit():
+        i -= 1
+    return i != len(stem) and i >= 4 and stem[i - 4:i] == "_mip"
+
+
+def _lookup_order(key):
+    """The keys Aurora tries for a texture's key, in order."""
+    yield key
+    tex_hash, tlut_hash, w, h, fmt, has_tlut = key
+    if has_tlut:
+        yield (tex_hash, WILDCARD_TLUT, w, h, fmt, has_tlut)
+    yield (WILDCARD_TEXTURE, tlut_hash, w, h, fmt, has_tlut)
+
+
+def resolve_pack_folder(root, device=None):
+    """(the folder the game reads in the pack at `root`, why not) as PortTextures' ResolveDirectory:
+    the device's folder when the pack has device folders, else the root."""
+    if not root or not os.path.isdir(root):
+        return None, "no folder"
+    devices = (device,) if device else DEVICE_PREFERENCE
+    for name in devices:
+        if os.path.isdir(os.path.join(root, name)):
+            return os.path.join(root, name), None
+    if any(os.path.isdir(os.path.join(root, name)) for name in DEVICE_DIRS):
+        return None, "device folders, none for %s" % "/".join(devices)
+    return root, None
+
+
+class TexturePack:
+    """The pack folders the game reads (the user pack first), indexed as the game indexes them:
+    textures and PBR maps by key. `folders` says what was read: [(root, folder read or None, files,
+    note)]."""
+
+    def __init__(self, roots, device=None):
+        self.textures = {}
+        self.maps = {}
+        self.folders = []
+        self.unparsed = 0
+        for root in roots:
+            if root:
+                self._read(root, device)
+
+    def _read(self, root, device):
+        folder, why = resolve_pack_folder(root, device)
+        if folder is None:
+            self.folders.append((root, None, 0, why))
+            return
+        found = []
+        for base, dirs, files in os.walk(folder, followlinks=True):
+            dirs.sort()
             for name in files:
-                out.setdefault(name.lower(), os.path.join(root, name))
-    return out
+                path = os.path.join(base, name)
+                found.append((tuple(c.lower() for c in os.path.relpath(path, folder).split(os.sep)),
+                              tuple(os.path.relpath(path, folder).split(os.sep)), path, name))
+        found.sort()
+        count = 0
+        for _ci, _cs, path, name in found:
+            dot = name.rfind(".")
+            if dot < 0 or name[dot:].lower() not in (".dds", ".png") or _is_sidecar_mip(name[:dot]):
+                continue
+            split = split_map_name(name)
+            if split is not None:
+                key = parse_pack_name(split[0])
+                if key is None:
+                    self.unparsed += 1
+                    continue
+                self.maps.setdefault(key, {}).setdefault(split[1], path)
+                continue
+            key = parse_pack_name(name)
+            if key is None:
+                self.unparsed += 1
+                continue
+            if key not in self.textures:
+                self.textures[key] = path
+                count += 1
+        self.folders.append((root, folder, count, None))
+
+    @property
+    def pairs(self):
+        return sum(1 for m in self.maps.values() if "nrm" in m and "orm" in m)
+
+    def find(self, pack_name):
+        """(texture file, normal map, ORM map) the game would use for the texture whose pack name (as
+        disc_texture_scan.texture_name gives it) is `pack_name`; each None if there's none."""
+        key = parse_pack_name(pack_name) if pack_name else None
+        if key is None:
+            return None, None, None
+        texture = next((self.textures[k] for k in _lookup_order(key) if k in self.textures), None)
+        maps = next((self.maps[k] for k in _lookup_order(key) if k in self.maps), None)
+        if not maps or "nrm" not in maps or "orm" not in maps:
+            return texture, None, None
+        return texture, maps["nrm"], maps["orm"]
+
+    def summary(self):
+        parts = []
+        for root, folder, count, note in self.folders:
+            if folder is None:
+                parts.append("%s: %s" % (root, note))
+            else:
+                parts.append("%d texture(s) in %s" % (count, folder))
+        if self.maps:
+            parts.append("%d PBR map pair(s)" % self.pairs)
+        return "; ".join(parts) if parts else "no texture pack"
 
 
-def pack_maps(pack_index, pack_name):
-    """(texture, normal map, ORM map) paths the user pack has for a texture's pack name (Aurora's
-    texture_replacement.cpp: the _nrm and _orm siblings of the replacement), each None if absent."""
-    if not pack_name:
-        return None, None, None
-    stem = pack_name[:-4] if pack_name.lower().endswith(".dds") else pack_name
-    found = []
-    for suffix in ("", "_nrm", "_orm"):
-        hit = None
-        for ext in (".dds", ".png"):
-            hit = pack_index.get((stem + suffix + ext).lower())
-            if hit:
-                break
-        found.append(hit)
-    return tuple(found)
+def texture_pack_roots(user_folder, settings):
+    """The pack folders the game layers, user pack first: the user pack (unless the texture_pack
+    setting is off) and an MP2_TEXTURES built-in set on disk. The set built into the executable has
+    only the button prompts, so it isn't read here."""
+    roots = []
+    if setting_bool(settings.get("texture_pack"), True):
+        roots.append(user_texture_folder(user_folder))
+    env = os.environ.get("MP2_TEXTURES")
+    if env:
+        roots.append(env)
+    return [r for r in roots if r]
 
 
 # ------------------------------------------------------------------------------- texture decode

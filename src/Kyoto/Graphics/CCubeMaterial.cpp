@@ -1098,8 +1098,17 @@ uint CCubeMaterial::PortBeginSurfaceDraw() {
       begun |= 4;
     }
   }
-  if (begun != 0) {
+  if ((begun & 3) != 0) {
     PortLoadProbe();
+  }
+  // The glow layers' brightness (Video > Quality > Luminance, times the material's own): Aurora
+  // scales the texture of the stages that add an unlit texture (port_emissive_stages). 1 draws them
+  // as GX does, so most surfaces send nothing.
+  const float luminance = static_cast< float >(PortOverlay::Luminance()) * 0.01f *
+                          (edit != nullptr && edit->luminance >= 0.f ? edit->luminance : 1.f);
+  if (luminance != 1.f) {
+    GXPortSetEmissive(luminance);
+    begun |= 32;
   }
   return begun;
 }
@@ -1135,6 +1144,9 @@ void CCubeMaterial::PortEndSurfaceDraw(uint begun) {
   }
   if ((begun & 4) != 0) {
     GXPortSetEnvProbeLook(0.f, -1.f);
+  }
+  if ((begun & 32) != 0) {
+    GXPortSetEmissive(1.f);
   }
 }
 

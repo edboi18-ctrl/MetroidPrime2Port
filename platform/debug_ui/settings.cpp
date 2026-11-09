@@ -726,6 +726,7 @@ const SettingKey kSettingKeys[] = {
     IntKey< &sWaterWaves, PortWaterWaves::kStrengthMin, PortWaterWaves::kStrengthMax >("water_waves", "0", "150"),
     BoolKey< &sVolumetricFog >("volumetric_fog"),
     IntKey< &sFogWisps, 0, 100 >("fog_wisps", "0", "80"),
+    IntKey< &sLuminance, 0, 400 >("luminance", "0", "150"),
     {"cannon_reflection_strength",
      [](const std::string& value) { sCannonReflectionStrength = std::clamp(std::atoi(value.c_str()), 0, 200); },
      [](std::ostream& out) { out << sCannonReflectionStrength; }, false, "0", "150"},

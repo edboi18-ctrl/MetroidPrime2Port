@@ -376,7 +376,12 @@ void DrawVideoQuality() {
                           "or a missile lights it up: lower is softer and closer to the original face,\n"
                           "0%% the original's lighting.");
   }
-  // Read each frame by CStateManager::DrawWorld.
+  // Read per surface by CCubeMaterial::PortBeginSurfaceDraw.
+  Changed(ImGui::SliderInt("Luminance", &sLuminance, 0, 400, "%d%%", ImGuiSliderFlags_AlwaysClamp));
+  ImGui::SetItemTooltip("How bright the light-emitting parts of models and rooms are: the glow layers\n"
+                        "added over the lit textures (lights, screens, Phazon). 100%% is as the game\n"
+                        "draws them, 0%% turns them off. Bright glows bloom more with Bloom on. The\n"
+                        "Material Editor sets it per material on top of this.");
   // Read each frame by CStateManager::DrawWorld.
   Changed(ImGui::Checkbox("Volumetric fog", &sVolumetricFog));
   ImGui::SetItemTooltip("Recommended: on, if you like. The rooms' fog drawn as a volume: as thick as the\n"

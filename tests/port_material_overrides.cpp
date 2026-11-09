@@ -43,15 +43,17 @@ int main() {
                            "unknown": [1, 2], "pbr_strength_typo": 3, "metal_as_text": "x"},
       "00000000000000aa": {},
       "not-a-key": {"pbr": true},
-      "00000000000000bb": {"reflection": false, "pbr": "yes"}
+      "00000000000000bb": {"reflection": false, "pbr": "yes"},
+      "00000000000000ee": {"luminance": 2.5},
+      "00000000000000ef": {"luminance": 20}
     }
   })";
   std::unordered_map<uint64_t, Override> map;
   bool ok = false;
   std::string error;
-  CHECK(ParseFile(text, map, ok, error) == 3);
+  CHECK(ParseFile(text, map, ok, error) == 5);
   CHECK(ok);
-  CHECK(map.size() == 3);
+  CHECK(map.size() == 5);
   const Override& o = map[key];
   CHECK(o.pbr == 0);
   CHECK(o.pbrStrength == 0.5f);
@@ -68,6 +70,10 @@ int main() {
   CHECK(empty.pbr == -1 && empty.reflection == -1 && empty.pbrStrength < 0.f && !empty.PbrParams());
   const Override& b = map[0xbb];
   CHECK(b.reflection == 0 && b.pbr == -1); // "yes" isn't a boolean
+  // Luminance: the glow layer's brightness, 0..8; unset is -1 (the setting alone).
+  CHECK(o.luminance == -1.f && empty.luminance == -1.f);
+  CHECK(map[0xee].luminance == 2.5f && !map[0xee].PbrParams());
+  CHECK(map[0xef].luminance == 8.f);
 
   // A later file's entry replaces the earlier one whole.
   CHECK(ParseFile(R"({"materials": {"447d14554c8ab0f3": {"highlight": 0.5}}})", map, ok, error) == 1);

@@ -14,6 +14,15 @@ int port_surface_pbr_stage(const ShaderConfig& config) noexcept;
 // normal (GX_TG_NRM through a matrix: an environment map), which sample the live probe instead.
 // 0 when the bit isn't set, or the draw can't (GXSetPBR's, unlit channel 0, vertex lighting).
 u32 port_env_probe_stages(const ShaderConfig& config) noexcept;
+// GXPortSetEmissive: the glow stages (a bit each), whose texture colour the emissive uniform scales.
+// After the first stage, one that adds its texture onto the previous colour (d is CPREV and the
+// texture is in the lerp, as a term or as the factor of a lerp from 0; or d is the texture and CPREV
+// is in the lerp), writes PREV with an add, takes its coordinates from the model's UVs (GX_TG_TEX0..7:
+// not an environment or projected map) and isn't lit (no RASC or RASA in the lerp, and no later stage
+// multiplies CPREV by them). The disc's glow layer is CPREV + TEXC after the lit diffuse
+// (docs/research/PBR_TEXTURES.md); tools/material_editor/material_core.py glow_stages is the same rule.
+// 0 for GXSetPBR's draws, lines and the water.
+u32 port_emissive_stages(const ShaderConfig& config) noexcept;
 // GXPortSetWaterReflection: the TEV stage whose texture sample becomes the live probe reflected off
 // the water, or -1.
 int port_water_stage(const ShaderConfig& config) noexcept;

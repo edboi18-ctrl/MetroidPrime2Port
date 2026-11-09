@@ -74,6 +74,11 @@ void GXPortSetBlockingDraws(GXBool on);
 // times `highlight` (over aurora_set_pbr_highlight's). All 1 is the maps as they are. Each is clamped
 // to 0..4 (occlusion 0..1).
 void GXPortSetSurfacePBRParams(f32 roughness, f32 metal, f32 normal, f32 occlusion, f32 highlight);
+// Port extension: how bright the following draws' light-emitting texels are. A glow stage (one that
+// adds an unlit texture from the model's UVs onto the previous colour: port_emissive_stages in
+// lib/gx/shader_info.cpp) has its texture colour times `scale` before the stage's clamp; 1 draws it
+// as GX does. Read from a uniform, so a change needs no new pipeline. Clamped to 0..32.
+void GXPortSetEmissive(f32 scale);
 // Port extension: expanding rings on GXPortSetWaterReflection's water (a splash's waves), which tip
 // its normal as GXPortSetWaterRipples' height does (they share the rippled variant). Row 0: x the
 // number of waves (0..GX_PORT_WATER_WAVES); then two rows a wave: (centre in view space xyz,

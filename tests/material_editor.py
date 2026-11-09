@@ -305,16 +305,56 @@ class Files(unittest.TestCase):
         o = mc.Overrides(str(path))
         self.assertIsNotNone(o.problem)
 
+    def test_pack_names_as_aurora_reads_them(self):
+        key = (0xaa, 0, 8, 4, 1, False)
+        for name in ("tex1_8x4_00000000000000aa_1.dds", "tex1_8x4_m_00000000000000aa_1.png",
+                     "tex1_8x4_00000000000000AA_I8.dds", "tex1_8x4_00000000000000aa_1_arb.dds",
+                     "tex1_8x4_aa_1.DDS"):
+            self.assertEqual(mc.parse_pack_name(name), key, name)
+        self.assertEqual(mc.parse_pack_name("tex1_8x4_$_14.dds"), (mc.WILDCARD_TEXTURE, 0, 8, 4, 14, False))
+        self.assertEqual(mc.parse_pack_name("tex1_8x4_00000000000000aa_$_9.dds"),
+                         (0xaa, mc.WILDCARD_TLUT, 8, 4, 9, True))
+        self.assertEqual(mc.parse_pack_name("tex1_8x4_m_00000000000000aa_00000000000000bb_9.png"),
+                         (0xaa, 0xbb, 8, 4, 9, True))
+        # Seven parts: more than Aurora's six (its parser stops there and refuses the name).
+        self.assertIsNone(mc.parse_pack_name("tex1_8x4_m_00000000000000aa_00000000000000bb_9_arb.png"))
+        for bad in ("tex1_8x4_00000000000000aa_1.jpg", "TEX1_8x4_aa_1.dds", "tex1_8x4_zz_1.dds",
+                    "tex1_8by4_aa_1.dds", "tex1_8x4_aa_nrm.dds", "tex1_8x4_m_aa_bb_1_arb_x.dds", "tex1_8x4_aa.dds"):
+            self.assertIsNone(mc.parse_pack_name(bad), bad)
+        self.assertEqual(mc.split_map_name("tex1_8x4_m_aa_1_NRM.png"), ("tex1_8x4_m_aa_1.dds", "nrm"))
+        self.assertIsNone(mc.split_map_name("tex1_8x4_aa_1.dds"))
+
     def test_pack_maps(self):
         pack = self.dir / "pack"
         (pack / "sub").mkdir(parents=True)
-        for name in ("tex1_8x4_00000000000000aa_1.dds", "tex1_8x4_00000000000000aa_1_NRM.png",
-                     "tex1_8x4_00000000000000aa_1_orm.dds"):
+        # Dolphin's mipmapped name (_m), maps beside it in another case, a sidecar mip level.
+        for name in ("tex1_8x4_m_00000000000000aa_1.dds", "tex1_8x4_m_00000000000000aa_1_NRM.png",
+                     "tex1_8x4_m_00000000000000aa_1_orm.dds", "tex1_8x4_m_00000000000000aa_1_mip1.dds",
+                     "tex1_16x16_$_00000000000000cc_9.png", "readme.txt"):
             (pack / "sub" / name).write_bytes(b"x")
-        index = mc.index_pack(str(pack))
-        tex, nrm, orm = mc.pack_maps(index, "tex1_8x4_00000000000000aa_1.dds")
-        self.assertTrue(tex and nrm and orm)
-        self.assertEqual(mc.pack_maps(index, "tex1_8x4_00000000000000bb_1.dds"), (None, None, None))
+        index = mc.TexturePack([str(pack)])
+        tex, nrm, orm = index.find("tex1_8x4_00000000000000aa_1.dds")  # the editor's name has no _m
+        self.assertTrue(tex.endswith("_1.dds") and nrm.endswith("_NRM.png") and orm.endswith("_orm.dds"))
+        self.assertEqual(index.find("tex1_8x4_00000000000000bb_1.dds"), (None, None, None))
+        # Any texels with that palette: the texture wildcard.
+        self.assertTrue(index.find("tex1_16x16_0000000000000123_00000000000000cc_9.dds")[0].endswith("_9.png"))
+        self.assertEqual(index.pairs, 1)
+        self.assertEqual(len(index.textures), 2)
+        # A pack with device folders is read from one of them (the keyboard's first), as the game does.
+        dev = self.dir / "dev"
+        (dev / "xbox").mkdir(parents=True)
+        (dev / "keyboard").mkdir()
+        (dev / "keyboard" / "tex1_8x4_00000000000000aa_1.dds").write_bytes(b"k")
+        (dev / "xbox" / "tex1_8x4_00000000000000aa_1.dds").write_bytes(b"x")
+        (dev / "tex1_8x4_00000000000000aa_1.dds").write_bytes(b"root")
+        self.assertIn("keyboard", mc.TexturePack([str(dev)]).find("tex1_8x4_00000000000000aa_1.dds")[0])
+        self.assertIn("xbox", mc.TexturePack([str(dev)], device="xbox").find("tex1_8x4_00000000000000aa_1.dds")[0])
+        self.assertEqual(mc.TexturePack([str(dev)], device="switch").textures, {})
+        # The user pack wins over a later folder, and texture_pack=0 leaves it out.
+        first = mc.TexturePack([str(dev), str(pack)])
+        self.assertIn("keyboard", first.find("tex1_8x4_00000000000000aa_1.dds")[0])
+        self.assertEqual(mc.texture_pack_roots(str(self.dir), {"texture_pack": "0"}), [])
+        self.assertEqual(mc.texture_pack_roots(str(self.dir), {}), [str(self.dir / "user_textures")])
 
     def test_fields_match_the_game(self):
         # The names port_material_overrides.h reads.
@@ -460,6 +500,59 @@ class PreviewGeometry(unittest.TestCase):
         self.assertFalse(looks[0].blended)  # alpha-tested: drawn opaque (SetupBlendMode)
 
 
+def stage(a, b, c, d, texcoord=1, texmap=1, op=0x100):
+    """A stage as parse_material gives it: [order, colour in, alpha in, colour op, alpha op, kc, ka]."""
+    return [texcoord | texmap << 8, ARGS(a, b, c, d), 0, op, 0x100, 0, 0]
+
+
+ZERO, ONE, KONST, TEXC, RASC, CPREV = 15, 12, 14, 8, 10, 0
+UV_TEXGENS = [4 << 4, 5 << 4]  # TEX0, TEX1
+
+
+class Glow(unittest.TestCase):
+    """material_core.glow_stages: the same shapes and refusals as Aurora's port_emissive_stages
+    (extern/aurora/tests/gx_surface_pbr_test.cpp GlowShapes, GlowRefusals)."""
+
+    def glow(self, second, texgens=UV_TEXGENS, more=()):
+        lit = stage(ZERO, TEXC, RASC, ZERO, texcoord=0, texmap=0)
+        return mc.glow_stages([lit, second] + list(more), texgens)
+
+    def test_shapes(self):
+        self.assertEqual(self.glow(stage(ZERO, TEXC, ONE, CPREV)), [1])      # CPREV + TEXC (the disc's)
+        self.assertEqual(self.glow(stage(TEXC, KONST, ZERO, CPREV)), [1])    # lerp(TEXC, K, 0) + CPREV
+        self.assertEqual(self.glow(stage(CPREV, ZERO, ZERO, TEXC)), [1])     # TEXC + CPREV
+        self.assertEqual(self.glow(stage(ZERO, KONST, TEXC, CPREV)), [1])    # CPREV + K x TEXC
+
+    def test_refusals(self):
+        self.assertEqual(self.glow(stage(ZERO, TEXC, RASC, CPREV)), [], "lit")
+        self.assertEqual(self.glow(stage(ZERO, TEXC, ONE, CPREV, op=0x100 | 2 << 9)), [], "to a register")
+        self.assertEqual(self.glow(stage(ZERO, TEXC, ONE, CPREV, op=0x101)), [], "subtracted")
+        self.assertEqual(self.glow(stage(ZERO, TEXC, ONE, CPREV), texgens=[4 << 4, 0]), [], "projected")
+        self.assertEqual(self.glow(stage(ZERO, TEXC, ONE, CPREV), texgens=[4 << 4, 1 << 4]), [], "env map")
+        self.assertEqual(self.glow(stage(CPREV, KONST, TEXC, ZERO)), [], "a mask's blend")
+        self.assertEqual(self.glow(stage(ZERO, TEXC, ONE, CPREV),
+                                   more=[stage(ZERO, CPREV, RASC, ZERO, texcoord=0, texmap=0)]), [], "lit later")
+        self.assertEqual(mc.glow_stages([stage(ZERO, TEXC, ONE, CPREV)], UV_TEXGENS), [], "the first stage")
+
+    def test_material_and_look(self):
+        glow = builders.material(geometry.FLAG_KONST, [0, 1], 1,
+                                 [LIT, (ARGS(ZERO, KONST, TEXC, CPREV), 0, 0x100, 0x100, 0x0C << 8, 1 | 1 << 8)],
+                                 UV_TEXGENS, konst=(0x40804000,))
+        m = mc.Material(0, glow, [0x7001, 0x7002])
+        self.assertTrue(m.glows)
+        self.assertIn("glows", m.summary())
+        look = geometry.Look(glow)
+        self.assertEqual((look.glow_slot, look.glow_uv), (1, 1))
+        for got, want in zip(look.glow_weight, (64 / 255.0, 128 / 255.0, 64 / 255.0)):
+            self.assertAlmostEqual(got, want)
+        plain = geometry.Look(builders.material(0, [0], 1, [LIT], [4 << 4]))
+        self.assertIsNone(plain.glow_slot)
+        game = {"luminance": 1.5}
+        self.assertAlmostEqual(preview.params({}, look, False, game)["glow"], 1.5)
+        self.assertAlmostEqual(preview.params({"luminance": 2}, look, False, game)["glow"], 3.0)
+        self.assertAlmostEqual(preview.params({"luminance": 99}, look, False, {"luminance": 4.0})["glow"], 32.0)
+
+
 class PreviewSettings(unittest.TestCase):
     def setUp(self):
         sets, _model = geometry.cmdl_geometry(test_model())
@@ -518,10 +611,11 @@ class PreviewScene(unittest.TestCase):
     def test_pack_textures_and_maps(self):
         pack = self.dir / "pack"
         pack.mkdir()
-        stem = self.lib.texture_pack_name(0x7001)[:-4]
+        stem = self.lib.texture_pack_name(0x7001)[:-4].replace("tex1_16x8_", "tex1_16x8_m_")
         for suffix, colour in (("", (200, 10, 10, 255)), ("_nrm", (128, 128, 255, 255)), ("_orm", (255, 128, 0, 255))):
             preview.Image.new("RGBA", (32, 16), colour).save(str(pack / (stem + suffix + ".png")))
-        scene = preview.build_scene(self.lib, "CMDL", 0x3001, pack_index=mc.index_pack(str(pack)))
+        # Named as Dolphin names a mipmapped texture (_m), which the game accepts.
+        scene = preview.build_scene(self.lib, "CMDL", 0x3001, pack=mc.TexturePack([str(pack)]))
         self.assertEqual(scene.pictures[0x7001].source, "pack")
         self.assertEqual(scene.pictures[0x7001].rgba[:4], bytes((200, 10, 10, 255)))
         self.assertTrue(scene.has_maps(0))

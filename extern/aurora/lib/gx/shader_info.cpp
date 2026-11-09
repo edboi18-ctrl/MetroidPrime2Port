@@ -263,6 +263,58 @@ u32 port_env_probe_stages(const ShaderConfig& config) noexcept {
   return stages;
 }
 
+u32 port_emissive_stages(const ShaderConfig& config) noexcept {
+  if (config.pbr != 0 || config.lineMode != 0 || (config.pbrKind & kPortWaterBit) != 0) {
+    return 0;
+  }
+  const auto lit = [](const auto& c) {
+    return c.a == GX_CC_RASC || c.b == GX_CC_RASC || c.c == GX_CC_RASC || c.a == GX_CC_RASA || c.b == GX_CC_RASA ||
+           c.c == GX_CC_RASA;
+  };
+  const auto readsPrev = [](const auto& c) {
+    return c.a == GX_CC_CPREV || c.b == GX_CC_CPREV || c.c == GX_CC_CPREV;
+  };
+  u32 stages = 0;
+  for (u32 i = 1; i < config.tevStageCount && i < MaxTevStages; ++i) {
+    const auto& stage = config.tevStages[i];
+    if (stage.texMapId == GX_TEXMAP_NULL || stage.texCoordId == GX_TEXCOORD_NULL || stage.texCoordId >= MaxTexCoord) {
+      continue;
+    }
+    const auto src = config.tcgs[stage.texCoordId].src;
+    if (src < GX_TG_TEX0 || src > GX_TG_TEX7) {
+      continue;
+    }
+    if (stage.colorOp.op != GX_TEV_ADD || stage.colorOp.outReg != GX_TEVPREV) {
+      continue;
+    }
+    const auto& c = stage.colorPass;
+    if (lit(c)) {
+      continue;
+    }
+    bool glow = false;
+    if (c.d == GX_CC_CPREV) {
+      glow = c.c == GX_CC_TEXC ? c.a == GX_CC_ZERO : (c.a == GX_CC_TEXC || c.b == GX_CC_TEXC);
+    } else if (c.d == GX_CC_TEXC) {
+      glow = c.a == GX_CC_CPREV || c.b == GX_CC_CPREV;
+    }
+    if (!glow) {
+      continue;
+    }
+    bool litLater = false;
+    for (u32 j = i + 1; j < config.tevStageCount && j < MaxTevStages; ++j) {
+      const auto& later = config.tevStages[j].colorPass;
+      if (readsPrev(later) && lit(later)) {
+        litLater = true;
+        break;
+      }
+    }
+    if (!litLater) {
+      stages |= 1u << i;
+    }
+  }
+  return stages;
+}
+
 int port_water_stage(const ShaderConfig& config) noexcept {
   if (config.pbr != 0 || (config.pbrKind & kPortWaterBit) == 0 || config.lineMode != 0) {
     return -1;
@@ -508,6 +560,10 @@ ShaderInfo build_shader_info(const ShaderConfig& config) noexcept {
     if (info.usesWaterRipples) {
       info.uniformSize += sizeof(Vec4<float>) * GX_PORT_WATER_WAVE_ROWS; // water_waves
     }
+  }
+  if (port_emissive_stages(config) != 0) {
+    info.usesEmissive = true;
+    info.uniformSize += sizeof(Vec4<float>); // emissive
   }
   if (config.pbr) {
     info.usesPbr = true;
@@ -764,6 +820,9 @@ static void fill_uniform(ByteBuffer& buf, const ShaderInfo& info) noexcept {
         buf.append(row);
       }
     }
+  }
+  if (info.usesEmissive) {
+    buf.append(Vec4<float>{g_gxState.emissiveScale, 0.f, 0.f, 0.f});
   }
   if (info.usesPTTexMtx.any()) {
     for (int i = 0; i < info.usesPTTexMtx.size(); ++i) {

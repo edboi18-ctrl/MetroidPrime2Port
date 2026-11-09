@@ -48,7 +48,14 @@ when you pick it.
 **Without my changes** draws everything with the game's own settings, to compare. **Game settings**
 start as your game has them (its `settings.cfg`): with **PBR maps** off in the game (Video > Quality),
 the PBR settings change nothing there, and with **Live reflections** off, the reflection settings
-don't either; tick them here to preview anyway.
+don't either; tick them here to preview anyway. **Luminance** is the game's own Luminance setting.
+
+The preview finds your texture pack as the game does: `user\user_textures` (or `MP2_USER_TEXTURES`;
+not when the pack is switched off in F1 > Mods > Textures), every file named
+`tex1_<width>x<height>[_m]_<hash>[_<palette hash>]_<format>[_arb].dds/.png` in any subfolder (or only
+in the device folder, `keyboard` first, when the pack has device folders), wildcards (`$`) included,
+and the PBR maps as `<that name>_nrm` / `_orm` beside them. The line under the preview says how many
+of the drawn textures the pack replaced and has maps for, and names a pack file it couldn't read.
 
 The shading is the game's PBR (the same normal map, roughness, metal, occlusion, highlight and
 strength maths as the port's shader), but the light is a studio light (an ambient light plus one key
@@ -73,12 +80,18 @@ the editor works the same without it.
 | Normal map | 0 to 4 | How strongly the normal map tilts the surface: 0 flat, 1 as made. |
 | Occlusion | 0 to 1 | How much the occlusion map darkens creases. |
 | Highlights | 0 to 4 | Times the PBR highlights (on top of Video > Quality > PBR highlight strength). |
+| Luminance | 0 to 8 | How bright the material's glow layer is (its light-emitting texels: lights, screens, Phazon), times Video > Quality > Luminance. 0 turns the glow off. Only materials the list marks *glows* have one. |
 | Live reflection | game's choice / on / off | For a material with a reflection (an environment map; the list marks it *reflective*): on reflects the room live (Video > Quality > Live reflections must be on), off keeps the painted reflection. |
 | Reflection strength | 0 to 4 | How bright the live reflection is. |
 | Reflection blur | 0 to 100 | 0 a sharp mirror, higher softer. |
 
 The PBR settings only change surfaces the texture pack has PBR maps for (`tools/pbr/README.md` makes
-them). **Copy settings** / **Paste settings** move them between materials, and **Apply to every listed
+them).
+
+**Luminance** scales a material's glow layer: a stage that adds an unlit texture from the model's UVs
+onto the lit colour (on the disc, the glow layer is added after the lit diffuse). The game's own
+Video > Quality > Luminance (0 to 400%) scales every glow; a material's Luminance multiplies that. A
+glow brightens until it reaches white, and with Bloom on, glows near white bloom more. **Copy settings** / **Paste settings** move them between materials, and **Apply to every listed
 material with texture** gives every material in the list that uses a texture the same settings.
 
 ## How materials are matched
@@ -100,7 +113,7 @@ rock material changes that rock wherever it's used.
 }
 ```
 
-Fields: `pbr`, `pbr_strength`, `roughness`, `metal`, `normal`, `occlusion`, `highlight`, `reflection`,
+Fields: `pbr`, `pbr_strength`, `roughness`, `metal`, `normal`, `occlusion`, `highlight`, `luminance`, `reflection`,
 `reflection_strength`, `reflection_blur` and `note` (for you; the game ignores it). A field left out is
 the game's choice. The game reads `materials.json` from every enabled mod folder in name order, a later
 mod's entry for a material replacing an earlier one's, so a mod can ship its own. A hand-edited file
@@ -112,7 +125,8 @@ works the same; the editor keeps other top-level keys you add.
   `tools/pbr/disc_texture_scan.py`), keys, GX texture decoding, the file. Standard library only.
   Tests: `tests/material_editor.py` (ctest `material_editor`).
 - `tools/material_editor/geometry.py`: CMDL and MREA geometry, display lists, each material's base
-  texture and environment stage, as the engine reads them (the file's comment names the code).
+  texture, glow stage and environment stage, as the engine reads them (the file's comment names the
+  code). The glow rule (`material_core.glow_stages`) is Aurora's `port_emissive_stages`.
   `preview.py`: a model's or area's triangles and textures for the preview, and the settings as
   `CCubeMaterial::PortBeginSurfaceDraw` applies them. Standard library, plus Pillow for the texture
   pack. Tests: `tests/material_editor.py`.
@@ -126,4 +140,5 @@ works the same; the editor keeps other top-level keys you add.
   pyopengltk and Pillow inside; their licences go to `licenses\` (`bundle_licenses.py`).
 - The game: `platform/port_material_overrides.cpp` (reading and re-reading the files),
   `CCubeMaterial::PortSetMaterialOverride` / `PortBeginSurfaceDraw` (applying them), and Aurora's
-  `GXPortSetSurfacePBRParams` (the map scales).
+  `GXPortSetSurfacePBRParams` (the map scales) and `GXPortSetEmissive` (Luminance: the glow stages,
+  `port_emissive_stages`).

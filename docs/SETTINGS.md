@@ -551,6 +551,13 @@ Video > Quality and Frame rate:
   on that surface (`GXPortSetWaterWaves`), which tip the water's normal by their slope as the ripples
   do, so they show in the reflection and its Fresnel (not in the water's own texture). Env
   `MP2_WATER_WAVES`.
+- `luminance` (0..400, percent; default 100): Quality > Luminance, how bright the light-emitting
+  texels of models and rooms are: their glow layers, the TEV stages that add an unlit texture onto the
+  lit colour (the disc's glow layer is `CPREV + TEXC` after the lit diffuse). Times each material's own
+  `luminance` (materials.json, the Material Editor), `CCubeMaterial::PortBeginSurfaceDraw` hands the
+  product to Aurora's `GXPortSetEmissive`, which scales those stages' texture colour before the stage's
+  clamp (`port_emissive_stages`, `extern/aurora/lib/gx/shader_info.cpp`; a uniform, so no new
+  pipelines). 100% sends nothing. Env `MP2_LUMINANCE`.
 - `volumetric_fog` (off by default) and `fog_wisps` (0..100, percent; default 50): Quality >
   Volumetric fog / Fog wisps. The rooms' GX fog drawn as Aurora's volumetric fog (Remastered's froxel
   fog, `GXPortVolumetricFog` with `GX_PORT_FOG_FROM_GX`, `extern/aurora/lib/gfx/volfog_gx.hpp`):

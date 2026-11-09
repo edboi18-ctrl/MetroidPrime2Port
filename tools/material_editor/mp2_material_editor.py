@@ -48,7 +48,7 @@ class Editor(tk.Tk):
         self.minsize(1050, 640)
         self.library = None
         self.overrides = None
-        self.pack_index = {}
+        self.pack = None  # material_core.TexturePack: the folders the game reads its pack from
         self.selected = None  # (source label, [Material]) shown in the list
         self.material = None  # the Material being edited
         self.thumbs = []
@@ -69,6 +69,7 @@ class Editor(tk.Tk):
             "pbr_maps": mc.setting_bool(self.settings.get("pbr_maps"), False),
             "live_reflections": mc.setting_bool(self.settings.get("live_reflections"), False),
             "pbr_highlight": preview.setting_percent(self.settings, "pbr_highlight", 100),
+            "luminance": preview.setting_percent(self.settings, "luminance", 100),
         }
         self._build()
         self._set_overrides(args.output or mc.overrides_path(self.mods))
@@ -285,6 +286,16 @@ class Editor(tk.Tk):
             c = ttk.Checkbutton(game, text=text, variable=var, command=self._view_options)
             c.pack(side="left", padx=(4, 0))
             self._tip(c, tip)
+        ttk.Label(game, text="Luminance").pack(side="left", padx=(8, 2))
+        self.lum_var = tk.StringVar(value="%d" % round(self.view_settings["luminance"] * 100))
+        lum = ttk.Spinbox(game, from_=0, to=400, increment=10, width=5, textvariable=self.lum_var,
+                          command=self._view_options)
+        lum.pack(side="left")
+        lum.bind("<Return>", lambda e: self._view_options())
+        lum.bind("<FocusOut>", lambda e: self._view_options())
+        ttk.Label(game, text="%").pack(side="left")
+        self._tip(lum, "Video > Quality > Luminance in the game (percent, read from its settings.cfg): how "
+                       "bright every glow layer is, times each material's own Luminance.")
         hint = ttk.Label(game, text="Drag: turn  Right-drag: move  Wheel: zoom  Shift-drag: light  Click: pick  "
                          "Double-click: turn around there  W/A/S/D/Q/E: fly", foreground="#777")
         hint.pack(side="left", padx=(12, 0))
@@ -307,6 +318,10 @@ class Editor(tk.Tk):
         self.view.wire = self.wire_var.get()
         self.view_settings["pbr_maps"] = self.pbr_var.get()
         self.view_settings["live_reflections"] = self.live_var.get()
+        try:
+            self.view_settings["luminance"] = max(0.0, min(400.0, float(self.lum_var.get()))) / 100.0
+        except ValueError:
+            self.lum_var.set("%d" % round(self.view_settings["luminance"] * 100))
         self.view.request()
 
     def _view_pick(self, index):
@@ -326,7 +341,7 @@ class Editor(tk.Tk):
         self.preview_token += 1
         token = self.preview_token
         kind, rid = self.source
-        library, pack = self.library, self.pack_index
+        library, pack = self.library, self.pack
         self.preview_var.set("Loading the preview...")
         if frame:
             self.view.set_scene(None)
@@ -384,6 +399,8 @@ class Editor(tk.Tk):
             warn.append("The game's user folder wasn't found: put the editor beside metroid_prime2_port.exe, "
                         "or choose where to save.")
         self.warn_var.set("  ".join(warn))
+        if self.pack is not None:
+            self._pack_warning()
         self._refresh_list_marks()
 
     def choose_output(self):
@@ -444,11 +461,25 @@ class Editor(tk.Tk):
         self.source = None
         if self.view is not None:
             self.view.set_scene(None)
-        self.pack_index = mc.index_pack(mc.user_texture_folder(self.user))
+        self.pack = mc.TexturePack(mc.texture_pack_roots(self.user, self.settings))
         self._fill_browser()
         areas = sum(len(w["areas"]) for w in library.worlds)
-        self.status("%d world(s), %d area(s), %d model(s). Pick one to see its materials."
-                    % (len(library.worlds), areas, len(library.models)))
+        self.status("%d world(s), %d area(s), %d model(s). Texture pack: %s. Pick one to see its materials."
+                    % (len(library.worlds), areas, len(library.models), self.pack.summary()))
+        self._pack_warning()
+
+    def _pack_warning(self):
+        """Say why the pack shows nothing, as far as the editor can tell."""
+        notes = [w for w in self.warn_var.get().split("  ") if w and not w.startswith("Texture pack:")]
+        if not mc.setting_bool(self.settings.get("texture_pack"), True):
+            notes.append("Texture pack: switched off in the game (F1 > Mods > Textures), so its textures and "
+                         "PBR maps aren't used.")
+        elif self.pack is not None and not self.pack.textures:
+            folder = mc.user_texture_folder(self.user) or "(no user folder)"
+            reason = next((note for _r, f, _c, note in self.pack.folders if f is None and note), None)
+            notes.append("Texture pack: no pack textures found in %s%s. Put the pack's files (tex1_... .dds/.png) "
+                         "there, as the game reads them." % (folder, " (%s)" % reason if reason else ""))
+        self.warn_var.set("  ".join(notes))
 
     def _fill_browser(self):
         self.browser.delete(*self.browser.get_children())
@@ -546,7 +577,18 @@ class Editor(tk.Tk):
             cell = ttk.Frame(self.thumb_frame)
             cell.pack(side="left", padx=(0, 8))
             image = None
-            if tid is not None:
+            pack = self.library.texture_pack_name(tid) if tid is not None else None
+            tex, nrm, orm = self.pack.find(pack) if self.pack is not None else (None, None, None)
+            if tex and preview.Image is not None:
+                # The pack's texture, as the game draws it.
+                picture = preview.pack_picture(tex, THUMB)
+                if picture is not None:
+                    try:
+                        image = tk.PhotoImage(data=base64.b64encode(
+                            mc.png_bytes(picture.width, picture.height, picture.rgba)).decode())
+                    except tk.TclError:
+                        image = None
+            if image is None and tid is not None:
                 data = self.library.texture(tid)
                 if data:
                     try:
@@ -562,8 +604,6 @@ class Editor(tk.Tk):
                 ttk.Label(cell, image=image).pack()
             else:
                 ttk.Label(cell, text="(no preview)", width=12).pack()
-            pack = self.library.texture_pack_name(tid) if tid is not None else None
-            tex, nrm, orm = mc.pack_maps(self.pack_index, pack)
             maps = "PBR maps" if nrm and orm else ("HD texture" if tex else "")
             ttk.Label(cell, text="%s%s" % ("%08X" % tid if tid is not None else "?", "\n" + maps if maps else "")).pack()
         if len(m.textures) > 4:

@@ -3079,6 +3079,29 @@ TEST_F(GXFifoTest, PortSurfacePbrParams_DecodesClamped) {
   EXPECT_FLOAT_EQ(g_gxState.surfacePbrHighlight, 4.f);
 }
 
+// GXPortSetEmissive: the glow stages' scale reaches the uniform's state, clamped to 0..32 (NaN draws
+// them as GX does).
+TEST_F(GXFifoTest, PortEmissive_DecodesClamped) {
+  GXPortSetEmissive(2.5f);
+  auto bytes = capture_fifo();
+  EXPECT_TRUE(has_aurora_cmd(bytes, GX_AURORA_PORT_EMISSIVE));
+
+  reset_gx_state();
+  EXPECT_FLOAT_EQ(g_gxState.emissiveScale, 1.f);
+  decode_fifo(bytes);
+  EXPECT_FLOAT_EQ(g_gxState.emissiveScale, 2.5f);
+
+  GXPortSetEmissive(100.f);
+  decode_fifo(capture_fifo());
+  EXPECT_FLOAT_EQ(g_gxState.emissiveScale, 32.f);
+  GXPortSetEmissive(-3.f);
+  decode_fifo(capture_fifo());
+  EXPECT_FLOAT_EQ(g_gxState.emissiveScale, 0.f);
+  GXPortSetEmissive(std::numeric_limits<f32>::quiet_NaN());
+  decode_fifo(capture_fifo());
+  EXPECT_FLOAT_EQ(g_gxState.emissiveScale, 1.f);
+}
+
 // GXPortSetBlockingDraws: the flag reaches the state the draw's pipeline lookup reads, and a change
 // makes the next draw look its pipeline up again.
 TEST_F(GXFifoTest, PortBlockingDraws_Decodes) {

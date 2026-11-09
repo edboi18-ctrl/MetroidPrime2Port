@@ -410,6 +410,92 @@ TEST(GxSurfacePbr, ModelStageIsRelit) {
             std::string::npos);
 }
 
+// GXPortSetEmissive: the room's glow stage (PREV += glow, stage 2) has its texture scaled by the
+// emissive uniform; the lightmap and lit diffuse stages don't.
+TEST(GxSurfacePbr, GlowStageTakesTheEmissiveScale) {
+  auto config = room_config();
+  config.pbrKind = 0;
+  EXPECT_EQ(port_emissive_stages(config), 1u << 2);
+  const auto info = build_shader_info(config);
+  EXPECT_TRUE(info.usesEmissive);
+  const std::string source = build_shader_source(config);
+  EXPECT_NE(source.find("emissive: vec4f"), std::string::npos);
+  EXPECT_NE(source.find("(sampled2.rgb * ubuf.emissive.x)"), std::string::npos);
+  EXPECT_EQ(source.find("(sampled0.rgb * ubuf.emissive.x)"), std::string::npos);
+  EXPECT_EQ(source.find("(sampled1.rgb * ubuf.emissive.x)"), std::string::npos);
+  // With the PBR stage relit too: the two don't meet.
+  EXPECT_EQ(port_emissive_stages(room_config()), 1u << 2);
+  EXPECT_EQ(port_surface_pbr_stage(room_config()), 1);
+}
+
+TEST(GxSurfacePbr, GlowShapes) {
+  {
+    // CPREV + TEXC as a plain term: lerp(TEXC, KONST, 0).
+    auto config = room_config();
+    set_stage(config.tevStages[2], GX_CC_TEXC, GX_CC_KONST, GX_CC_ZERO, GX_CC_CPREV, GX_TEVPREV, 2);
+    EXPECT_EQ(port_emissive_stages(config), 1u << 2);
+  }
+  {
+    // TEXC + CPREV: the texture in d, the previous colour in the lerp.
+    auto config = room_config();
+    set_stage(config.tevStages[2], GX_CC_CPREV, GX_CC_ZERO, GX_CC_ZERO, GX_CC_TEXC, GX_TEVPREV, 2);
+    EXPECT_EQ(port_emissive_stages(config), 1u << 2);
+  }
+  {
+    // The texture as the factor of a lerp from 0: CPREV + KONST x TEXC.
+    auto config = room_config();
+    set_stage(config.tevStages[2], GX_CC_ZERO, GX_CC_KONST, GX_CC_TEXC, GX_CC_CPREV, GX_TEVPREV, 2);
+    EXPECT_EQ(port_emissive_stages(config), 1u << 2);
+  }
+}
+
+TEST(GxSurfacePbr, GlowRefusals) {
+  const auto refused = [](const ShaderConfig& config, const char* why) {
+    EXPECT_EQ(port_emissive_stages(config), 0u) << why;
+    EXPECT_FALSE(build_shader_info(config).usesEmissive) << why;
+    EXPECT_EQ(build_shader_source(config).find("ubuf.emissive"), std::string::npos) << why;
+  };
+  refused(model_config(), "a lit diffuse only");
+  refused(gun_config(), "an environment map (texgen from the normal)");
+  {
+    auto config = room_config();
+    set_stage(config.tevStages[2], GX_CC_ZERO, GX_CC_TEXC, GX_CC_RASC, GX_CC_CPREV, GX_TEVPREV, 2);
+    refused(config, "lit: TEXC x RASC");
+  }
+  {
+    auto config = room_config();
+    config.tevStages[2].colorOp.outReg = GX_TEVREG1;
+    refused(config, "written to a register");
+  }
+  {
+    auto config = room_config();
+    config.tevStages[2].colorOp.op = GX_TEV_SUB;
+    refused(config, "subtracted");
+  }
+  {
+    auto config = room_config();
+    config.tcgs[2].src = GX_TG_POS;
+    refused(config, "a projected map");
+  }
+  {
+    auto config = room_config();
+    set_stage(config.tevStages[2], GX_CC_CPREV, GX_CC_KONST, GX_CC_TEXC, GX_CC_ZERO, GX_TEVPREV, 2);
+    refused(config, "a mask's blend: lerp(CPREV, KONST, TEXC)");
+  }
+  {
+    // Lit afterwards: PREV x RASC after the glow.
+    auto config = room_config();
+    config.tevStageCount = 4;
+    set_stage(config.tevStages[3], GX_CC_ZERO, GX_CC_CPREV, GX_CC_RASC, GX_CC_ZERO, GX_TEVPREV, 0);
+    refused(config, "lit by a later stage");
+  }
+  {
+    auto config = room_config();
+    config.pbr = 1;
+    refused(config, "GXSetPBR's draw");
+  }
+}
+
 TEST(GxSurfacePbr, OffLeavesTheShaderAlone) {
   auto config = room_config();
   config.pbrKind = 0;

@@ -432,6 +432,8 @@ struct GXState {
   // GX_AURORA_PORT_SURFACE_PBR_PARAMS: roughness, metal, normal and occlusion scales, then the
   // highlight's (surface_params, and surface_pbr.x times it).
   Vec4<float> surfacePbrParams{1.f, 1.f, 1.f, 1.f};
+  // GX_AURORA_PORT_EMISSIVE (GXPortSetEmissive): the glow stages' texture colour scale (emissive.x).
+  f32 emissiveScale = 1.f;
   f32 surfacePbrHighlight = 1.f;
   bool envProbe = false; // GX_AURORA_PORT_ENV_PROBE: environment-mapped stages read the probe (GXPortSetEnvProbe)
   // GX_AURORA_PORT_ENV_PROBE_LOOK (GXPortSetEnvProbeLook): x the probe level, y the strength; y below 0
@@ -765,6 +767,7 @@ struct ShaderInfo {
   bool usesHdrTone : 1 = false;   // sceneHdr without pbr: hdr_tone (pbrTone) and hdr_tev_blend
   bool usesSurfacePbr : 1 = false; // port_surface_pbr_stage or port_env_probe_stages: surface_pbr, surface_probe
   bool usesWaterRipples : 1 = false; // port_water_ripples: surface_pbr.w is the ripples' strength, water_waves the waves
+  bool usesEmissive : 1 = false;     // port_emissive_stages: the emissive uniform scales their texture colour
   bool usesTevKonst : 1 = false; // a stage reads a konst input: the tev_konst uniform
   bool usesAlphaRef : 1 = false;  // an alpha compare reference is AlphaRefUniform: the alpha_ref uniform
 };

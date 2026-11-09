@@ -2164,6 +2164,7 @@ int sWaterRipples = 100;
 int sWaterWaves = PortWaterWaves::kStrengthDefault;
 bool sVolumetricFog = false;
 int sFogWisps = 50;
+int sLuminance = 100;
 bool sBloom = false;
 int sBloomStrength = PortBloom::kStrengthDefault;
 int sBloomThreshold = PortBloom::kThresholdDefault;
@@ -2341,6 +2342,11 @@ bool VolumetricFog() {
 int FogWisps() {
   ReadEnv();
   return EnvIntIn("MP2_FOG_WISPS", sFogWisps, 0, 100);
+}
+
+int Luminance() {
+  ReadEnv();
+  return EnvIntIn("MP2_LUMINANCE", sLuminance, 0, 400);
 }
 
 int WaterWaves() {

@@ -820,6 +820,11 @@ int WaterWaves();
 // noise thickens and thins it. Combat and Scan visors only, not in split screen.
 bool VolumetricFog();
 int FogWisps();
+// How bright the light-emitting texels of the game's models and rooms are (their glow layer: lights,
+// screens, Phazon), 0..400% (`MP2_LUMINANCE`, F1 > Video > Quality); 100 by default, as the game draws
+// them. Times each material's own Luminance (materials.json); CCubeMaterial::PortBeginSurfaceDraw
+// hands the product to Aurora's GXPortSetEmissive.
+int Luminance();
 // Bloom over the world, under the visors and the HUD (`MP2_BLOOM`, F1 > Video > Quality; off by
 // default): Aurora's Remastered bloom (GXPortPostProcess) with the port's own curve and tints
 // (port_bloom_rules.h). Strength 0..200% (`MP2_BLOOM_STRENGTH`; default 100) and the brightness it
