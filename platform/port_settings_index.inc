@@ -192,6 +192,7 @@
 {"Video", "Quality", "Quality", "Water waves", "water waves rings splash shot bomb impact ripple reflection"},
 {"Video", "Quality", "Quality", "PBR highlight strength", "pbr specular shine gloss glare too bright highlights"},
 {"Video", "Quality", "Quality", "Visor face PBR strength", "samus face visor reflection pbr glossy shiny creepy helmet flash charge shot missile"},
+{"Video", "Quality", "Quality", "Luminance", "luminance glow emissive incandescence self lit light emitting bright texels brightness"},
 {"Video", "Quality", "Quality", "Volumetric fog", "fog volumetric mist haze atmosphere froxel volume remastered"},
 {"Video", "Quality", "Quality", "Fog wisps", "fog wisps noise drift mist volumetric"},
 {"Video", "Quality", "Quality", "Bloom", "bloom glow hdr lights bright halo post processing remastered"},
