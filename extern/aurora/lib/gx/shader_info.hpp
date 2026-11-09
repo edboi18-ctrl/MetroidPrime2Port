@@ -29,10 +29,15 @@ int port_water_stage(const ShaderConfig& config) noexcept;
 // GXPortSetWaterRipples: the water draw's normal is tipped by GX_TEXMAP7's height on TEXCOORD0 and
 // TEXCOORD1 (kPortWaterRippleBit on a port_water_stage draw whose two texgens come from the position).
 bool port_water_ripples(const ShaderConfig& config) noexcept;
+// GXPortSetSurfaceReflection (kPortSurfaceReflectBit without kPortWaterBit): the live probe reflected
+// off the draw's per-pixel normal is blended over its TEV result by Fresnel, for a draw with no
+// environment-mapped stage (one with them reads the probe there instead). Needs a lit channel 0 (the
+// normal) and a sampled texture (the probe's binding comes with the textures'); not GXSetPBR's draws.
+bool port_surface_reflection(const ShaderConfig& config) noexcept;
 // GXPortSetSurfacePBR (surfacePbr: the stage + 1, 0 off) and GXPortSetEnvProbe on a config whose
 // TEV stages, swap table, colour channels and texgens are already filled, with pbr 0: pbrKind
 // takes the stage + 1 and the probe bit, each kept only when it applies, so a draw they can't
 // change keeps the config, and the pipeline, it had; perPixelLight is set while either is.
 void apply_port_surface_flags(ShaderConfig& config, u8 surfacePbr, bool envProbe, u8 waterReflect = 0,
-                              bool waterRipples = false) noexcept;
+                              bool waterRipples = false, bool surfaceReflect = false) noexcept;
 }; // namespace aurora::gx

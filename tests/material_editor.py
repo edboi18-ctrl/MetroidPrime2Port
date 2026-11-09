@@ -577,6 +577,12 @@ class PreviewSettings(unittest.TestCase):
         self.assertEqual((p["env"], p["env_blur"], p["env_strength"]), ("live", 0.5, 2.0))
         p = preview.params({"reflection": True}, self.shiny, False, dict(game, live_reflections=False))
         self.assertEqual(p["env"], "painted")
+        # No painted reflection: switched on, one is laid over the surface (GXPortSetSurfaceReflection).
+        self.assertEqual(preview.params({}, self.plain, False, game)["env"], "none")
+        p = preview.params({"reflection": True, "reflection_strength": 3}, self.plain, False, game)
+        self.assertEqual((p["env"], p["env_strength"], p["env_blur"]), ("coat", 3.0, 0.0))
+        p = preview.params({"reflection": True}, self.plain, False, dict(game, live_reflections=False))
+        self.assertEqual(p["env"], "none")
         self.assertEqual(preview.setting_percent({"pbr_highlight": "150"}, "pbr_highlight", 100), 1.5)
         self.assertEqual(preview.setting_percent({}, "pbr_highlight", 100), 1.0)
 

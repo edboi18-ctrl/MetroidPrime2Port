@@ -408,6 +408,9 @@ extern "C" {
 // Port extension: how bright the following draws' glow stages are (GXPortSetEmissive). Payload: f32
 // scale.
 #define GX_AURORA_PORT_EMISSIVE 0x007B
+// Port extension: the following draws without environment-mapped stages have the live probe laid
+// over them (GXPortSetSurfaceReflection). Payload: u8 on.
+#define GX_AURORA_PORT_SURFACE_REFLECTION 0x007C
 
 #define GX2_SET_POLYGON_OFFSET 0x1000
 

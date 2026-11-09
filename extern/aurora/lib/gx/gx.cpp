@@ -631,7 +631,7 @@ void populate_pipeline_config(PipelineConfig& config, GXPrimitive primitive, GXV
   // their texgen: copied after this, it saw none and never applied).
   if (g_gxState.pbr == 0) {
     apply_port_surface_flags(config.shaderConfig, g_gxState.surfacePbr, g_gxState.envProbe, g_gxState.waterReflect,
-                             g_gxState.waterRipples > 0.f || g_gxState.waterWaveCount > 0);
+                             g_gxState.waterRipples > 0.f || g_gxState.waterWaveCount > 0, g_gxState.surfaceReflect);
   }
   config.shaderConfig.perPixelLight = wants_per_pixel_light(config.shaderConfig);
   if (g_gxState.alphaCompare) {

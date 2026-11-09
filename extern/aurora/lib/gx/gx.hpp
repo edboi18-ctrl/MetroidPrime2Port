@@ -54,6 +54,10 @@ constexpr u8 kPortWaterBit = 0x40;
 // GXPortSetWaterRipples, with kPortWaterBit: GX_TEXMAP7's height on TEXCOORD0 and TEXCOORD1 tips the
 // water's normal (port_water_ripples).
 constexpr u8 kPortWaterRippleBit = 0x80;
+// GXPortSetSurfaceReflection, without kPortWaterBit (the ripple bit's value, which means ripples only
+// with it): a draw with no environment-mapped stage has the live probe laid over it by Fresnel
+// (port_surface_reflection).
+constexpr u8 kPortSurfaceReflectBit = 0x80;
 constexpr bool EnableNormalVisualization = false;
 constexpr bool EnableDebugPrints = false;
 constexpr bool UseReversedZ = true;
@@ -436,6 +440,9 @@ struct GXState {
   f32 emissiveScale = 1.f;
   f32 surfacePbrHighlight = 1.f;
   bool envProbe = false; // GX_AURORA_PORT_ENV_PROBE: environment-mapped stages read the probe (GXPortSetEnvProbe)
+  // GX_AURORA_PORT_SURFACE_REFLECTION (GXPortSetSurfaceReflection): a draw without environment-mapped
+  // stages has the probe laid over it.
+  bool surfaceReflect = false;
   // GX_AURORA_PORT_ENV_PROBE_LOOK (GXPortSetEnvProbeLook): x the probe level, y the strength; y below 0
   // takes aurora_set_env_probe_look's (env_probe_look).
   Vec4<float> envProbeLook{0.f, -1.f, 0.f, 0.f};

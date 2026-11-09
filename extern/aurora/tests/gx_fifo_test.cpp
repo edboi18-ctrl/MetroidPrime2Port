@@ -3079,6 +3079,25 @@ TEST_F(GXFifoTest, PortSurfacePbrParams_DecodesClamped) {
   EXPECT_FLOAT_EQ(g_gxState.surfacePbrHighlight, 4.f);
 }
 
+// GXPortSetSurfaceReflection: the flag reaches the state the pipeline's config reads, and a change
+// makes the next draw look its pipeline up again.
+TEST_F(GXFifoTest, PortSurfaceReflection_Decodes) {
+  GXPortSetSurfaceReflection(GX_TRUE);
+  auto bytes = capture_fifo();
+  EXPECT_TRUE(has_aurora_cmd(bytes, GX_AURORA_PORT_SURFACE_REFLECTION));
+
+  reset_gx_state();
+  EXPECT_FALSE(g_gxState.surfaceReflect);
+  g_gxState.dirty = 0;
+  decode_fifo(bytes);
+  EXPECT_TRUE(g_gxState.surfaceReflect);
+  EXPECT_NE(g_gxState.dirty & aurora::gx::DirtyPipeline, 0);
+
+  GXPortSetSurfaceReflection(GX_FALSE);
+  decode_fifo(capture_fifo());
+  EXPECT_FALSE(g_gxState.surfaceReflect);
+}
+
 // GXPortSetEmissive: the glow stages' scale reaches the uniform's state, clamped to 0..32 (NaN draws
 // them as GX does).
 TEST_F(GXFifoTest, PortEmissive_DecodesClamped) {

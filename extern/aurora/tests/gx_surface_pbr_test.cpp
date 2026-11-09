@@ -308,6 +308,82 @@ TEST(GxSurfacePbr, ApplyFlagsAsADrawSetsThem) {
   }
 }
 
+// GXPortSetSurfaceReflection: a lit, textured draw with no environment map gets the probe laid over
+// it after the TEV; one with an environment map reads the probe there instead.
+TEST(GxSurfacePbr, SurfaceReflectionOnADrawWithoutAnEnvironmentMap) {
+  auto config = model_config();
+  config.pbrKind = 0;
+  config.perPixelLight = 0;
+  apply_port_surface_flags(config, 0, true, 0, false, true);
+  EXPECT_EQ(config.pbrKind, kPortSurfaceReflectBit);
+  EXPECT_EQ(config.perPixelLight, 1);
+  EXPECT_TRUE(port_surface_reflection(config));
+  EXPECT_EQ(port_env_probe_stages(config), 0u);
+  EXPECT_FALSE(port_water_ripples(config));
+  const auto info = build_shader_info(config);
+  EXPECT_TRUE(info.usesSurfacePbr);
+  const std::string source = build_shader_source(config);
+  EXPECT_NE(source.find("GXPortSetSurfaceReflection: the live probe reflected off the surface"), std::string::npos);
+  EXPECT_NE(source.find("let sr_f0 = min(0.04 * sr_s * sr_s, 1.0);"), std::string::npos);
+  EXPECT_NE(source.find("var pbr_cube: texture_cube<f32>;"), std::string::npos);
+  // With the PBR stage relit too.
+  auto both = model_config();
+  both.pbrKind = 0;
+  apply_port_surface_flags(both, 1, true, 0, false, true);
+  EXPECT_EQ(both.pbrKind, kPortSurfaceReflectBit | 1);
+  EXPECT_EQ(port_surface_pbr_stage(both), 0);
+  EXPECT_TRUE(port_surface_reflection(both));
+}
+
+TEST(GxSurfacePbr, SurfaceReflectionRefusals) {
+  {
+    // An environment map: the probe replaces it, nothing is laid over.
+    auto config = gun_config();
+    config.pbrKind = 0;
+    apply_port_surface_flags(config, 0, true, 0, false, true);
+    EXPECT_EQ(config.pbrKind, kPortEnvProbeBit);
+    EXPECT_FALSE(port_surface_reflection(config));
+    EXPECT_EQ(build_shader_source(config).find("GXPortSetSurfaceReflection"), std::string::npos);
+  }
+  {
+    // Unlit: no normal to reflect off. The config is left as it was.
+    auto config = model_config();
+    config.pbrKind = 0;
+    config.perPixelLight = 0;
+    config.colorChannels[GX_COLOR0].lightingEnabled = false;
+    apply_port_surface_flags(config, 0, true, 0, false, true);
+    EXPECT_EQ(config.pbrKind, 0);
+    EXPECT_EQ(config.perPixelLight, 0);
+  }
+  {
+    // Untextured: the probe's binding comes with the textures'.
+    auto config = model_config();
+    config.pbrKind = 0;
+    set_stage(config.tevStages[0], GX_CC_ZERO, GX_CC_ZERO, GX_CC_ZERO, GX_CC_RASC, GX_TEVPREV, 0);
+    config.tevStages[0].texMapId = GX_TEXMAP_NULL;
+    apply_port_surface_flags(config, 0, true, 0, false, true);
+    EXPECT_EQ(config.pbrKind, 0);
+  }
+  {
+    // Not asked for: GXPortSetEnvProbe alone leaves a draw without an environment map alone (the
+    // scopes' Samus materials).
+    auto config = model_config();
+    config.pbrKind = 0;
+    config.perPixelLight = 0;
+    apply_port_surface_flags(config, 0, true);
+    EXPECT_EQ(config.pbrKind, 0);
+    EXPECT_FALSE(port_surface_reflection(config));
+  }
+  {
+    // GXSetPBR's draws are left alone.
+    auto config = model_config();
+    config.pbr = 1;
+    config.pbrKind = 0;
+    apply_port_surface_flags(config, 0, true, 0, false, true);
+    EXPECT_EQ(config.pbrKind, 0);
+  }
+}
+
 TEST(GxSurfacePbr, EnvironmentProbeAndRelitStageTogether) {
   auto config = gun_config();
   config.pbrKind = kPortEnvProbeBit | 1;
