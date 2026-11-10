@@ -384,6 +384,55 @@ TEST(GxSurfacePbr, SurfaceReflectionRefusals) {
   }
 }
 
+// A pass that draws the model in one colour (stage 0 = lerp(0, 0, TEXC): a silhouette's, a visor's)
+// with channel 0's lighting still on: the TEV reads no lit channel, so the shader gets no per-pixel
+// position or normal, and the probe's code there would be a WGSL error (fatal on the device). Both
+// reflections refuse it, and the shader names neither.
+TEST(GxSurfacePbr, ReflectionsNeedTheLitVaryings) {
+  // The pass's stages read neither the lit colour nor its alpha (a konst alpha).
+  const auto unlit = [](ShaderConfig& c) {
+    for (u32 i = 0; i < c.tevStageCount; ++i) {
+      c.tevStages[i].alphaPass = {GX_CA_ZERO, GX_CA_ZERO, GX_CA_ZERO, GX_CA_KONST};
+    }
+  };
+  auto config = model_config();
+  set_stage(config.tevStages[0], GX_CC_ZERO, GX_CC_ZERO, GX_CC_TEXC, GX_CC_ZERO, GX_TEVPREV, 0);
+  unlit(config);
+  config.pbrKind = 0;
+  config.perPixelLight = 0;
+  apply_port_surface_flags(config, 0, true, 0, false, true);
+  EXPECT_EQ(config.pbrKind, 0);
+  EXPECT_FALSE(port_surface_reflection(config));
+  {
+    // The bits as a pipeline cache row from an earlier build may hold them: still refused.
+    auto stale = config;
+    stale.perPixelLight = 1;
+    stale.pbrKind = kPortSurfaceReflectBit;
+    EXPECT_FALSE(port_surface_reflection(stale));
+    EXPECT_EQ(build_shader_source(stale).find("in.mv_pos"), std::string::npos);
+    stale.pbrKind = kPortEnvProbeBit;
+    EXPECT_EQ(port_env_probe_stages(stale), 0u);
+  }
+  {
+    // The arm cannon's environment stage in such a pass: the probe leaves it alone too.
+    auto gun = gun_config();
+    set_stage(gun.tevStages[0], GX_CC_ZERO, GX_CC_ZERO, GX_CC_TEXC, GX_CC_ZERO, GX_TEVPREV, 0);
+    unlit(gun);
+    EXPECT_EQ(port_env_probe_stages(gun), 0u);
+    EXPECT_EQ(build_shader_source(gun).find("in.mv_pos"), std::string::npos);
+  }
+  {
+    // Lit channel 0 read through its alpha (RASA, as a colour input) is enough.
+    auto config2 = model_config();
+    set_stage(config2.tevStages[0], GX_CC_ZERO, GX_CC_TEXC, GX_CC_RASA, GX_CC_ZERO, GX_TEVPREV, 0);
+    unlit(config2);
+    config2.pbrKind = 0;
+    apply_port_surface_flags(config2, 0, true, 0, false, true);
+    EXPECT_TRUE(port_surface_reflection(config2));
+    EXPECT_NE(build_shader_source(config2).find("in.mv_pos"), std::string::npos);
+  }
+}
+
 TEST(GxSurfacePbr, EnvironmentProbeAndRelitStageTogether) {
   auto config = gun_config();
   config.pbrKind = kPortEnvProbeBit | 1;

@@ -235,10 +235,39 @@ int port_surface_pbr_stage(const ShaderConfig& config) noexcept {
   return -1;
 }
 
+// Whether the draw's shader has the per-pixel view-space position and normal (in.mv_pos, pp_nrm), which
+// the probe's reflections read: build_shader_info's lightingEnabled (with perPixelLight), which needs a
+// colour channel the TEV reads (sampledColorChannels) with its lighting on. A channel 0 lit but never
+// read (a pass that draws the model in one colour: a silhouette, a visor's) gives the shader no such
+// inputs, and the probe's code there was a WGSL error, which the device makes fatal. A stage reading a
+// lit channel's RASC or RASA counts here; the rarer ways (a texgen from a colour, emboss) don't, so such
+// a draw is refused, never broken.
+static bool port_has_lit_varyings(const ShaderConfig& config) noexcept {
+  for (u32 i = 0; i < config.tevStageCount && i < MaxTevStages; ++i) {
+    const auto& stage = config.tevStages[i];
+    if (stage.channelId == GX_COLOR_NULL || stage.channelId == GX_COLOR_ZERO || is_alpha_bump_channel(stage.channelId)) {
+      continue;
+    }
+    const auto& c = stage.colorPass;
+    const auto& a = stage.alphaPass;
+    const auto ras = [](GXTevColorArg arg) { return arg == GX_CC_RASC || arg == GX_CC_RASA; };
+    if (!ras(c.a) && !ras(c.b) && !ras(c.c) && !ras(c.d) && a.a != GX_CA_RASA && a.b != GX_CA_RASA &&
+        a.c != GX_CA_RASA && a.d != GX_CA_RASA) {
+      continue;
+    }
+    const u8 channel = color_channel(stage.channelId);
+    if (channel < 2 && (config.colorChannels[channel].lightingEnabled ||
+                        config.colorChannels[channel + GX_ALPHA0].lightingEnabled)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 u32 port_env_probe_stages(const ShaderConfig& config) noexcept {
   if (config.pbr != 0 || (config.pbrKind & kPortEnvProbeBit) == 0 || (config.pbrKind & kPortWaterBit) != 0 ||
       config.perPixelLight == 0 ||
-      !config.colorChannels[GX_COLOR0].lightingEnabled) {
+      !config.colorChannels[GX_COLOR0].lightingEnabled || !port_has_lit_varyings(config)) {
     return 0;
   }
   u32 stages = 0;
@@ -347,7 +376,8 @@ bool port_water_ripples(const ShaderConfig& config) noexcept {
 bool port_surface_reflection(const ShaderConfig& config) noexcept {
   if (config.pbr != 0 || config.lineMode != 0 || (config.pbrKind & kPortWaterBit) != 0 ||
       (config.pbrKind & kPortSurfaceReflectBit) == 0 || (config.pbrKind & kPortEnvProbeBit) != 0 ||
-      config.perPixelLight == 0 || !config.colorChannels[GX_COLOR0].lightingEnabled) {
+      config.perPixelLight == 0 || !config.colorChannels[GX_COLOR0].lightingEnabled ||
+      !port_has_lit_varyings(config)) {
     return false;
   }
   for (u32 i = 0; i < config.tevStageCount && i < MaxTevStages; ++i) {
