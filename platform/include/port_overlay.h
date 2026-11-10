@@ -39,6 +39,8 @@ void SetAreaLayers(const CWorldLayerState* layers, int areaId);
 // "Temple Grounds - Landing Site": the English world and room names, as far as they are known
 // (rooms only for the current world, once their name tables have loaded); empty when the room's is not.
 std::string RoomName(uint32_t worldId, int areaIndex);
+// "Temple Grounds": the world's English name alone; empty when it is not known.
+std::string WorldName(uint32_t worldId);
 // Opens the window on the first page whose name starts with `name` (case-insensitive: "save"
 // is Save states), or closes it for "off"; false when no page matches (console `overlay`).
 // "<page>/<sub-tab>" also selects the first sub-tab whose name starts with the part after the slash.
@@ -399,6 +401,7 @@ void SetDamageDealtMultiplier(float m);
 // Skip Dark (`MP2_STACK_BEAMS_SKIP_DARK`): the stack leaves the Dark Beam out unless it is in hand,
 // so stacked shots don't drain light beacons and crystals.
 bool UnlockBeamDoors();
+bool UnlockBeamDoorsSet(); // as set (UnlockBeamDoors: in effect)
 void SetUnlockBeamDoors(bool enabled);
 // Unlock beam doors once opened (F1 > Game > Unlocks, `beam_doors_stay_unlocked`, env
 // `MP2_BEAM_DOORS_STAY_UNLOCKED`): a colour-locked door that was opened once is a blue door again
@@ -406,6 +409,7 @@ void SetUnlockBeamDoors(bool enabled);
 bool BeamDoorsStayUnlocked();
 void SetBeamDoorsStayUnlocked(bool enabled);
 bool StackBeams();
+bool StackBeamsSet(); // as set (StackBeams: in effect)
 void SetStackBeams(bool enabled);
 bool StackBeamsSkipDark();
 void SetStackBeamsSkipDark(bool enabled);
@@ -643,6 +647,8 @@ void SetHudScalingActive(bool active);
 // (the per-visor effect: on this port that is the scan visor's window and edges).
 bool HideHelmet();
 bool HideVisorEffects();
+void SetHideHelmet(bool enabled);
+void SetHideVisorEffects(bool enabled);
 // Cutscene black bars (`cinema_bars`, env `MP2_CINEMA_BARS`, F1 > HUD and view): the letterbox the
 // game draws over a cinematic and the viewport shrink that goes with it. On by default (the
 // game's own); off lets the cinematic fill the screen. Read by CCameraFilterPass. Original

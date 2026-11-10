@@ -643,17 +643,20 @@ void SetGameState(uint32_t worldId, int areaId, CWorld* world) {
   }
 }
 
-std::string RoomName(uint32_t worldId, int areaIndex) {
-  std::string world;
+std::string WorldName(uint32_t worldId) {
   if (gpMemoryCard != nullptr) {
     const rstl::vector< CMemoryCard::MemoryWorld >& worlds = gpMemoryCard->GetMemoryWorlds();
     for (int i = 0; i < worlds.size(); ++i) {
       if (static_cast< uint32_t >(worlds[i].first) == worldId) {
-        world = PlainWorldName(worlds[i].second.GetFrontEndName());
-        break;
+        return PlainWorldName(worlds[i].second.GetFrontEndName());
       }
     }
   }
+  return {};
+}
+
+std::string RoomName(uint32_t worldId, int areaIndex) {
+  const std::string world = WorldName(worldId);
   // Only the current world's rooms are named (the room picker's list); another world's keep the
   // saved label.
   std::string room;
@@ -1972,6 +1975,9 @@ bool StackBeams() {
   ReadEnv();
   return EnvBool("MP2_STACK_BEAMS", sStackBeams) && !OriginalExperience();
 }
+
+bool UnlockBeamDoorsSet() { return sUnlockBeamDoors; }
+bool StackBeamsSet() { return sStackBeams; }
 
 // The accessors that are one of the table's shapes.
 #include "port_overlay_accessors.inc"
