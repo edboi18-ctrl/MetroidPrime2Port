@@ -947,36 +947,6 @@ static std::string port_water_blend() {
     })""";
 }
 
-// GXPortSetSurfaceReflection (kPortSurfaceReflectBit; port_surface_reflection), after the last TEV
-// stage: the live probe along the view reflected off the per-pixel normal (turned to face the camera,
-// for two-sided geometry), read at surface_pbr.y's level (the blur), blended over the TEV result by
-// Schlick's Fresnel, F = F0 + (1 - F0)(1 - cos)^5. The strength s (surface_pbr.z) sets F0 = 0.04 s^2:
-// 1 a varnish's or glass's 4% (n = 1.5: ((1.5 - 1) / (1.5 + 1))^2 = 0.04), 2 16%, 4 64% (a polished
-// metal's range), and below 1 fades the whole layer. The reflection is dimmed where the TEV result is
-// dark (to 35% at black: a rough reflection occlusion, as the PBR stage's pbrs_occ, so a shadowed
-// corner doesn't shine with a bright room). The alpha stays the TEV's: a cut-out's test and a
-// blended surface's coverage don't change. Mixed display-referred, as GX blends, before the fog.
-static std::string port_surface_reflect_blend() {
-  return R"""(
-    // GXPortSetSurfaceReflection: the live probe reflected off the surface, laid over it by Fresnel
-    if (ubuf.surface_probe[0].w > 0.0) {
-        let sr_v = select(vec3f(0.0, 0.0, -1.0), normalize(in.mv_pos), dot(in.mv_pos, in.mv_pos) > 1e-12);
-        let sr_n = select(pp_nrm, -pp_nrm, dot(pp_nrm, sr_v) > 0.0);
-        let sr_r = reflect(sr_v, sr_n);
-        let sr_d = ubuf.surface_probe[0].xyz * sr_r.x + ubuf.surface_probe[1].xyz * sr_r.y +
-                   ubuf.surface_probe[2].xyz * sr_r.z;
-        let sr_c = textureSampleLevel(pbr_cube, pbr_cube_samp, sr_d, ubuf.surface_pbr.y).rgb;
-        let sr_s = max(ubuf.surface_pbr.z, 0.0);
-        let sr_f0 = min(0.04 * sr_s * sr_s, 1.0);
-        let sr_cos = clamp(dot(-sr_v, sr_n), 0.0, 1.0);
-        let sr_f = clamp((sr_f0 + (1.0 - sr_f0) * pow(1.0 - sr_cos, 5.0)) * min(sr_s, 1.0) *
-                         clamp(ubuf.surface_probe[0].w, 0.0, 1.0), 0.0, 1.0);
-        let sr_base = clamp(prev.rgb, vec3f(0.0), vec3f(1.0));
-        let sr_occ = mix(0.35, 1.0, clamp(max(sr_base.r, max(sr_base.g, sr_base.b)) * 2.0, 0.0, 1.0));
-        prev = vec4f(mix(sr_base, max(sr_c, vec3f(0.0)) * sr_occ, sr_f), prev.a);
-    })""";
-}
-
 // GXPortSetWaterRipples (kPortWaterRippleBit; port_water_ripples): the brightness of GX_TEXMAP7 on
 // TEXCOORD0 and TEXCOORD1 (the water's two scrolling layers) is a height field that tips the water's
 // normal, so the reflection and its Fresnel ripple. Each layer's frame is Schüler's cotangent frame
@@ -3663,9 +3633,6 @@ std::string build_shader_source(const ShaderConfig& config) noexcept {
   }
   if (port_water_stage(config) >= 0) {
     fragmentFn += port_water_blend();
-  }
-  if (port_surface_reflection(config)) {
-    fragmentFn += port_surface_reflect_blend();
   }
 
   if (info.loadsTevReg.test(0)) {

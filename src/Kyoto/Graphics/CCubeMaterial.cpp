@@ -1081,31 +1081,17 @@ uint CCubeMaterial::PortBeginSurfaceDraw() {
   // The editor's reflection: on reads the live probe in the environment-mapped stages (as the
   // scopes do for Samus and the cannon), off keeps the painted map even inside such a scope.
   const bool envProbe = edit != nullptr && edit->reflection >= 0 ? edit->reflection == 1 : sPortEnvProbe;
-  // Turned on in the editor, a material with no environment map gets the probe laid over it by
-  // Fresnel instead (Aurora's port_surface_reflection decides per draw; one with the map keeps
-  // reading it there). Only the editor asks for that: the scopes keep Samus's other materials as
-  // they are.
-  const bool forced = edit != nullptr && edit->reflection == 1;
   if (envProbe && liveReflections && !sPortCapturingProbe) {
     GXPortSetEnvProbe(GX_TRUE);
     begun |= 2;
-    if (forced) {
-      GXPortSetSurfaceReflection(GX_TRUE);
-      begun |= 64;
-    }
     float level = sPortEnvProbeLevel;
     float strength = sPortEnvProbeStrength;
-    if (edit != nullptr && (forced || edit->reflectionBlur >= 0.f || edit->reflectionStrength >= 0.f)) {
-      // The editor's look; turned on there, the values it shows for those left unset (blur 0,
-      // strength 1) rather than the frame's (the arm cannon's).
+    if (edit != nullptr && (edit->reflectionBlur >= 0.f || edit->reflectionStrength >= 0.f)) {
       if (edit->reflectionBlur >= 0.f) {
         level = edit->reflectionBlur * PortOverlay::kReflectionLevelPerBlurPercent;
-      } else if (forced) {
-        level = 0.f;
       }
       // A blur alone keeps the full strength rather than the frame's look.
-      strength = edit->reflectionStrength >= 0.f ? edit->reflectionStrength
-                                                  : (forced || strength < 0.f ? 1.f : strength);
+      strength = edit->reflectionStrength >= 0.f ? edit->reflectionStrength : (strength >= 0.f ? strength : 1.f);
     }
     if (strength >= 0.f) {
       GXPortSetEnvProbeLook(level, strength);
@@ -1161,9 +1147,6 @@ void CCubeMaterial::PortEndSurfaceDraw(uint begun) {
   }
   if ((begun & 32) != 0) {
     GXPortSetEmissive(1.f);
-  }
-  if ((begun & 64) != 0) {
-    GXPortSetSurfaceReflection(GX_FALSE);
   }
 }
 

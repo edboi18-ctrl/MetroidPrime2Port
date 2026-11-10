@@ -80,8 +80,7 @@ uniform int u_pbr;           // the material uses its PBR maps
 uniform vec4 u_params;       // roughness, metal, normal, occlusion scales
 uniform vec2 u_pbr2;         // highlight (game setting x material), PBR strength
 uniform int u_live;          // Live reflections (game setting): the PBR reflection reads the probe
-uniform int u_env_mode;      // environment-mapped stage: 0 none, 1 the painted map, 2 live; 3 a
-                             // reflection laid over a material without one (GXPortSetSurfaceReflection)
+uniform int u_env_mode;      // environment-mapped stage: 0 none, 1 the painted map, 2 live
 uniform vec4 u_env;          // its weight (rgb); w 1: it mixes, 0: it adds
 uniform vec2 u_env_look;     // live reflection strength, blur 0..1
 uniform float u_alpha_ref;   // alpha test threshold, or -1
@@ -196,18 +195,7 @@ void main() {
         // port_emissive_stages).
         lit = clamp(lit, 0.0, 1.0) + texture2D(u_glowtex, v_uv2).rgb * u_glow.w * u_glow.rgb;
     }
-    if (u_env_mode == 3) {
-        // Aurora's port_surface_reflect_blend: Fresnel with F0 = 0.04 s^2, below s = 1 faded out,
-        // dimmed where the surface is dark, mixed over the result.
-        vec3 vv = dot(v_pos, v_pos) > 1e-12 ? normalize(v_pos) : vec3(0.0, 0.0, -1.0);
-        vec3 rc = studio(u_to_world * reflect(vv, ng), u_env_look.y);
-        float s = max(u_env_look.x, 0.0);
-        float f0 = min(0.04 * s * s, 1.0);
-        float f = clamp((f0 + (1.0 - f0) * pow(1.0 - clamp(dot(-vv, ng), 0.0, 1.0), 5.0)) * min(s, 1.0), 0.0, 1.0);
-        vec3 sb = clamp(lit, 0.0, 1.0);
-        float occ = mix(0.35, 1.0, clamp(max(sb.r, max(sb.g, sb.b)) * 2.0, 0.0, 1.0));
-        lit = mix(sb, rc * occ, f);
-    } else if (u_env_mode != 0) {
+    if (u_env_mode != 0) {
         vec3 ec;
         if (u_env_mode == 2) {
             vec3 rv = reflect(normalize(v_pos), ng);
@@ -665,7 +653,7 @@ class ModelView(OpenGLFrame):
             GL.glUniform4f(loc["u_params"], p["roughness"], p["metal"], p["normal"], p["occlusion"])
             GL.glUniform2f(loc["u_pbr2"], p["highlight"], p["strength"])
             GL.glUniform1i(loc["u_live"], 1 if p["live_probe"] else 0)
-            env_mode = {"none": 0, "painted": 1, "live": 2, "coat": 3}[p["env"]]
+            env_mode = {"none": 0, "painted": 1, "live": 2}[p["env"]]
             env_tid = scene.env_texture(k)
             if env_mode == 1 and env_tid not in self._gpu["textures"]:
                 env_mode = 0

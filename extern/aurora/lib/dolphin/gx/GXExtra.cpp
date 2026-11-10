@@ -491,11 +491,6 @@ void GXPortSetSurfacePBRParams(f32 roughness, f32 metal, f32 normal, f32 occlusi
   GX_WRITE_F32(highlight);
 }
 
-void GXPortSetSurfaceReflection(GXBool on) {
-  GX_WRITE_AURORA(GX_AURORA_PORT_SURFACE_REFLECTION);
-  GX_WRITE_U8(on ? 1 : 0);
-}
-
 void GXPortSetEmissive(f32 scale) {
   GX_WRITE_AURORA(GX_AURORA_PORT_EMISSIVE);
   GX_WRITE_F32(scale);

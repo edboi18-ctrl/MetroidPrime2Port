@@ -161,6 +161,7 @@ class Editor(tk.Tk):
         form = ttk.Frame(right)
         form.pack(fill="x")
         self.field_widgets = {}
+        self.field_checks = {}
         row = 0
         for name, label, kind, lo, hi, default, help_text in mc.FIELDS:
             if name == "reflection":
@@ -189,6 +190,7 @@ class Editor(tk.Tk):
                 entry.bind("<Return>", lambda e, n=name: self._typed(n))
                 entry.bind("<FocusOut>", lambda e, n=name: self._typed(n))
                 self.field_widgets[name] = (kind, on, val, (scale, text, entry))
+                self.field_checks[name] = check
                 self._tip(scale, help_text)
                 self._tip(check, "Ticked: this material uses the value here. Unticked: the game's own.")
             row += 1
@@ -556,7 +558,7 @@ class Editor(tk.Tk):
         self.key_var.set(m.key_text)
         self._show_textures(m)
         self._load_fields(self.overrides.get(m.key_text))
-        self._enable_fields(True)
+        self._enable_fields(True, m.reflective)
         self.same_box["values"] = ["%08X" % t for t in m.textures if t is not None]
         if self.same_box["values"]:
             self.same_box.current(0)
@@ -609,15 +611,24 @@ class Editor(tk.Tk):
         if len(m.textures) > 4:
             ttk.Label(self.thumb_frame, text="+%d more" % (len(m.textures) - 4)).pack(side="left")
 
-    def _enable_fields(self, on):
-        state = "normal" if on else "disabled"
-        for kind, a, _b, w in self.field_widgets.values():
+    def _enable_fields(self, on, reflective=True):
+        """The fields usable for a material (`on`); the live reflection's only for a material with a
+        painted reflection (an environment map), the only kind the game reflects the room on."""
+        for name, (kind, a, _b, w) in self.field_widgets.items():
+            usable = on and (reflective or name not in mc.REFLECTION_FIELDS)
+            state = "normal" if usable else "disabled"
             if kind == "bool":
-                w.configure(state="readonly" if on else "disabled")
+                w.configure(state="readonly" if usable else "disabled")
             else:
                 scale, _text, entry = w
                 scale.configure(state=state)
                 entry.configure(state=state)
+                self.field_checks[name].configure(state=state)
+        if on and not reflective:
+            self.status("Material %d has no painted reflection (environment map), so Live reflection "
+                        "doesn't apply to it." % self.material.index)
+        elif on:
+            self.status("Material %d: %s." % (self.material.index, self.material.summary()))
         if not on:
             self.detail_title.set("")
             self.key_var.set("")

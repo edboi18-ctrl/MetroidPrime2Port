@@ -79,13 +79,6 @@ void GXPortSetSurfacePBRParams(f32 roughness, f32 metal, f32 normal, f32 occlusi
 // lib/gx/shader_info.cpp) has its texture colour times `scale` before the stage's clamp; 1 draws it
 // as GX does. Read from a uniform, so a change needs no new pipeline. Clamped to 0..32.
 void GXPortSetEmissive(f32 scale);
-// Port extension: while on, a following draw with no environment-mapped stage (which GXPortSetEnvProbe
-// can't turn to the live probe) has the probe reflected off its per-pixel normal blended over its TEV
-// result by Fresnel, at GXPortSetEnvProbeLook's level (blur), its strength s setting the reflectance
-// straight on to 0.04 s^2 (1 a varnish, 4 a polished metal). Draws with such stages, unlit draws (no
-// normal) and untextured ones are left as they are. Nothing shows until the probe has been filled
-// (GXSetPBRProbe's weight).
-void GXPortSetSurfaceReflection(GXBool on);
 // Port extension: expanding rings on GXPortSetWaterReflection's water (a splash's waves), which tip
 // its normal as GXPortSetWaterRipples' height does (they share the rippled variant). Row 0: x the
 // number of waves (0..GX_PORT_WATER_WAVES); then two rows a wave: (centre in view space xyz,

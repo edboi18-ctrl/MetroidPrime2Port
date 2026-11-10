@@ -81,32 +81,12 @@ the editor works the same without it.
 | Occlusion | 0 to 1 | How much the occlusion map darkens creases. |
 | Highlights | 0 to 4 | Times the PBR highlights (on top of Video > Quality > PBR highlight strength). |
 | Luminance | 0 to 8 | How bright the material's glow layer is (its light-emitting texels: lights, screens, Phazon), times Video > Quality > Luminance. 0 turns the glow off. Only materials the list marks *glows* have one. |
-| Live reflection | game's choice / on / off | On reflects the room live (Video > Quality > Live reflections must be on). A material with a painted reflection (an environment map; the list marks it *reflective*) reflects the room in its place; one without gets a reflection laid over it (below). Off keeps the painted reflection. |
-| Reflection strength | 0 to 4 | How bright the live reflection is. On a material without a painted reflection, how glossy it is: 1 a varnish or glass, 4 a polished metal. |
+| Live reflection | game's choice / on / off | For a material with a reflection (an environment map; the list marks it *reflective*): on reflects the room live (Video > Quality > Live reflections must be on), off keeps the painted reflection. The three reflection fields are greyed out for other materials. |
+| Reflection strength | 0 to 4 | How bright the live reflection is. |
 | Reflection blur | 0 to 100 | 0 a sharp mirror, higher softer. |
 
 The PBR settings only change surfaces the texture pack has PBR maps for (`tools/pbr/README.md` makes
 them).
-
-**A live reflection on a material without one.** Live reflection on a material the list doesn't mark
-*reflective* lays the room over it as a glossy coat would reflect it: the room seen in the mirror
-direction of each pixel's normal, blended over the surface by Fresnel's law (strongest at grazing
-angles). Strength sets how much it reflects looking straight at it: 1 is 4%, a varnish's or glass's;
-2 is 16%; 4 is 64%, a polished metal's; below 1 the whole layer fades out. Blur softens it. What to
-expect:
-
-- The room it reflects is the live probe, captured at the camera, as for the arm cannon: close, flat
-  surfaces (a floor under you) reflect the room from where you stand, not from the floor. Fine for a
-  glossy coat; a large mirror won't line up with the room.
-- It goes on the material's final colour, so the painted lighting stays under it, and dark parts
-  (shadowed corners) reflect less. Transparent materials keep their transparency; cut-outs (leaves,
-  grates) keep their shape.
-- Materials drawn without lighting (no normals: some decals, glows, skies) and untextured ones can't
-  take it and stay as they are.
-- The game builds the material's shader variant the first time it's drawn this way, so the surface
-  may vanish for a frame or two the first time you switch it on (and after a shader cache reset).
-- Materials with PBR maps already reflect the probe through their metal and roughness; this lays a
-  coat over that too.
 
 **Luminance** scales a material's glow layer: a stage that adds an unlit texture from the model's UVs
 onto the lit colour (on the disc, the glow layer is added after the lit diffuse). The game's own
@@ -160,7 +140,5 @@ works the same; the editor keeps other top-level keys you add.
   pyopengltk and Pillow inside; their licences go to `licenses\` (`bundle_licenses.py`).
 - The game: `platform/port_material_overrides.cpp` (reading and re-reading the files),
   `CCubeMaterial::PortSetMaterialOverride` / `PortBeginSurfaceDraw` (applying them), and Aurora's
-  `GXPortSetSurfacePBRParams` (the map scales), `GXPortSetEmissive` (Luminance: the glow stages,
-  `port_emissive_stages`) and `GXPortSetSurfaceReflection` (a live reflection laid over a material
-  without an environment map, `port_surface_reflection`). Turned on in the editor, a reflection's
-  unset strength and blur are the editor's 1 and 0, not the frame's (the arm cannon's) look.
+  `GXPortSetSurfacePBRParams` (the map scales) and `GXPortSetEmissive` (Luminance: the glow stages,
+  `port_emissive_stages`).

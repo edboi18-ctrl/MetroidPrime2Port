@@ -194,15 +194,11 @@ def params(fields, look, has_maps, game):
         # product to 0..32; CCubeMaterial::PortBeginSurfaceDraw).
         "glow": min(32.0, num("luminance") * game.get("luminance", 1.0)),
     }
-    live = fields.get("reflection") is True and bool(game.get("live_reflections"))
     if look is not None and look.env_slot is not None:
+        live = fields.get("reflection") is True and bool(game.get("live_reflections"))
         out["env"] = "live" if live else "painted"
-    elif live:
-        # No painted reflection: the probe laid over the surface by Fresnel (Aurora's
-        # port_surface_reflection, GXPortSetSurfaceReflection).
-        out["env"] = "coat"
-    if live:
-        out["env_strength"] = num("reflection_strength")
-        # PortOverlay::kReflectionLevelPerBlurPercent (0.05) over the probe's last mip (5).
-        out["env_blur"] = num("reflection_blur") / 100.0
+        if live:
+            out["env_strength"] = num("reflection_strength")
+            # PortOverlay::kReflectionLevelPerBlurPercent (0.05) over the probe's last mip (5).
+            out["env_blur"] = num("reflection_blur") / 100.0
     return out

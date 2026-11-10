@@ -56,16 +56,16 @@ FIELDS = [
      "times the game's Luminance setting (Video > Quality). 0 turns the glow off; materials without a "
      "glow layer (the list marks those with one *glows*) don't change."),
     ("reflection", "Live reflection", "bool", None, None, None,
-     "On: the material reflects the room as it is (the live probe; Video > Quality > Live reflections "
-     "must be on). One with a painted reflection (the list marks it reflective) reflects the room in its "
-     "place; one without gets a reflection laid over it, strongest at grazing angles. Off keeps the "
-     "painted reflection."),
+     "For materials with a reflection (environment map): on reflects the room as it is (the live "
+     "probe, Video > Quality > Live reflections on); off keeps the painted reflection."),
     ("reflection_strength", "Reflection strength", "float", 0.0, 4.0, 1.0,
-     "How bright the live reflection is. On a material without a painted reflection, how glossy it is: "
-     "1 a varnish or glass (4% straight on), 2 16%, 4 a polished metal (64%); below 1 fades it out."),
+     "How bright the live reflection is."),
     ("reflection_blur", "Reflection blur", "float", 0.0, 100.0, 0.0,
      "0 a sharp mirror; higher a softer, rougher reflection (percent)."),
 ]
+
+# The live reflection's fields: they change only materials with an environment map (Material.reflective).
+REFLECTION_FIELDS = ("reflection", "reflection_strength", "reflection_blur")
 FIELD_NAMES = [f[0] for f in FIELDS]
 
 
