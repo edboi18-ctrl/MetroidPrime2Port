@@ -78,6 +78,8 @@ const int kSplashQuietCalls = 30;
 const int kSplashCallBudget = 6000;
 int sSlot = 0;
 EPhase sPhase = kIdle;
+// ArmCardLoad: the save is the player's pick from a running game, not a boot's resume.
+bool sCardLoad = false;
 CMemoryCardDriver* sDriver = nullptr;
 int sTicks = 0;
 
@@ -357,7 +359,7 @@ bool StartGame() {
     // up, for the position, the room state and the cinematic.
     uint32_t resumeWorld = 0;
     uint32_t resumeArea = 0;
-    if (PortSaveState::ResumeBootArea(resumeWorld, resumeArea)) {
+    if (!sCardLoad && PortSaveState::ResumeBootArea(resumeWorld, resumeArea)) {
       gpMain->EnsureWorldPakReady(resumeWorld);
       gpGameState->SetCurrentWorldId(resumeWorld);
       gpGameState->CurrentWorldState().SetDesiredAreaAssetId(resumeArea);
@@ -365,6 +367,7 @@ bool StartGame() {
               resumeArea);
     }
   }
+  sCardLoad = false;
   fprintf(stderr, "[skip] the save is the running state at %.1f s: world %08x, desired area %08x\n",
           PortHarness::Seconds(), gpGameState->CurrentWorldAssetId(),
           gpGameState->CurrentWorldState().GetDesiredAreaAssetId());
@@ -383,6 +386,14 @@ void ArmFromResume(int fileIdx) {
   sSplashCalls = 0;
   sSplashRemoved = 0;
   sSplashQuietCalls = 0;
+}
+
+void ArmCardLoad(int fileIdx) {
+  ArmFromResume(fileIdx);
+  sCardLoad = true;
+  sSplashDone = true;
+  sTicks = 0;
+  fprintf(stderr, "[skip] card slot %d: loaded on the way back from the title\n", fileIdx);
 }
 
 bool Armed() {

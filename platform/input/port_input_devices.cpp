@@ -19,6 +19,8 @@
 #include "port_prompts.h"
 #include "port_pointer.h"
 #include "port_savestate.h"
+#include "port_game_ui_page.h"
+#include "port_special_menu.h"
 #include "port_touch.h"
 #include "MetroidPrime/Player/CGameState.hpp"
 #include "MetroidPrime/Player/CPlayerState.hpp"
@@ -417,6 +419,20 @@ void BindPortControls(Profile& p) {
   Bind(p, Action::LoadState, Make(Device::Key, SDL_SCANCODE_F9));
   Bind(p, Action::PrevStateSlot, Make(Device::Key, SDL_SCANCODE_F4));
   Bind(p, Action::NextStateSlot, Make(Device::Key, SDL_SCANCODE_F6));
+  // The special menu (port_special_menu.h): F2, and both stick clicks on a pad, either first.
+  Bind(p, Action::SpecialMenu, Make(Device::Key, SDL_SCANCODE_F2));
+  const Input l3 = NativeInput(SDL_GAMEPAD_BUTTON_LEFT_STICK);
+  const Input r3 = NativeInput(SDL_GAMEPAD_BUTTON_RIGHT_STICK);
+  if (l3.Valid() && r3.Valid()) {
+    for (int order = 0; order < 2; ++order) {
+      Binding b;
+      b.action = Action::SpecialMenu;
+      b.inputs[0] = order == 0 ? l3 : r3;
+      b.inputs[1] = order == 0 ? r3 : l3;
+      b.count = 2;
+      p.bindings.push_back(b);
+    }
+  }
   // Gyro aim's hold / pause / toggle button (F1 > Controls, the gyro Mode row), as in MP1.
   Bind(p, Action::GyroAim, NativeInput(SDL_GAMEPAD_BUTTON_RIGHT_STICK));
   Bind(p, Action::GyroAim, Make(Device::Key, SDL_SCANCODE_LCTRL));
@@ -810,7 +826,8 @@ void RoutePlayerActions(const PortInput::Output& out, int player) {
 bool IsPortAction(Action a) {
   return a == Action::PortMenu || a == Action::Screenshot || a == Action::PhotoMode || a == Action::GyroAim ||
          a == Action::ResetAim || a == Action::ToggleTexturePack || a == Action::SaveState ||
-         a == Action::LoadState || a == Action::NextStateSlot || a == Action::PrevStateSlot;
+         a == Action::LoadState || a == Action::NextStateSlot || a == Action::PrevStateSlot ||
+         a == Action::SpecialMenu;
 }
 
 // Keys pressed since the last PollPortActions, added by an SDL event watch: a short
@@ -1569,10 +1586,11 @@ SPoll Poll(unsigned mouseHeld, bool focused) {
     // The F1 Controls page is recording an input: it reaches no direct action (a bound
     // PortMenu would close the page mid-capture). The pad still reads it, as before the engine.
     r.status = Synthesize(out);
-  } else if (PortOverlay::Visible()) {
-    // The F1 overlay owns the keyboard and pad: the direct actions (beam/visor picks, the
-    // radial selectors, Spring Ball) reach the game outside the pad, so they wait too. The
-    // status is still synthesized so the held state tracks, and PortPumpEvents blocks the pad.
+  } else if (PortOverlay::Visible() || PortGameUi::PageOpen()) {
+    // The F1 overlay (or a page of the port's own) owns the keyboard and pad: the direct actions
+    // (beam/visor picks, the radial selectors, Spring Ball) reach the game outside the pad, so they
+    // wait too. The status is still synthesized so the held state tracks, and PortPumpEvents
+    // blocks the pad.
     PortRadial::Transport().SetAvailable(false);
     PortRadial::Cancel();
     sConsumeRadialPoll = false;
@@ -1639,7 +1657,9 @@ bool PollPlayer(int port, PADStatus& status) {
   const PortInput::Output& out = runtime.Poll(raw, contexts, nowMs, 0);
   PublishFlickStick(out, port);
   // While F1 is open the picks wait, as Player 1's do; PortPumpEvents blocks the pads.
-  if (!PortOverlay::Visible() && !PortInputRemap::Capturing()) RoutePlayerActions(out, port);
+  if (!PortOverlay::Visible() && !PortGameUi::PageOpen() && !PortInputRemap::Capturing()) {
+    RoutePlayerActions(out, port);
+  }
   status = SynthesizeStatus(out, false);
   AddExtButtons(status, raw.padButtons);
   return true;
@@ -1693,6 +1713,9 @@ void PollPortActions() {
   if (out.Pressed(Action::ResetAim)) PortMouse::RequestResetAim(PortOverlay::ResetAimBoth());
   // MP1 also routes the Original toggle here.
   if (out.Pressed(Action::PortMenu)) PortOverlay::Toggle();
+  if (out.Pressed(Action::SpecialMenu)) {
+    PortSpecialMenu::Toggle((contexts & PortInput::kCtxGameplay) != 0);
+  }
   if (PortOverlay::SaveStateHotkeys()) {
     if (out.Pressed(Action::SaveState)) PortSaveState::RequestSave(PortSaveState::SelectedSlot(), true);
     if (out.Pressed(Action::LoadState)) PortSaveState::RequestLoad(PortSaveState::SelectedSlot(), true);

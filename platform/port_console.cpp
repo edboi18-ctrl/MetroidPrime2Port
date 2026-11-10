@@ -37,6 +37,7 @@
 #include "port_pointer.h"
 #include "port_save.h"
 #include "port_savestate.h"
+#include "port_special_menu.h"
 #include "port_statedump.h"
 #include "port_env.h"
 #include "port_overlay_internal.h"
@@ -1829,7 +1830,7 @@ void CmdHintShow(CStateManager&, const Args&, std::string& out) {
 // memo <0|1> <text...>: a HUD memo; 1 makes it a hint memo (the framed box with the button ring).
 // `{` and `}` in the text stand for `&` and `;`, so a tag (`{image=SI,1,1,F1FA8D68}`) gets past the
 // `;` that splits console commands.
-// gameui <message|hint|scan> [nofill] [nobutton] [scale=<f>] [anchor] [x y] <text...> | gameui text
+// gameui <message|hint|scan|plain|frame|bar|label> [nofill] [nobutton] [scale=<f>] [anchor] [x y] <text...> | gameui text
 // [scale=<f>] [anchor] [x y] <text...> | gameui question [scale=<f>] [anchor] [x y] <title...> |
 // gameui select <0|1> | gameui off | gameui dump <FRME_name>: a box, text or Yes/No question from
 // the port's game UI kit (port_game_ui.h), to try a style, size, text and placement, or a frame's
@@ -1838,7 +1839,7 @@ void CmdHintShow(CStateManager&, const Args&, std::string& out) {
 void CmdGameUi(CStateManager& mgr, const Args& args, std::string& out) {
   (void)mgr;
   const char* usage =
-      "usage: gameui <message|hint|scan> [nofill] [nobutton] [scale=<f>] [anchor] [x y] <text...> | gameui text "
+      "usage: gameui <message|hint|scan|plain|frame|bar|label> [nofill] [nobutton] [scale=<f>] [anchor] [x y] <text...> | gameui text "
       "[scale=<f>] [anchor] [x y] <text...> | gameui question [scale=<f>] [anchor] [x y] <title...> | "
       "gameui select <0|1> | gameui off | gameui dump <FRME_name>";
   if (args.size() == 2 && args[1] == "off") {
@@ -1869,6 +1870,14 @@ void CmdGameUi(CStateManager& mgr, const Args& args, std::string& out) {
     spec.style = PortGameUi::Style::Hint;
   } else if (args[1] == "scan") {
     spec.style = PortGameUi::Style::Scan;
+  } else if (args[1] == "plain") {
+    spec.style = PortGameUi::Style::Plain;
+  } else if (args[1] == "frame") {
+    spec.style = PortGameUi::Style::Frame;
+  } else if (args[1] == "bar") {
+    spec.style = PortGameUi::Style::Bar;
+  } else if (args[1] == "label") {
+    spec.style = PortGameUi::Style::Label;
   } else if (!textOnly) {
     Fail(usage);
     return;
@@ -2472,6 +2481,15 @@ void CmdSpiderToggle(CStateManager&, const Args& args, std::string& out) {
   const bool enabled = args.size() < 2 ? !PortOverlay::SpiderToggle() : ArgToInt(args[1], 1) != 0;
   PortOverlay::SetSpiderToggle(enabled);
   out += enabled ? "toggle spider ball on\n" : "toggle spider ball off\n";
+}
+
+// specialmenu: the special menu (port_special_menu.h), driven as a pad would.
+void CmdSpecialMenu(CStateManager&, const Args& args, std::string& out) {
+  if (args.size() >= 2 && !PortSpecialMenu::Press(std::string(args[1]))) {
+    Usage();
+    return;
+  }
+  out += PortSpecialMenu::Describe() + "\n";
 }
 
 void CmdAimLockOn(CStateManager&, const Args& args, std::string& out) {
@@ -5946,7 +5964,7 @@ const CommandSpec kCommands[] = {
     {"hintshow", CmdHintShow,
       "hintshow                    show the hint the game would show next (F1 Show current hint)\n"},
     {"gameui", CmdGameUi,
-      "gameui <message|hint|scan> [nofill] [nobutton] [scale=<f>] [anchor] [x y] <text...>  a test box from the game UI kit\n"
+      "gameui <message|hint|scan|plain|frame|bar|label> [nofill] [nobutton] [scale=<f>] [anchor] [x y] <text...>  a test box from the game UI kit\n"
       "gameui text [scale=<f>] [anchor] [x y] <text...>  a test text; gameui off hides either\n"
       "gameui question [scale=<f>] [anchor] [x y] <title...>  a test Yes/No; gameui select <0|1>\n"
       "gameui dump <FRME_name>     log a frame's widgets, model extents and kit zones\n"},
@@ -5992,6 +6010,8 @@ const CommandSpec kCommands[] = {
       "target next|prev           a Next/Previous target press (moves the lock while locked on)\n"},
     {"spidertoggle", CmdSpiderToggle,
       "spidertoggle [0|1]         an R press holds the spider ball on its track until the next (spider_toggle)\n"},
+    {"specialmenu", CmdSpecialMenu,
+      "specialmenu [open|close|up|down|left|right|a|b|x|y|start]  drive the special menu; no argument: what it shows\n"},
     {"aimlockon", CmdAimLockOn,
       "aimlockon [0|1]            lock-on picks the target nearest the crosshair (aim_lock_on)\n"},
     {"scanshoot", CmdScanShoot,

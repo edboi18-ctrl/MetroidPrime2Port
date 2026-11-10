@@ -251,6 +251,7 @@ extern "C" void AIPortPoll(void);
 #include "port_resume_prompt.h"
 #include "port_shader_toast.h"
 #include "port_note_toast.h"
+#include "port_special_menu.h"
 #include "port_update_toast.h"
 #include "port_skip_prompt.h"
 
@@ -900,13 +901,15 @@ int CMain::RsMain(int argc, const char* const* argv) {
         architecture->GetIOWinManager().Draw();
 #ifdef TARGET_PC
         // Port: the boot's resume Yes/No (port_resume_prompt.h), the startup shader compile's count
-        // (port_shader_toast.h), a newer release (port_update_toast.h), short notes
-        // (port_note_toast.h) and the launch hint "Press F1 for settings" (port_menu_hint.h) in the
-        // game's own boxes and text, over the boot screens, the title screen or the game.
+        // (port_shader_toast.h), a newer release (port_update_toast.h), the special menu
+        // (port_special_menu.h), short notes (port_note_toast.h) and the launch hint "Press F1 for
+        // settings" (port_menu_hint.h) in the game's own boxes and text, over the boot screens, the
+        // title screen or the game.
         PortResumePrompt::Draw();
         PortSkipPrompt::DrawLate(); // the game loader's intro text has no CInGameGuiManager
         PortShaderToast::Draw();
         PortUpdateToast::Draw();
+        PortSpecialMenu::Draw();
         PortNoteToast::Draw();
         PortMenuHint::Draw();
         CCameraManager::SetPresentationInterpolation(-1.f);
