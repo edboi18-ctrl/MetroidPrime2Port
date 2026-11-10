@@ -127,4 +127,47 @@ inline Point Reshape(const Point& p, const Zones& zn, float growX, float growZ) 
   return out;
 }
 
+// Pages (port_game_ui_page.h): a held direction steps once, then again after `delay` and every
+// `interval` while held, as menus do. Step(direction, now) with direction 0 for none; true when this
+// frame takes a step.
+struct Repeat {
+  float delay = 0.35f;
+  float interval = 0.11f;
+  int held = 0;
+  double next = 0.0;
+  bool Step(int direction, double now) {
+    if (direction != held) {
+      held = direction;
+      next = now + delay;
+      return direction != 0;
+    }
+    if (direction != 0 && now >= next) {
+      next = now + interval;
+      return true;
+    }
+    return false;
+  }
+};
+
+// A list's lines, measured from the font itself: `top` the first line's ink top, `ink` one line's
+// ink height (a one-line probe) and `pitch` from one line to the next (a two-line probe's ink less
+// the one-line one), all in the same units.
+struct Lines {
+  float top = 0.f, ink = 0.f, pitch = 0.f;
+  float Centre(int row) const { return top + 0.5f * ink + pitch * static_cast< float >(row); }
+  // The row whose band (half a pitch either side of its centre) holds y; -1 outside rows 0..count-1.
+  int RowAt(float y, int count) const {
+    if (pitch <= 0.f) {
+      return -1;
+    }
+    const int row = static_cast< int >(std::floor((y - Centre(0)) / pitch + 0.5f));
+    return row >= 0 && row < count ? row : -1;
+  }
+};
+
+// A step through `count` items, wrapping at both ends.
+inline int Wrap(int index, int step, int count) {
+  return count <= 0 ? 0 : ((index + step) % count + count) % count;
+}
+
 } // namespace PortGameUiMath

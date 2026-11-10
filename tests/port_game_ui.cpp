@@ -103,9 +103,40 @@ void TestLimits() {
   CHECK(Near(Reshape({0.f, 3.09f}, zn, 0.f, -2.6f).z, 3.09f + MinGrowZ(zn)));
 }
 
+void TestRepeat() {
+  Repeat r;
+  CHECK(!r.Step(0, 0.0));
+  CHECK(r.Step(1, 1.0));    // the press steps at once
+  CHECK(!r.Step(1, 1.2));   // then waits the delay
+  CHECK(r.Step(1, 1.36));   // then repeats
+  CHECK(!r.Step(1, 1.40));
+  CHECK(r.Step(1, 1.48));   // every interval
+  CHECK(r.Step(-1, 1.49));  // the other way is a new press
+  CHECK(!r.Step(0, 1.5));
+  CHECK(r.Step(-1, 1.51));  // released and pressed again
+}
+
+void TestLines() {
+  // The save state list at 1080p: a 0.0204-high line every 0.0482, the first from 0.2907.
+  const Lines lines{0.2907f, 0.0204f, 0.0482f};
+  CHECK(Near(lines.Centre(0), 0.3009f));
+  CHECK(Near(lines.Centre(7), 0.3009f + 7 * 0.0482f));
+  CHECK(lines.RowAt(0.3009f, 8) == 0);
+  CHECK(lines.RowAt(0.3009f + 0.024f, 8) == 0);   // just short of half a pitch down
+  CHECK(lines.RowAt(0.3009f + 0.025f, 8) == 1);   // just past it
+  CHECK(lines.RowAt(0.3009f - 0.025f, 8) == -1);  // above the first
+  CHECK(lines.RowAt(lines.Centre(7) + 0.025f, 8) == -1); // below the last
+  CHECK(Lines{}.RowAt(0.5f, 8) == -1);
+  CHECK(Wrap(0, -1, 8) == 7);
+  CHECK(Wrap(7, 1, 8) == 0);
+  CHECK(Wrap(3, 1, 8) == 4);
+}
+
 } // namespace
 
 int main() {
+  TestRepeat();
+  TestLines();
   TestClusters();
   TestZones();
   TestReshape();

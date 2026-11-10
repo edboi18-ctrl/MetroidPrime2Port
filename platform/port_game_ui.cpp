@@ -28,6 +28,7 @@
 #include "Kyoto/Text/CGuiTextSupport.hpp"
 #include "MetroidPrime/CGameGlobalObjects.hpp"
 #include "MetroidPrime/Player/CGameState.hpp"
+#include "MetroidPrime/Tweaks/CTweakAutoMapper.hpp"
 #include "MetroidPrime/Tweaks/CTweakGuiColors.hpp"
 #include "port_overlay.h"
 
@@ -35,6 +36,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <set>
 #include <vector>
 
@@ -54,6 +56,9 @@ struct StyleInfo {
   // Space round the text inside the box, in frame units: across, and above and below.
   float padX;
   float padZ;
+  // The fill isn't centred on the line (the map's black bar also runs under its right-hand pane):
+  // the line sizes the box, and the fill is fitted inside it.
+  bool fitFill = false;
 };
 
 const StyleInfo& Info(Style style) {
@@ -63,7 +68,26 @@ const StyleInfo& Info(Style style) {
                                "model_bground", {"model_abutton", "model_zbuttonring"}, 0.7f, 0.4f};
   static const StyleInfo kScan{"FRME_ScanHudFlat", "textpane_message", "model_message_bracket",
                                "model_bgrond", {"model_abutton", nullptr}, 0.9f, 0.5f};
+  // Question's frame without its choices (kQuestion below).
+  static const StyleInfo kPlain{"FRME_QuitScreen1", "textpane_title", "model_messageframe", "model_bground",
+                                {nullptr, nullptr}, 0.22f, 0.12f};
+  // The map screen's (CAutoMapper) frame and instruction bar; the pause screen (FRME_LogBook) has
+  // the same pieces. The frame has no fill of its own: its line is what it is sized by.
+  static const StyleInfo kFrame{"FRME_MapScreen", "textpane_areaname", "model_frame", "model_frame",
+                                {nullptr, nullptr}, 1.5f, 1.2f};
+  static const StyleInfo kBar{"FRME_MapScreen", "textpane_teleporter", "model_legend_center", "model_black_center",
+                              {nullptr, nullptr}, 1.2f, 0.8f, true};
+  static const StyleInfo kLabel{"FRME_MapScreen", "textpane_label", "model_lable", "model_lable",
+                                {nullptr, nullptr}, 0.8f, 0.5f};
   switch (style) {
+  case Style::Plain:
+    return kPlain;
+  case Style::Frame:
+    return kFrame;
+  case Style::Bar:
+    return kBar;
+  case Style::Label:
+    return kLabel;
   case Style::Hint:
     return kHint;
   case Style::Scan:
@@ -104,6 +128,17 @@ void ColourParts(Style style, CGuiFrame& frame) {
     break;
   case Style::Scan:
     set("model_message_bracket", gpTweakGuiColors->GetScanWindowFrameActiveColor());
+    break;
+  case Style::Plain:
+    break; // the quit screen's own colours
+  case Style::Frame:
+  case Style::Bar:
+  case Style::Label:
+    // The map screen's (CAutoMapper's frame glue).
+    set("model_frame", gpTweakAutoMapper->GetFrameColor());
+    set("model_legend_center", gpTweakAutoMapper->GetFrameColor());
+    set("model_black_center", gpTweakAutoMapper->GetBlackColor());
+    set("model_lable", gpTweakAutoMapper->GetFrameColor());
     break;
   }
   set("model_abutton", CColor::White());
@@ -344,6 +379,7 @@ struct Box::Impl {
   Extent box;
   ScreenRect rect;
   std::chrono::steady_clock::time_point last{};
+  int layoutWaits = 0; // draws spent waiting for the text's layout (Draw)
 
   Impl(const BoxSpec& s, bool onlyText) : spec(s), textOnly(onlyText) {}
 
@@ -365,6 +401,7 @@ struct Box::Impl {
     camera = nullptr;
     shaped = false;
     dressed = false;
+    layoutWaits = 0;
     rect = ScreenRect{};
     choiceRect[0] = choiceRect[1] = ScreenRect{};
   }
@@ -443,7 +480,7 @@ struct Box::Impl {
       parts.push_back(frame->FindWidget(kQuestionTable));
     }
     parts.push_back(frame->FindWidget(info.line));
-    if (spec.fill == Fill::Game) {
+    if (spec.fill == Fill::Game && std::strcmp(info.fill, info.line) != 0) {
       parts.push_back(frame->FindWidget(info.fill));
     }
     if (spec.button) {
@@ -584,7 +621,7 @@ struct Box::Impl {
     const StyleInfo& info = Style();
     CGuiWidget* fillWidget = frame->FindWidget(info.fill);
     Extent fill;
-    AddWorldExtent(fillWidget, fill);
+    AddWorldExtent(info.fitFill ? frame->FindWidget(info.line) : fillWidget, fill);
     box = fill;
     // Frame units per screen height, across and up.
     float halfW = 0.f, halfH = 0.f;
@@ -640,7 +677,12 @@ struct Box::Impl {
       float sx, sz;
     };
     std::vector< Part > parts;
-    for (const char* name : {info.line, info.fill}) {
+    // The line, then the fill: not when it is the line's own model (reshaped once) or is fitted to
+    // the line afterwards (FitFill).
+    const bool fillToo = std::strcmp(info.line, info.fill) != 0 && !info.fitFill;
+    const char* const names[2] = {info.line, info.fill};
+    for (int part = 0; part < (fillToo ? 2 : 1); ++part) {
+      const char* name = names[part];
       CGuiWidget* w = frame->FindWidget(name);
       const CCubeModel* model = ModelOf(w);
       if (model == nullptr) {
@@ -666,9 +708,60 @@ struct Box::Impl {
       }
       model->PortUpdateResidentData();
     }
+    if (info.fitFill) {
+      return FitFill();
+    }
     Extent fill;
     AddWorldExtent(frame->FindWidget(info.fill), fill);
     return fill;
+  }
+
+  // A fill that isn't centred on its line: resized to the line, less a little, and moved to its
+  // middle; the line's extent is what the box is.
+  Extent FitFill() {
+    const StyleInfo& info = Style();
+    Extent line, fill;
+    AddWorldExtent(frame->FindWidget(info.line), line);
+    CGuiWidget* w = frame->FindWidget(info.fill);
+    const CCubeModel* model = ModelOf(w);
+    AddWorldExtent(w, fill);
+    if (!line.valid || !fill.valid || model == nullptr) {
+      return line;
+    }
+    constexpr float kInset = 0.25f; // world units inside the line on each side
+    const float sx = AxisScale(w->GetWorldTransform(), 0);
+    const float sz = AxisScale(w->GetWorldTransform(), 2);
+    // The fill is off its own origin (the map's runs on under its right-hand pane), so the corner
+    // zones Reshape finds from |x| do not hold: each half moves out by what that side lacks, about the
+    // model's own middle, which keeps a chamfered corner's shape.
+    const std::vector< Point > drawn = DrawnPointsOf(model);
+    if (!drawn.empty() && sx > 0.f && sz > 0.f) {
+      float x0 = drawn[0].x, x1 = x0, z0 = drawn[0].z, z1 = z0;
+      for (const Point& p : drawn) {
+        x0 = std::min(x0, p.x);
+        x1 = std::max(x1, p.x);
+        z0 = std::min(z0, p.z);
+        z1 = std::max(z1, p.z);
+      }
+      const float midX = 0.5f * (x0 + x1), midZ = 0.5f * (z0 + z1);
+      const float growX = (0.5f * ((line.x1 - line.x0) - (fill.x1 - fill.x0)) - kInset) / sx;
+      const float growZ = (0.5f * ((line.z1 - line.z0) - (fill.z1 - fill.z0)) - kInset) / sz;
+      uint* pos = const_cast< uint* >(static_cast< const uint* >(model->GetPositions()));
+      const uint n = model->GetModelInstance().GetVertexSize() / (3 * sizeof(uint));
+      for (uint i = 0; i < n; ++i) {
+        const float x = ReadFloat(pos, i * 3), z = ReadFloat(pos, i * 3 + 2);
+        WriteFloat(pos, i * 3, x + (x >= midX ? growX : -growX));
+        WriteFloat(pos, i * 3 + 2, z + (z >= midZ ? growZ : -growZ));
+      }
+      model->PortUpdateResidentData();
+    }
+    Extent fitted;
+    AddWorldExtent(w, fitted);
+    if (fitted.valid) {
+      w->MoveInWorld(CVector3f(0.5f * (line.x0 + line.x1) - 0.5f * (fitted.x0 + fitted.x1), 0.f,
+                               0.5f * (line.z0 + line.z1) - 0.5f * (fitted.z0 + fitted.z1)));
+    }
+    return line;
   }
 
   // A Question: the box sized to its title over its row of choices, the title at the top, the
@@ -823,6 +916,13 @@ struct Box::Impl {
     last = now;
     frame->Update(dt);
     if (!shaped) {
+      // A text with an image in it (a button's glyph) has no layout until the image is in: shaped
+      // then, it would be measured as empty and placed off. Wait for it (a second at most).
+      const rstl::pair< CVector2i, CVector2i >& bounds = text->TextSupport().GetBounds();
+      const bool laidOut = spec.text.empty() || bounds.second.GetX() > bounds.first.GetX();
+      if (!laidOut && ++layoutWaits < 60) {
+        return;
+      }
       Shape();
     }
     Place();

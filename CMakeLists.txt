@@ -644,7 +644,7 @@ if(AURORA_SDL3_TARGET)
         platform/input/port_input_remap_ui.cpp
         platform/input/port_input_devices.cpp platform/input/port_steam_triton_hid.cpp
         platform/input/port_input_user_presets.cpp platform/input/port_input_user_presets_store.cpp
-        platform/port_embedded.cpp platform/port_textures.cpp platform/port_zip.cpp platform/port_prime1_tweaks.cpp platform/port_prompts.cpp platform/port_prompt_ring.cpp platform/port_game_ui.cpp platform/port_skip_prompt.cpp platform/port_menu_hint.cpp platform/port_resume_prompt.cpp platform/port_shader_toast.cpp platform/port_note_toast.cpp platform/port_update_toast.cpp
+        platform/port_embedded.cpp platform/port_textures.cpp platform/port_zip.cpp platform/port_prime1_tweaks.cpp platform/port_prompts.cpp platform/port_prompt_ring.cpp platform/port_game_ui.cpp platform/port_game_ui_page.cpp platform/port_skip_prompt.cpp platform/port_menu_hint.cpp platform/port_resume_prompt.cpp platform/port_shader_toast.cpp platform/port_note_toast.cpp platform/port_update_toast.cpp
         platform/port_discord.cpp
         platform/port_disc_verify.cpp
         platform/port_disc_verify_core.cpp)

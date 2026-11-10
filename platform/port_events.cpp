@@ -25,6 +25,7 @@
 #include "port_prompts.h"
 #include "port_memory_log.h"
 #include "port_savestate.h"
+#include "port_game_ui_page.h"
 #include "port_textures.h"
 #include "port_touch.h"
 #include "port_touch_activity.h"
@@ -669,8 +670,12 @@ bool PortPumpEvents() {
   PortInputDevices::PollPortActions();
   PortInputDevices::PollGyro();
   sPad0 = PortInputDevices::Poll();
+  // A page of the port's own (port_game_ui_page.h) reads the pad as the game would, then the game
+  // reads a neutral one.
+  PortGameUi::NotePagePad(sPad0);
+  const bool portUiOpen = PortOverlay::Visible() || PortGameUi::PageOpen();
   static PortInputGate::Gate<PADStatus> sGate;
-  sGate.Apply(PortOverlay::Visible(), sPad0);
+  sGate.Apply(portUiOpen, sPad0);
   sPad0Valid = true;
   // While the F1 overlay is open the game reads a neutral pad (keyboard, mouse buttons, pad and
   // the console's virtual pad alike; the overlay navigates with the keyboard and the pad). Held
@@ -678,7 +683,7 @@ bool PortPumpEvents() {
   // unblock suppression keep whatever is still held masked until it is released, so the key used
   // in the menu (Enter, Space, arrows) or a held walk key does not fire in the game.
   // PollPortActions above is not gated: the F1 toggle, screenshot and the remap capture still work.
-  PADBlockInput(PortOverlay::Visible());
+  PADBlockInput(portUiOpen);
   PADSetPortOverride(0, &sPad0);
   // Players 2-4 (a multiplayer match): each pad through its player's own bindings, gated alike.
   static PortInputGate::Gate<PADStatus> sPlayerGates[4];
@@ -686,7 +691,7 @@ bool PortPumpEvents() {
   for (u32 port = 1; port < 4; ++port) {
     sPlayerPadValid[port] = PortInputDevices::PollPlayer(port, sPlayerPads[port]);
     if (!sPlayerPadValid[port]) continue;
-    sPlayerGates[port].Apply(PortOverlay::Visible(), sPlayerPads[port]);
+    sPlayerGates[port].Apply(portUiOpen, sPlayerPads[port]);
     PADSetPortOverride(port, &sPlayerPads[port]);
   }
   // A device or pack change requested since the last iteration swaps the replacement set here,
