@@ -587,7 +587,9 @@ Video > Display:
 Video > Quality and Frame rate:
 
 - `msaa`, `aniso`, `render_scale`: Quality > Anti-aliasing (1 or 4), Anisotropic filtering (env
-  `MP2_ANISO`), Resolution scale (0 = Auto render scale).
+  `MP2_ANISO`), Resolution scale (0 = Auto render scale, else 1x-8x of 480 lines; 8x with MSAA 4
+  takes about 2 GB, and the frame buffer is shrunk to fit the GPU's texture size limit, usually
+  8192 or 16384).
 - `frame_limit`: Frame rate > 60 FPS cap (target).
 - `smooth_frames`, `pose_interpolation`, `particle_interpolation`, `look_interpolation`: Frame
   rate > Smooth frames, one switch that sets all four (all on by default).

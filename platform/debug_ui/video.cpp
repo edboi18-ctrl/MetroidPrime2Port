@@ -328,7 +328,7 @@ void DrawVideoQuality() {
     if (dynMode == 1) {
       sRenderScale = 0.f;
     } else if (dynMode == 2 && sRenderScale <= 0.f) {
-      sRenderScale = std::clamp(std::round(PortVideo::BaseRenderScale() * 4.f) / 4.f, 1.f, 4.f);
+      sRenderScale = std::clamp(std::round(PortVideo::BaseRenderScale() * 4.f) / 4.f, 1.f, PortOverlay::kRenderScaleMax);
     }
     PortVideo::ResetDynamicRes();
     Changed(true);
@@ -355,8 +355,8 @@ void DrawVideoQuality() {
     float scale = sPendingScale > 0.f ? sPendingScale : sRenderScale;
     char label[32];
     std::snprintf(label, sizeof(label), "%.2fx (%dp)", scale, PortVideo::DrawnLines(scale));
-    if (ImGui::SliderFloat(dynMode == 2 ? "Maximum resolution scale" : "Resolution scale", &scale, 1.f, 4.f,
-                           label)) {
+    if (ImGui::SliderFloat(dynMode == 2 ? "Maximum resolution scale" : "Resolution scale", &scale, 1.f,
+                           PortOverlay::kRenderScaleMax, label, ImGuiSliderFlags_AlwaysClamp)) {
       sPendingScale = scale;
     }
     if (sPendingScale > 0.f && !ImGui::IsItemActive()) {
@@ -367,7 +367,8 @@ void DrawVideoQuality() {
     }
     ImGui::SetItemTooltip("The resolution the game draws at, as a multiple of the GameCube's 480 lines;\n"
                           "higher values use more GPU memory. Above 2x it supersamples, and each step\n"
-                          "costs much more GPU time.");
+                          "costs much more GPU time; 8x with MSAA needs about 2 GB of video memory.\n"
+                          "Ctrl+click to type a value.");
   } else if (sRenderScale <= 0.f) {
     ImGui::TextDisabled("Window resolution: %.2fx (%dp)", PortVideo::BaseRenderScale(), PortVideo::DrawnLines(0.f));
   }

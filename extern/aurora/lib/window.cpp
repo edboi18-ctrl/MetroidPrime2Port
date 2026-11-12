@@ -517,6 +517,14 @@ Vec2<int> frame_buffer_size_for_scale(int native_fb_w, int native_fb_h, float fr
       fb_h = fitH;
     }
   }
+  // Port: a high scale in a wide window can pass the device's texture size limit, which the EFB
+  // targets fail to allocate at: shrink it to fit, keeping the aspect.
+  const int maxDim = static_cast<int>(std::min<uint32_t>(max_texture_dimension(), INT32_MAX));
+  if (maxDim > 0 && (fb_w > maxDim || fb_h > maxDim)) {
+    const float shrink = static_cast<float>(maxDim) / static_cast<float>(std::max(fb_w, fb_h));
+    fb_w = std::clamp(static_cast<int>(static_cast<float>(fb_w) * shrink), 1, maxDim);
+    fb_h = std::clamp(static_cast<int>(static_cast<float>(fb_h) * shrink), 1, maxDim);
+  }
   return {fb_w, fb_h};
 }
 } // namespace

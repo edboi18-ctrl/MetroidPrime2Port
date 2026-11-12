@@ -823,7 +823,9 @@ void SetScanSpread(int percent);
 // (default), else kRenderScaleMin-kRenderScaleMax x the render mode's base, through
 // VISetFrameBufferScale from Draw. Photo mode's capture overrides it while it runs.
 const float kRenderScaleMin = 0.5f;
-const float kRenderScaleMax = 4.f;
+// 8x (3840 lines) supersamples a 4K display; Aurora fits the EFB inside the device's texture
+// size limit, so a wide window can draw a little less.
+const float kRenderScaleMax = 8.f;
 float RenderScale();
 void SetRenderScale(float scale);
 // Rendering aspect ratio, as the Prime 1 port's (`MP2_ASPECT=4:3|16:9|window`, `MP2_WIDESCREEN=1`
