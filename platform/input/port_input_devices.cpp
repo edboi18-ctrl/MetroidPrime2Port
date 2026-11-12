@@ -590,7 +590,7 @@ void FillRawState(PortInput::RawState& raw, unsigned mouseHeld, bool focused) {
     return PortSaveState::ResumePromptShown(info, yes);
   };
   const bool menuLive =
-      PortMouse::Enabled() && (contexts & PortInput::kCtxGameplay) == 0 && !PortOverlay::Visible() &&
+      PortMouse::Enabled() && (contexts & PortInput::kCtxGameplay) == 0 && !PortOverlay::Visible() && !PortGameUi::PageOpen() &&
       !(PortPointer::Enabled() && PortPointer::ScreenActive()) && focused && !ResumePromptUp();
   mouse |= (sMenuGate.Poll(menuLive, mouseHeld & menuMask) & PortInputMap::kMouseButtonMask) << kMouseMenu;
   mouse |= (ReadMouseButtons(mouseHeld) & PortInputMap::kMouseButtonMask) << kMouseGameplay;
@@ -651,6 +651,9 @@ CPlayerState* PlayerInPlay(int player = 0) {
 // rather than menu, so the Map rows and Map-only bindings apply there (#31).
 // Players 2-4 read their own visor and morph state; the scan text is Player 1's.
 uint16_t GameContexts(int player) {
+  // A page of the port's own (the special menu) reads the pad as a menu: under a preset that moves
+  // A and B in gameplay (Remastered: fire on RT, jump on south), south must still confirm.
+  if (PortGameUi::PageOpen()) return PortInput::kCtxMenu;
   if (PortHarness::MapScreenOpen() && PortHarness::FlowState() == 2 /* CMFGame::kFS_Paused */) {
     return PortInput::kCtxMap;
   }
@@ -1736,8 +1739,10 @@ void PollPortActions() {
   if (out.Pressed(Action::ResetAim)) PortMouse::RequestResetAim(PortOverlay::ResetAimBoth());
   // MP1 also routes the Original toggle here.
   if (out.Pressed(Action::PortMenu)) PortOverlay::Toggle();
-  if (out.Pressed(Action::SpecialMenu)) {
-    PortSpecialMenu::Toggle((contexts & PortInput::kCtxGameplay) != 0);
+  // It opens only in single-player gameplay with F1 shut (its cheats and items are Player 1's);
+  // closing works anywhere.
+  if (out.Pressed(Action::SpecialMenu) && (PortSpecialMenu::Open() || !PortOverlay::Visible())) {
+    PortSpecialMenu::Toggle((contexts & PortInput::kCtxGameplay) != 0 && !InMatch());
   }
   if (PortOverlay::SaveStateHotkeys()) {
     if (out.Pressed(Action::SaveState)) PortSaveState::RequestSave(PortSaveState::SelectedSlot(), true);

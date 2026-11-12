@@ -326,7 +326,8 @@ void Page::Close() {
 }
 
 void Page::StepGame(unsigned ticks) {
-  if (mImpl->heldTicks) {
+  // Also under a hold the page did not take (the console's `pause`), so a save still runs.
+  if (mImpl->open && PortOverlay::TickHold()) {
     PortOverlay::StepTicks(ticks);
   }
 }
