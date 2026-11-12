@@ -474,8 +474,12 @@ float StickValue(s16 raw, u16 deadZone, bool useDeadZones, bool rescale = false)
 // Precise stick deadzones (#131): the game's PADClamp drops the first 15 of 127 units of each
 // stick axis, and its integer scaling the 16th, before Samus moves or aims. A value past the
 // port's own deadzone reaches the game from 17 up instead, so the slider is the only deadzone.
+// Tilt under kPreciseFloor stays 0 even with the slider at 0% or deadzones off: lifted to 17 it
+// would be a resting stick's noise walking Samus.
+constexpr float kPreciseFloor = 0.02f;
 float PastGameClamp(float v) {
   if (v == 0.f || !PortOverlay::PreciseStickDeadZones()) return v;
+  if (std::fabs(v) < kPreciseFloor) return 0.f;
   // StickX/StickY truncate v * 32767 / 256; the half unit keeps 17 and 127 exact.
   return std::copysign((17.5f + std::min(std::fabs(v), 1.f) * 110.f) / 128.f, v);
 }

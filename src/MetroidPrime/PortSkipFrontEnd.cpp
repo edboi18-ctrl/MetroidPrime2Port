@@ -78,7 +78,7 @@ const int kSplashQuietCalls = 30;
 const int kSplashCallBudget = 6000;
 int sSlot = 0;
 EPhase sPhase = kIdle;
-// ArmCardLoad: the save is the player's pick from a running game, not a boot's resume.
+// ArmQueuedCardLoad: the save is the player's pick from a running game, not a boot's resume.
 bool sCardLoad = false;
 CMemoryCardDriver* sDriver = nullptr;
 int sTicks = 0;
@@ -388,7 +388,18 @@ void ArmFromResume(int fileIdx) {
   sSplashQuietCalls = 0;
 }
 
-void ArmCardLoad(int fileIdx) {
+namespace {
+int sQueuedCard = -1;
+} // namespace
+
+void QueueCardLoad(int fileIdx) { sQueuedCard = fileIdx; }
+
+void ArmQueuedCardLoad() {
+  if (sQueuedCard < 0) {
+    return;
+  }
+  const int fileIdx = sQueuedCard;
+  sQueuedCard = -1;
   ArmFromResume(fileIdx);
   sCardLoad = true;
   sSplashDone = true;

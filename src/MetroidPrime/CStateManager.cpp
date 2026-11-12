@@ -167,6 +167,7 @@
 #include "port_savestate.h"
 #include "port_warp.h"
 #include "MetroidPrime/PortScanTarget.hpp"
+#include "MetroidPrime/PortSkipFrontEnd.hpp"
 #ifdef TARGET_PC
 #include "port_console.h"
 #endif
@@ -4599,6 +4600,8 @@ void CStateManager::Update(float inputDt, CArchitectureQueue& queue) {
     // LiveSplit feed (game time, upgrade splits).
     PortOverlay::NoteGameTime(gpGameState->GetTotalPlayTime());
     if (PortOverlay::ConsumeReturnToTitleRequest()) {
+      // The special menu's card load arms the skip only now, as the game really quits.
+      PortSkipFrontEnd::ArmQueuedCardLoad();
       gpMain->SetRestartMode(CMain::kRM_Default);
       QuitGame();
     }

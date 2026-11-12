@@ -10,7 +10,7 @@
 //  - Save states: the eight slots. A loads the selected one, Y saves to it (overwriting asks first),
 //    X makes it the quick slot (the one the Save state / Load state bindings, F5 / F9, use).
 //  - Memory card: the card's three saves, which A loads (after a Yes) by quitting to the title and
-//    starting that save as the file select would (PortSkipFrontEnd::ArmCardLoad); the card is
+//    starting that save as the file select would (PortSkipFrontEnd::QueueCardLoad); the card is
 //    never written from here.
 // The pages of rows below are tables of port_menu_entry.h entries, the same ones F1 draws: A or a
 // click turns a switch on or off or does an action (one that needs the game running, a warp or

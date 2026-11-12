@@ -88,7 +88,7 @@ void DrawEnhancementsTab() {
   ImGui::BeginDisabled(sInfiniteBeamAmmo);
   Changed(ImGui::Checkbox("Only charged shots use ammo", &sChargeOnlyBeamAmmo));
   ImGui::SetItemTooltip("Uncharged Dark, Light and Annihilator Beam shots cost no ammo.\n"
-                        "Charged shots and combos cost what they always do.");
+                        "Charged shots and combos cost what they always do. Single-player only.");
   ImGui::EndDisabled();
 
   ImGui::SeparatorText("Music");

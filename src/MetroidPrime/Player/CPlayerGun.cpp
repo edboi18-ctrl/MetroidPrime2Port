@@ -1064,8 +1064,9 @@ void CPlayerGun::DamageRumble(const CVector3f& position, float damage, const CSt
 
 bool CPlayerGun::IsOutOfAmmoToShoot(CStateManager& mgr) const {
 #ifdef TARGET_PC
-  // Port (#130): with "Only charged shots use ammo" an uncharged shot costs nothing.
-  if (PortOverlay::ChargeOnlyBeamAmmo()) {
+  // Port (#130): with "Only charged shots use ammo" an uncharged shot costs nothing (single-player;
+  // a match keeps its ammo rules).
+  if (PortOverlay::ChargeOnlyBeamAmmo() && !mgr.IsMultiplayer()) {
     return false;
   }
 #endif
@@ -1103,7 +1104,7 @@ bool CPlayerGun::GetBeamAmmoTypeAndCosts(bool combo, CStateManager& mgr,
   ammoB = CPlayerState::kIT_Invalid;
   cost = skNormalAmmoCosts[mCurrentBeamId];
 #ifdef TARGET_PC
-  if (PortOverlay::ChargeOnlyBeamAmmo()) {
+  if (PortOverlay::ChargeOnlyBeamAmmo() && !mgr.IsMultiplayer()) {
     cost = 0;
   }
 #endif

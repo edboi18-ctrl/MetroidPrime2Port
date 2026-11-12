@@ -378,7 +378,8 @@ Controls > Controller settings:
   deadzone: tilt past a slider runs from zero (no jump at its edge), and each stick axis reaches
   the game from 17 of 127 up, past the 15 its PADClamp drops (about 12% of the tilt on retail),
   so movement and aim start at the first step past the slider. Twin-stick aim, flick stick and
-  every player's pad follow it; lower the sliders with it.
+  every player's pad follow it; lower the sliders with it. Tilt under 2% always stays 0 (a
+  resting stick's noise, even at 0% or with deadzones off).
 - `steam_input_back_buttons`: Back buttons > Steam Input back buttons (default on, env
   `MP2_STEAM_INPUT_BACK_BUTTONS`; Linux only). Under Steam Input, Player 1 also gets the back
   buttons (SDL's paddles) of the physical controller behind its virtual pad, which Steam Input
@@ -557,7 +558,8 @@ Video > Display:
 - `charge_only_beam_ammo` (default off, env `MP2_CHARGE_ONLY_BEAM_AMMO`, issue #130):
   Enhancements > Only charged shots use ammo; uncharged Dark, Light and Annihilator shots cost no
   ammo and fire at full strength with none left. Charged shots (5) and combos keep their cost, and
-  a charge needs the ammo for it. Multiplayer too. Original experience turns it off.
+  a charge needs the ammo for it. Single-player only (a match keeps its ammo rules). Original
+  experience turns it off.
 - `dark_world_light_music` (default off, env `MP2_DARK_WORLD_LIGHT_MUSIC`, issue #36):
   Enhancements > Music > Light world music in Dark Aether; each region's Dark Aether theme plays
   its light world theme (Temple Grounds, Agon, Torvus and its underground, Sanctuary, energy

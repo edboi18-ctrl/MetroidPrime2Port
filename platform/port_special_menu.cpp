@@ -602,10 +602,11 @@ private:
   }
 
   // The card's save, as the file select starts one: the game quits to the title, and on the way
-  // back the front-end skip reads the slot and starts it (PortSkipFrontEnd::ArmCardLoad).
+  // back the front-end skip reads the slot and starts it (armed as the game quits:
+  // PortSkipFrontEnd::ArmQueuedCardLoad).
   void LoadCard() {
     const int fileIdx = Selected();
-    PortSkipFrontEnd::ArmCardLoad(fileIdx);
+    PortSkipFrontEnd::QueueCardLoad(fileIdx);
     PortOverlay::RequestReturnToTitle();
     std::fprintf(stderr, "[specialmenu] loading memory card save %d\n", fileIdx + 1);
     Close();

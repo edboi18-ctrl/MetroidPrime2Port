@@ -16,6 +16,7 @@
 #include "port_overlay_internal.h"
 #include "port_harness.h"
 #include "port_logfile.h"
+#include "port_game_ui_page.h"
 #include "port_mouse.h"
 #include "port_radial.h"
 #include "debug_ui/debug_ui_internal.h"
@@ -675,7 +676,8 @@ void Toggle() {
   // MP1's Toggle: the cursor goes back to the window (releases the mouse capture), and opening
   // drops any button or key ImGui still holds (a press whose release never came would make it
   // ignore every later click), as a focus loss would.
-  PortMouse::SetUiActive(sVisible);
+  // A port page left open under the window (the special menu) keeps the cursor when F1 closes.
+  PortMouse::SetUiActive(sVisible || PortGameUi::PageOpen());
   if (sVisible && ImGui::GetCurrentContext() != nullptr) {
     ImGuiIO& io = ImGui::GetIO();
     io.AddFocusEvent(false);
