@@ -60,6 +60,9 @@ void SelectPrevSlot();
 // on screen (the F5/F9 hotkeys).
 void RequestSave(int slot, bool toast = false);
 void RequestLoad(int slot, bool toast = false);
+// A save or load is queued, or a load (or warp) is still settling: a save or load asked for now
+// fails with "a warp or load is in progress". The game has to run for it to end.
+bool Busy();
 // The next load holds the simulation (PortOverlay::SetTickHold) on the tick its room state is
 // restored, so a harness can read the world exactly as restored (tools/statecheck.py).
 void HoldAfterLoad();

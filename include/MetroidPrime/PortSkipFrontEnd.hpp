@@ -36,6 +36,12 @@ bool Started();
 // MP2_SLOT=<fileIdx> were set, so the boot loads that save and the resume file then replaces it.
 void ArmFromResume(int fileIdx);
 
+// The special menu's card load (port_special_menu.h): arms the skip for card file `fileIdx`
+// while a game runs, before the menu quits it to the title, so the flow's way back through the
+// pre-front-end window reads that save and starts it. Unlike the resume, no quick resume replaces
+// it, and there is no boot splash to dismiss.
+void ArmCardLoad(int fileIdx);
+
 // True once the skip is armed (by the environment or ArmFromResume).
 bool Armed();
 

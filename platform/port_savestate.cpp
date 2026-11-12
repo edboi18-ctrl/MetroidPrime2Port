@@ -1143,6 +1143,16 @@ void RequestLoad(int slot, bool toast) {
   }
 }
 
+bool Busy() {
+  if (sSaveRequest.load() >= 0 || sLoadRequest.load() >= 0 || sPlace.active || sRoom.active ||
+      PortWarp::Pending()) {
+    return true;
+  }
+  const CStateManager* mgr = sLiveMgr;
+  return mgr != nullptr && (mgr->mPortPendingWarpArea != kInvalidAreaId || mgr->mPortSpawnAtArea != kInvalidAreaId ||
+                            mgr->mPortWarpQueuedArea != kInvalidAreaId);
+}
+
 void HoldAfterLoad() { sHoldAfterRestore.store(true); }
 
 std::string LastMessage() {

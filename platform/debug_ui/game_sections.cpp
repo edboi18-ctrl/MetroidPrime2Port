@@ -5,6 +5,7 @@
 #include "port_utf8_path.h"
 #include "port_mobile.h"
 #include "debug_ui_internal.h"
+#include "port_play_options.h"
 
 #include "port_config_reset.h"
 #include "port_disc_replace.h"
@@ -233,7 +234,7 @@ void DrawGameAudio() {
 
 void DrawSpeedrunSection() {
   ImGui::SeparatorText("Speedrun");
-  Changed(ImGui::Checkbox("On-screen in-game time", &sIgtTimer));
+  EntryCheckbox(PortPlayOptions::Get(PortPlayOptions::Option::IgtTimer));
 }
 
 // The texture pack import's progress: set from the Java copy thread on Android, from the zip

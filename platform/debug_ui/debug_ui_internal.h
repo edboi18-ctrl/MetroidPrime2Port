@@ -9,6 +9,7 @@
 
 #include "port_mobile.h"
 #include "../port_overlay_internal.h"
+#include "port_menu_entry.h"
 
 #include <imgui.h>
 
@@ -160,6 +161,11 @@ inline constexpr bool kInlineHelp = true;
 inline constexpr bool kInlineHelp = false;
 #endif
 void ItemHelp(const char* text);
+// A port_menu_entry.h switch as a checkbox (its name, state and whole story as help: the inline
+// kind under it, or a tooltip, so two can share a line), greyed while Original experience holds it
+// off; and an action as a button, greyed while it can't be done. True when it changed or ran.
+bool EntryCheckbox(const PortMenuEntry::Switch& entry, bool inlineHelp = false);
+bool EntryButton(const PortMenuEntry::Action& entry);
 void SameLineAfterHelp();
 // The menu sounds (MP1's): derived from ImGui's state, called at the end of DrawUI.
 void UpdateMenuSounds(bool visible);

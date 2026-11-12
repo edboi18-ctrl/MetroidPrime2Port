@@ -44,6 +44,10 @@ enum class Style {
   Message, // the paused message box ("Map data acquired"): a dark fill, its button on the bottom edge
   Hint,    // the HUD's hint memo: longer and thinner, its button on the bottom edge
   Scan,    // the scan visor's message box: a bracket line round a light, see-through fill
+  Plain,   // the quit screen's box (Question's): a thin line round a dark fill, no button or notch
+  Frame,   // the map and pause screens' frame: a thick line with heavy corners and a thin one inside
+  Bar,     // the map and pause screens' instruction bar: a double line round a black fill
+  Label,   // the map and pause screens' title label ("Light Map"): a thin line round a black fill
 };
 
 // What fills the box inside its line.

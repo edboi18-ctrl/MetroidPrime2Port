@@ -10,6 +10,7 @@
 #include "port_overlay.h"
 #include "port_savestate.h"
 #include "port_suit_colours.h"
+#include "port_play_options.h"
 #include "port_third_person.h"
 #include "port_build_info.h"
 #include "port_update_check.h"
@@ -200,17 +201,12 @@ void DrawVideoDisplay() {
                               ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel));
     ImGui::EndDisabled();
   }
-  Changed(ImGui::Checkbox("Hide helmet", &sHideHelmet));
-  bool thirdPerson = PortThirdPerson::Enabled();
-  if (Changed(ImGui::Checkbox("Third-person camera", &thirdPerson))) {
-    PortThirdPerson::SetEnabled(thirdPerson);
-  }
-  ImGui::SetItemTooltip(
-      "Plays from behind Samus's shoulder (single player; not the morph ball or cutscenes),\n"
-      "showing her body and hiding the arm cannon and helmet. Distance, shoulder and height:\n"
-      "console `thirdperson`, or third_person_* in the settings file.");
-  CheckboxTip("Hide visor effects", &sHideVisorEffects,
-                  "The scan visor's window and edges are what a visor effect draws here.");
+  // The play options' own rows (port_play_options.h), as the special menu's Game page lists them;
+  // their setters save the change.
+  using PortPlayOptions::Option;
+  EntryCheckbox(PortPlayOptions::Get(Option::HideHelmet));
+  EntryCheckbox(PortPlayOptions::Get(Option::ThirdPerson));
+  EntryCheckbox(PortPlayOptions::Get(Option::HideVisorEffects));
   CheckboxTip("Cutscene black bars", &sCinemaBars,
                   "Off lets a cutscene fill the screen instead of the game's letterbox.");
   CheckboxTip("Morph ball black bars", &sBallBars,
