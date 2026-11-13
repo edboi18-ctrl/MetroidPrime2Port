@@ -111,7 +111,7 @@ Statuses:
 | Prime palette and warn/good/bad colours | ui_common.cpp:153-296 | ui_common.cpp:45-110,323-334 | SAME |
 | Menu sounds | ui_common.cpp:320-385 | ui_common.cpp:371-430 | SAME |
 | Pad navigation | ui_common.cpp:465 | ui_common.cpp:269 | SAME |
-| DrawUI: toasts | window.cpp:351-358: stale import, disc read failed, update, note | window.cpp: disc read failed (`DrawDiscReadFailedAlert`), note (`DrawNoteToast`, `PortDebug::ShowNote`) | SAME for the two (f1-alerts): `main.cpp` registers `aurora_dvd_set_read_error_callback` (the Echoes tree's Aurora already calls it on a failed image read), writes `<user>/disc-read-failed` naming the image, and the next launch calls `NoteDiscReadFailedLastSession`, refuses that image like MP1 and shows the red alert for 20 s. `ShowNote` has no Echoes caller: MP1's only callers are the Remastered toggle (MP1-ONLY). The stale-import toast is MP1-ONLY (Remastered); the update toast goes with the Updates section; the update toast is `DrawUpdateToast` (Updates section) |
+| DrawUI: toasts | window.cpp:351-358: stale import, disc read failed, update, note | window.cpp: disc read failed (`DrawDiscReadFailedAlert`), note (`PortDebug::ShowNote`, drawn in the game's text by `port_note_toast.cpp`) | SAME for the two (f1-alerts): `main.cpp` registers `aurora_dvd_set_read_error_callback` (the Echoes tree's Aurora already calls it on a failed image read), writes `<user>/disc-read-failed` naming the image, and the next launch calls `NoteDiscReadFailedLastSession`, refuses that image like MP1 and shows the red alert for 20 s. `ShowNote` has no Echoes caller: MP1's only callers are the Remastered toggle (MP1-ONLY). The stale-import toast is MP1-ONLY (Remastered); the update toast goes with the Updates section; the update toast is `DrawUpdateToast` (Updates section) |
 | DrawUI: resume prompt | window.cpp:360 | window.cpp:305-358,407 | SAME |
 | DrawUI: IGT timer | (speedrun) | window.cpp:363-387 | SAME |
 | DrawUI: card/GPU picks, fullscreen hotkey, setting-change log | window.cpp:313-404 | partly in settings.cpp:693 LogSettingChanges | DIFF |
@@ -126,7 +126,7 @@ Statuses:
 | Restart to menu | tabs.cpp:38-80 | "Restart to menu" (`RequestReset`), game_sections.cpp | SAME (f1-frame) |
 | Screenshot / Photo mode buttons | tabs.cpp:38-80 | photo.cpp | SAME |
 | Exit game + "Exit game?" modal | tabs.cpp:38-80 | game_sections.cpp:77-82 | SAME |
-| Unlock beam doors once opened | game_sections.cpp:85 | cheats.cpp `DrawCheatsSection` (Debug > Cheats); `CScriptDoor::GetDamageVulnerability`, `CScriptDamageableTrigger::PortActiveVulnerability` | DONE (console-tested 2026-10-30: Agon light door u050f opens to a Power shot with it on, not with it off; `obj <door>` prints its beams): colour-locked doors (a door or lock whose vulnerability hits 1-3 of the 4 beams) take a per-object any-beam vulnerability. Persisted as `unlock_beam_doors`
+| Unlock beam doors once opened | game_sections.cpp:85 | cheats.cpp `DrawCheatsSection` (Debug > Cheats); `CScriptDoor::GetDamageVulnerability`, `CScriptDamageableTrigger::PortActiveVulnerability` | DONE (console-tested 2026-10-30: Agon light door u050f opens to a Power shot with it on, not with it off; `obj <door>` prints its beams): colour-locked doors (a door or lock whose vulnerability hits 1-3 of the 4 beams) take a per-object any-beam vulnerability. Persisted as `unlock_beam_doors` MP1's own behaviour (an opened door stays blue for the save) is Game > Unlocks > Unlock beam doors once opened (`beam_doors_stay_unlocked`, #129): `CScriptDoor::Think` resets a visited colour door, `CMappableObject::GetDoorColors` draws it blue; console-checked 2026-11-11 on Agon 08_sand_casualpirates' dark door e00360191 (blue after closing and after `reloadroom` with it on, dark with it off). |
 | Stack beams | game_sections.cpp:92 | game_sections.cpp; `CPlayerGun::PortFireStackedBeams`, `CGunWeapon::PortFireStackedProjectile` | DONE (build-verified, not play-tested): each shot also fires the other owned beams from their own locked weapon tokens. Persisted as `stack_beams`
 | 1.00 revision compatibility | game_sections.cpp:107-111 | — | SKIPPED, with evidence: the G2ME-vs-G2MP differences are script-graph rewrites in Temple Grounds areas 6 and 19, in the disc's MREA data, not in code. The only `VERSION_G2MP01` code differences are lighting and shadows (CActor.cpp, CScriptWater.cpp). A G2MP disc has no G2ME scripts to restore, and layer 8 cannot be dropped alone because layer-0 objects were rewired. A toggle would need G2ME MREA patches shipped with the port
 | Hard mode unlock | game_sections.cpp:138 | game_sections.cpp `DrawUnlocksSection` (called from the Cutscenes section until package 2 gives it a tab); hook `CScriptGuiScreen.cpp` `UpdateSaveSlots` | SAME (package 3) |
@@ -165,7 +165,7 @@ Statuses:
 | Apply suit colours | video.cpp:141 | video.cpp, "Apply suit colours" beside Random | SAME (f1-video): label, always shown, disabled until pending, MP1's tooltip role; shows "Applying..." during the reload |
 | Scan image spread | video.cpp:164 | "Scan image spread" (video.cpp), "Widest HUD spread" | SAME (f1-video): label and tooltip as MP1; Echoes keeps the slider disabled while the widescreen HUD is off |
 | Custom crosshair colour | video.cpp:216 | video.cpp, after Crosshair style (inside the aim-crosshair block) | SAME (f1-video): checkbox + colour picker; the backend (`PortOverlay::CrosshairColor`, `crosshair_color` keys, CTargetReticles) already existed |
-| Third-person camera | video.cpp:239 | — | SKIPPED (f1-video): MP1 `PortThirdPerson` (202 + body lines) hooks CStateManager, CGameCamera, CTargetReticles and a Samus body model; none of those hooks exist in Echoes and the body/arm-hiding needs its player model. Too large for a row package; needs its own package. |
+| Third-person camera | video.cpp:239 | video.cpp; `platform/port_third_person.cpp` (from MP1, no body module: Echoes draws CPlayer's own model) | DONE (Xvfb 2026-11-06: walk, turn, lock-on reticle on the target, locked shot hits it, toggle off/on): single player only; hooks CStateManager (update, gun FOV), CGameCamera::ConvertToScreenSpace, CPlayer (body, cannon at GUN_LCTR), CPlayerGun (shot origin), CPlayerOrbit (target search), CTargetReticles, CInGameGuiManager (helmet), CBallCamera (morph handoff), CPlayerGun (charge/muzzle fx at the body's cannon, pointer aim). Persisted as `third_person` |
 | Field of view | video.cpp:254 | video.cpp:196 | SAME |
 | Sun shadows, projected actor shadows | video.cpp:459,465 | — | MP1-ONLY: Remastered render backends |
 | HD font | video.cpp:602 | — | MP1-ONLY: font from a Remastered import |
@@ -284,7 +284,7 @@ checks.
 4. **Video rows.**
    - Files: `video.cpp`, `settings.cpp`.
    - Rows: sharp scan window, suit-coloured morph balls, apply suit colours, scan image spread,
-     custom crosshair colour, third-person camera. Simulation rate is a separate decision.
+     custom crosshair colour, third-person camera (done 2026-11-06). Simulation rate is a separate decision.
    - Size: about 0.8k lines.
 5. **Debug page.**
    - Files: `debug.cpp`, `cheats.cpp`, new `audio.cpp`.

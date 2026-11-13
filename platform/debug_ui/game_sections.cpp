@@ -5,6 +5,7 @@
 #include "port_utf8_path.h"
 #include "port_mobile.h"
 #include "debug_ui_internal.h"
+#include "port_play_options.h"
 
 #include "port_config_reset.h"
 #include "port_disc_replace.h"
@@ -50,10 +51,6 @@
 #include <SDL3/SDL_system.h>
 #endif
 
-namespace aurora {
-void request_screenshot() noexcept;
-}
-
 namespace PortDebug {
 
 // Screenshot, photo mode and exit; the top of the Game page (settings are on System).
@@ -64,7 +61,7 @@ void DrawGameSection() {
   const std::string shotLabel =
       (shotKeys.empty() ? std::string("Screenshot") : "Screenshot (" + shotKeys + ")") + "###screenshot";
   if (ImGui::Button(shotLabel.c_str())) {
-    aurora::request_screenshot();
+    PortPhoto::RequestScreenshot();
   }
   ImGui::SameLine();
   const std::string photoKeys = PortInputRemap::BindingsText(PortInput::Action::PhotoMode, " / ");
@@ -91,10 +88,7 @@ void DrawGameSection() {
     ImGui::TextUnformatted("Progress since the last save station is lost.");
     if (ImGui::Button("Exit")) {
       // The same path as closing the window: the main loop sees the quit and shuts down cleanly.
-      PortOverlaySettings::SaveSettings();
-      SDL_Event quit{};
-      quit.type = SDL_EVENT_QUIT;
-      SDL_PushEvent(&quit);
+      PortOverlay::RequestQuit();
       ImGui::CloseCurrentPopup();
     }
     ImGui::SameLine();
@@ -103,6 +97,34 @@ void DrawGameSection() {
     }
     ImGui::EndPopup();
   }
+}
+
+// MP1's Game > Difficulty section: damage multipliers on top of the file's own difficulty.
+static void DrawDifficultySection() {
+  ImGui::SeparatorText("Difficulty");
+  ImGui::BeginDisabled(PortOverlay::OriginalExperience());
+  float taken = sDamageTakenMult;
+  if (ImGui::SliderFloat("Damage taken", &taken, PortOverlay::kDamageMultMin,
+                         PortOverlay::kDamageMultMax, "x%.2f", ImGuiSliderFlags_AlwaysClamp)) {
+    PortOverlay::SetDamageTakenMultiplier(taken);
+  }
+  ItemHelp("Multiplies the damage Samus takes, Dark Aether's atmosphere included. A Hard file's own "
+           "multiplier applies on top. Ctrl+click to type a value.");
+  float dealt = sDamageDealtMult;
+  if (ImGui::SliderFloat("Damage dealt", &dealt, PortOverlay::kDamageMultMin,
+                         PortOverlay::kDamageMultMax, "x%.2f", ImGuiSliderFlags_AlwaysClamp)) {
+    PortOverlay::SetDamageDealtMultiplier(dealt);
+  }
+  ItemHelp("Multiplies all damage Samus deals to enemies, as Hard does. A Hard file's own "
+           "multiplier applies on top. Ctrl+click to type a value.");
+  ImGui::BeginDisabled(sDamageTakenMult == 1.f && sDamageDealtMult == 1.f);
+  if (ImGui::Button("Reset difficulty")) {
+    PortOverlay::SetDamageTakenMultiplier(1.f);
+    PortOverlay::SetDamageDealtMultiplier(1.f);
+  }
+  ImGui::EndDisabled();
+  ImGui::SetItemTooltip("Both back to x1, the file's own difficulty.");
+  ImGui::EndDisabled();
 }
 
 // MP1's Game > Unlocks section: what finishing the game unlocks, applied without writing the save.
@@ -120,7 +142,14 @@ static void DrawUnlocksSection() {
   if (ImGui::Checkbox("Image galleries", &galleries)) {
     PortOverlay::SetUnlockGalleries(galleries);
   }
+  bool beamDoors = sBeamDoorsStayUnlocked;
+  if (ImGui::Checkbox("Unlock beam doors once opened", &beamDoors)) {
+    PortOverlay::SetBeamDoorsStayUnlocked(beamDoors);
+  }
   ImGui::EndDisabled();
+  ItemHelp("A Dark, Light or Annihilator door you have opened stays a blue door, on both sides and "
+           "on the map, when its room loads again. Kept in the save's opened doors, so it also "
+           "covers doors opened before this was on.");
 }
 
 void DrawCutscenesSection() {
@@ -136,6 +165,7 @@ void DrawCutscenesSection() {
     Changed(true);
   }
   ImGui::EndDisabled();
+  DrawDifficultySection();
   DrawUnlocksSection();
 }
 
@@ -204,7 +234,7 @@ void DrawGameAudio() {
 
 void DrawSpeedrunSection() {
   ImGui::SeparatorText("Speedrun");
-  Changed(ImGui::Checkbox("On-screen in-game time", &sIgtTimer));
+  EntryCheckbox(PortPlayOptions::Get(PortPlayOptions::Option::IgtTimer));
 }
 
 // The texture pack import's progress: set from the Java copy thread on Android, from the zip
@@ -428,12 +458,9 @@ void DrawOverlaySection() {
     sUiTheme = theme;
     Changed(true);
   }
-  ItemHelp("The overlay's look. Auto is the Echoes style; Plain is stock Dear "
-           "ImGui.");
   // Multiplies the display's own scale (UpdateUiScale); the product is clamped to 1..4, so on a
   // desktop at scale 1 only values above 100% make the window larger.
   Changed(ImGui::SliderInt("UI scale", &sUiScale, PortOverlay::kUiScaleMin, PortOverlay::kUiScaleMax, "%d%%"));
-  ItemHelp("The size of this window's text and controls.");
 }
 
 void DrawSettingsSection() {
@@ -524,14 +551,25 @@ void DrawDiscImageSection() {
   ImGui::SeparatorText("Disc image");
   const PortDiscVerify::Result r = PortDiscVerify::Snapshot();
   const bool running = r.state == State::Running;
-  if (const std::string image = PortDiscVerify::ImagePath(); !image.empty()) {
+  const std::string image = PortDiscVerify::ImagePath();
+  if (!image.empty()) {
+    const port::entry::DiscVersion version = port::entry::CurrentDiscVersion();
     ImGui::TextWrapped("Disc image: %s", image.c_str());
+    ImGui::TextWrapped("Version: Metroid Prime 2: Echoes %s (%s01)", port::entry::DiscVersionName(version),
+                       port::entry::DiscGameCode(version));
   }
   if (PortDiscReplace::Poll()) {
     // Remembered; the status below says to restart.
   }
+  // Only when the next start changes disc: the remembered image is usually the one running.
   if (const std::string next = PortOverlaySettings::DiscPath(); !next.empty()) {
-    ImGui::TextWrapped("Disc image for the next start: %s", next.c_str());
+    std::error_code ec;
+    const bool same = next == image || (!image.empty() && std::filesystem::equivalent(PortUtf8::FromUtf8(next),
+                                                                                      PortUtf8::FromUtf8(image), ec) &&
+                                        !ec);
+    if (!same) {
+      ImGui::TextWrapped("Disc image for the next start: %s", next.c_str());
+    }
   }
   ImGui::BeginDisabled(running);
   if (ImGui::Button("Check disc image")) {
@@ -545,9 +583,6 @@ void DrawDiscImageSection() {
     PortDiscReplace::PickAsync();
   }
   ImGui::EndDisabled();
-  ItemHelp("Picks another disc image (Echoes USA 1.00, PAL, or Metroid Prime Trilogy), checks it, and "
-           "remembers it for the next start. The game keeps running from the disc it started with. A "
-           "file or MP2_DISC given on the command line still wins.");
   if (replace.state == PortDiscReplace::State::Running) {
     ImGui::SameLine();
     if (ImGui::Button("Cancel##replace")) {
@@ -573,9 +608,6 @@ void DrawDiscImageSection() {
   }
   switch (r.state) {
   case State::Idle:
-    ImGui::TextWrapped("Compares the whole disc image with the known dump of this release to find "
-                       "damage. Runs in the background and takes a minute or two; the result goes "
-                       "to the log.");
     break;
   case State::Running:
     ImGui::TextWrapped("Checking the disc image (%.0f%%)...", r.Progress() * 100.0);
@@ -671,8 +703,6 @@ void DrawUpdateSection() {
     PortUpdateCheck::CheckNow(); // switched on: check now, not next launch
     Changed(true);
   }
-  ItemHelp("Asks GitHub (api.github.com) once at launch whether a newer release is out. Nothing "
-           "else is sent, and nothing is installed: the release page opens in your browser.");
   const PortUpdateCheck::EStatus status = PortUpdateCheck::Status();
   switch (status) {
   case PortUpdateCheck::kStatus_Off:

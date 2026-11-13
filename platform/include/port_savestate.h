@@ -50,7 +50,7 @@ struct Info {
 std::string Folder();
 Info SlotInfo(int slot);
 
-int SelectedSlot();          // 1..kSlotCount, the slot F5/F9 act on
+int SelectedSlot();          // 1..kSlotCount, the slot F5/F9 act on (the state_slot setting)
 void SetSelectedSlot(int slot);
 void SelectNextSlot();
 void SelectPrevSlot();
@@ -60,6 +60,9 @@ void SelectPrevSlot();
 // on screen (the F5/F9 hotkeys).
 void RequestSave(int slot, bool toast = false);
 void RequestLoad(int slot, bool toast = false);
+// A save or load is queued, or a load (or warp) is still settling: a save or load asked for now
+// fails with "a warp or load is in progress". The game has to run for it to end.
+bool Busy();
 // The next load holds the simulation (PortOverlay::SetTickHold) on the tick its room state is
 // restored, so a harness can read the world exactly as restored (tools/statecheck.py).
 void HoldAfterLoad();
@@ -77,6 +80,10 @@ bool ModReloadActive();
 // state saved after skipping it in a fresh game) is skipped like START does, as the state was
 // captured with it over. Without it the placement waits on the cinematic until its timeout.
 bool LoadAwaitsCinematic();
+// The game's draw shows black instead of the room: a state load is putting Samus back, so the
+// rebuilt room's frames before then show it from the area's spawn, not the saved spot (and a quick
+// resume first boots the card's save there). A cinematic the load lands on is skipped unseen.
+bool HidesPicture(CStateManager& mgr);
 bool ReloadModsNow();
 // The pause menu's share: the pause screen holds the suit model, no room is running and Tick does not
 // run, so the request cannot take the world-restart route. Returns true once, on the frame it reopened
@@ -131,10 +138,11 @@ void RequestResumeLoad();     // console: load the resume file
 
 // The boot's resume prompt. ResumePromptTick runs once per splash tick (game thread) and is true
 // while the splash must be held; ResumePromptShown fills what the overlay draws (any thread);
-// AnswerResumePrompt is the overlay's Yes/No.
+// AnswerResumePrompt is a click's Yes/No, SelectResumePrompt a pointer hovering one (any thread).
 bool ResumePromptTick();
 bool ResumePromptShown(ResumeInfo& out, bool& yes);
 void AnswerResumePrompt(bool yes);
+void SelectResumePrompt(bool yes);
 
 // --- room state (platform/port_savestate_room.cpp), game thread only -------------------------
 
@@ -205,7 +213,8 @@ bool IsScriptGeneratedCopy(const CStateManager& mgr, CEntity& ent);
 bool EntityFieldsSaved(const CStateManager& mgr, CEntity& ent);
 bool SchemaFieldSaved(const PortSchemaClass& cls, const PortSchemaField& f);
 // Captures `ent`'s schema fields into a kTagFields block (false: not an entity that gets one);
-// applies one, returning the fields set; whether it covers every class of `ent` (the script
+// applies one, returning the writes that changed a value (0: the entity already held them all,
+// or the block did not fit it); whether it covers every class of `ent` (the script
 // messages that woke the enemy need no replay then).
 // `any` skips the which-entities gate (a debris' dropped pickup).
 bool CaptureEntityFields(const CStateManager& mgr, CEntity& ent, std::string& out, bool any = false);

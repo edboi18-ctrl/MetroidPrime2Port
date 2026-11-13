@@ -18,6 +18,7 @@
 #include "port_overlay.h"
 #include "port_entry.h"
 #include "port_save.h"
+#include "MetroidPrime/Player/CGameOptions.hpp"
 
 #include <SDL3/SDL.h>
 #if defined(__ANDROID__)
@@ -43,6 +44,11 @@ int sExportChoice = 0;
 std::mutex sPickMutex;
 std::vector< std::pair< Pick, std::string > > sPicks;
 bool sDialogOpen = false;
+
+// A game is running: the card must not change under it. The title and file select screens are a
+// world of their own (the front end's), but their save screen re-reads the card after an import.
+bool InGame() { return sWorldId != 0 && !CGameOptions::IsFrontEndActive(); }
+
 std::string sStatus;
 #if defined(__ANDROID__)
 // Files still to be saved one by one (main thread only).
@@ -110,7 +116,8 @@ void OnPick(void* userdata, const char* const* files, int) {
 }
 
 void OpenDialog(Pick pick) {
-  static const SDL_DialogFileFilter filters[] = {{"Save files (.gci)", "gci"}, {"All files", "*"}};
+  static const SDL_DialogFileFilter filters[] = {{"Save files (.gci, Trilogy save.bin)", "gci;bin"},
+                                                 {"All files", "*"}};
   sDialogOpen = true;
   void* userdata = reinterpret_cast< void* >(static_cast< intptr_t >(pick));
   if (pick == kPick_Import) {
@@ -254,7 +261,7 @@ void PathRow(const char* label, const std::string& path) {
 // (CMemoryCardSys::Initialize), so it takes effect on the next start.
 void DrawEmulatorCard() {
 #if !defined(PORT_MOBILE)
-  const bool inGame = sWorldId != 0;
+  const bool inGame = InGame();
   const std::string chosen = PortSave::EmulatorFolder();
   std::string found = "none found";
   if (chosen.empty()) {
@@ -364,13 +371,14 @@ void DrawCardTransfer() {
     return;
   }
   ImGui::TextWrapped("Card: %s (%zu save file%s)", folder.c_str(), saves, saves == 1 ? "" : "s");
-  const bool inGame = sWorldId != 0;
+  const bool inGame = InGame();
   ImGui::BeginDisabled(inGame || sDialogOpen);
   if (ImGui::Button("Import file...")) {
     OpenDialog(kPick_Import);
   }
-  ItemHelp("Loads a .gci save of this release. The card's current save is copied to save-backups "
-           "first.");
+  ItemHelp("Loads a .gci save, or the Echoes progress of a Wii Trilogy save.bin (Dolphin's "
+           "Wii/title/00010000/52334d45/data/save.bin; the Trilogy one needs a save on this card "
+           "to go into). The card's current save is copied to save-backups first.");
   const fs::path dolphin = DolphinCardFolder();
   ImGui::SameLine();
   ImGui::BeginDisabled(dolphin.empty());

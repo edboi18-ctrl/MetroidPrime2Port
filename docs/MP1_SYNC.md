@@ -55,7 +55,7 @@ the work list.
 
 ### MP1 after 174975c2c (to `3dde164eb`, 2026-10-25, 172 commits)
 
-About 120 are Remastered/HDR, Dread Samus import or third-person camera (not portable). The rest:
+About 120 are Remastered/HDR, Dread Samus import or third-person camera (not portable then; third person since ported, package 33). The rest:
 
 9. **Follow-ups to merged packages** (small, low risk): dynamic resolution UI rework and review
    fixes (`5cf4ac1f4`, `429fdb7bf`, `278f7923c`, issue #186); Remap Presets button (`ffaa3d4ab`,
@@ -183,6 +183,43 @@ Each needs MP2 game-side hooks found fresh; a row with no possible MP2 backend i
     crosshair scales about its centre (MP1 issue 255; build only, not seen on screen). Not taken again:
     `4ab18ced5` (see 28). Skipped: remastered/roomfx/effects import (`7b191f9a7 366d01363`),
     `bc800213d` release.
+32. **Range `16eb691fe..ed1fb93c7`** (2026-11-04). Taken: `c90e5448a` a Toggle-trigger L lets go when
+    its lock ends (`c7faf8b38`); `8c7d45fab` + `6e43ee11f` beam switch speed and Next/Previous target,
+    unbound by default (`f7f6d9251`); `bb7321203` + `ae213ea30` arm cannon FOV and follows-FOV
+    (`38e2fded4`; MP2 has no muzzle/model-aim remap or hard-coded pause rows, so those parts don't
+    apply); `f3cfa6ff1` console `areas` prints the current area's transform (this commit; seen in a
+    run). All build only except `areas`. Skipped: `beam_switch_fire` (user), `a8e0b562f`, `ead1cb698`,
+    `72d530b0f`, remastered/decals.
+33. **Third-person camera** (2026-11-06, from MP1 at `6e921f77f`): `port_third_person.{h,cpp}` +
+    tests as MP1's, hooked per player 0 (single player only); MP1's `PortThirdPersonBody` is not
+    needed (CPlayer's own model is drawn, the cannon at GUN_LCTR). Morph-ball camera handoff
+    (`MorphCameraPosition` in CBallCamera) and body charge/muzzle effects added the same day.
+34. **Range `ed1fb93c7..b601be339`** (2026-11-06). Taken: `5991eb3ab` texture packs thin out under
+    memory pressure + `8ef516364` user_textures created at startup (`1e44f03e3`, build only);
+    `45c288c28` + `e9ad2a939` damage taken/dealt sliders (`4b6f85f3e`, build only); `c67662b03`
+    Shoot in Scan Visor (`71f3fbe28`, Xvfb); `d2187f77a` + `6e921f77f` moon jump, Boost Ball
+    speed/duration/anywhere/steer, move Samus to the free camera (`7efb40368`, Xvfb). Open (maybe):
+    `59e55a8ad` beam colours. The rest: releases, MP1-only fixes, remastered, decomp.
+35. **Range `b601be339..1618ab8da`** (2026-11-08). Taken: `1618ab8da` Screenshot binding and F1 >
+    Game save a PNG photo mode's way, with a toast (also unmasks F12, whose Aurora handler left in
+    the 10-23 re-vendor, so the default key did nothing); `51f96ed7e` + `e8ac74f0d` morph ball
+    cameras follow the FOV (`ball_follows_fov`, `fov ball`; no pause row: MP2 has none for FOV);
+    `d650c7a9e` overlay scale not doubled by pixel density (iOS/macOS); `d0c5cce42` system font
+    merged into the overlay's for non-Latin text. Checked on Xvfb: ball FOV 60 -> 85.9 at 80 and
+    live toggles, F12 PNG + `[photo] Saved`, DejaVu loaded; density fix build only. Skipped: suit
+    colours on the transition body (MP2 lists them), Dark Samus ball, remastered, `memo hint`,
+    beam colours' ID scope (beam colours not taken); the rest came from MP2.
+36. **Range `1618ab8da..2b1aaa4f3`** (2026-11-10). Taken: `2b1aaa4f3` area PreRender once per
+    update and player (open doors' occluded neighbour reloaded its textures above 60 fps; keyed
+    on `mUpdateFrameIdx`), `97d13bc39` left arm kept at steep direct-aim pitch (`DrawArm`
+    compares headings), `f9075c4ae` Fast Morph FOV blend over the morph's duration,
+    `7deb9d869` watchdog line for frames of 1 to 5 s (`MP2_WATCHDOG_TEST_STALL_MS`),
+    `7e6e7c03d` mouse name lower bound. Built and unit-tested only, no gameplay run. Not
+    needed: `20bb892e0` (MP2 water tracks the camera by its fluid id list, saved with the
+    trigger's inhabitants), `e65a57436`/`da0347b33` (no Seen mode or map dots here),
+    `f1051515a`. Not taken, features to decide: `7abaaf360` crosshair colour over enemies the
+    beam hurts, `6bb3722dd` port strings from a translatable STRG. Skipped: remastered, the
+    maze, releases, cleanup; the rest came from MP2.
 
 28. **MP1 `dead-space-prime` branch: aim and movement** (user 2026-11-01). Not on MP1's `port`
     branch; taken from `origin/dead-space-prime` (`a9eb1db19`). Manual aim (`a10ee2274`, homing
@@ -212,9 +249,9 @@ set differs; the approach can be reused), Archipelago, MP1 randomizer logic.
 
 ## Status
 
-Packages 1-31 are merged; the dated per-merge log moved verbatim to
+Packages 1-36 are merged; the dated per-merge log moved verbatim to
 `docs/history/MP1_SYNC-to-2026-10-29.md`. MP1 was last reviewed through `e3d8c8940`
-(2026-10-29), then through `5e1a88514` (2026-11-02, package 30), then through `16eb691fe` (2026-11-03, package 31); take later commits by `git -C ../MetroidPrimePort log --no-merges 16eb691fe..HEAD`.
+(2026-10-29), then through `5e1a88514` (2026-11-02, package 30), then through `16eb691fe` (2026-11-03, package 31), then through `ed1fb93c7` (2026-11-04, package 32), then through `b601be339` (2026-11-06, package 34), then through `1618ab8da` (2026-11-08, package 35), then through `2b1aaa4f3` (2026-11-10, package 36); take later commits by `git -C ../MetroidPrimePort log --no-merges 2b1aaa4f3..HEAD`.
 
 Still unrun/unverified per that log (no device or hardware available then):
 

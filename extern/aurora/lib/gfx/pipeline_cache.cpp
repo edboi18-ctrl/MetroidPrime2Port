@@ -815,6 +815,7 @@ static sqlite3* open_pipeline_cache_seed_db(const std::string& path) {
     Log.info("No bundled initial pipeline cache found at '{}'", path);
     return nullptr;
   }
+  sqlite::use_memory_temp_store(seedDb);
 
   bool schemaMatch = false;
   const auto schemaQuery = fmt::format("SELECT 1 FROM aurora_schema WHERE value = {}", PipelineCacheSchema);
@@ -1455,11 +1456,19 @@ static void queue_cached_row(ShaderType type, uint32_t configVersion, CreateFn&&
       ++stats.incompatible;
       return;
     }
-    // A row recorded before the fog curve, the alpha compare references and the konst selections
-    // moved to uniforms names them.
-    config.shaderConfig.fogType = gx::pipeline_fog_type(config.shaderConfig.fogType);
+    // A row recorded before the fog curve, the alpha compare references, the konst selections and
+    // the dst alpha constant moved to uniforms (or the blend constant) names them.
+    gx::pipeline_fog(config.shaderConfig);
+    config.dstAlpha = gx::pipeline_dst_alpha(config.dstAlpha);
     config.shaderConfig.alphaCompare = gx::pipeline_alpha_compare(config.shaderConfig.alphaCompare);
     gx::pipeline_tev_konst(config.shaderConfig);
+    // A row recorded before unused channels, texgens and stage channels were reset (as the draw now is).
+    gx::pipeline_unused_inputs(config.shaderConfig);
+    // A row recorded at the other aurora_set_per_pixel_lighting setting (the embedded seed is
+    // recorded with it off) misses every lit draw, and each room's first visit drops them while
+    // they build (issue #44). It is set before the cache loads, so the row takes the running one.
+    config.shaderConfig.perPixelLight =
+        config.shaderConfig.actorDecal == 0 && gx::wants_per_pixel_light(config.shaderConfig) ? 1 : 0;
     // Left in the database, and built by find_pipeline on the first draw that wants it.
     if (g_config.pipelineCacheSkipPbr && config.shaderConfig.pbr != 0) {
       ++stats.pbr;
@@ -1546,7 +1555,8 @@ static bool load_rows(sqlite3_stmt* stmt, const CachedRowOptions& opts, CachedRo
   }
   const bool ok = ret == SQLITE_DONE;
   if (!ok) {
-    Log.error("Failed to read pipeline cache rows: {}", sqlite3_errmsg(g_pipelineCacheDb));
+    Log.error("Failed to read pipeline cache rows: {} (code {})", sqlite3_errmsg(g_pipelineCacheDb),
+              sqlite3_extended_errcode(g_pipelineCacheDb));
   }
   sqlite3_reset(stmt);
   sqlite3_clear_bindings(stmt);

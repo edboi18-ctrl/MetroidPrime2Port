@@ -1,7 +1,9 @@
 #include "port_utf8_path.h"
 #include "port_mobile.h"
 #include "port_save.h"
+#include "port_save_layout.h"
 
+#include "port_bytes.h"
 #include "port_save_trilogy.h"
 
 #include "port_entry.h"
@@ -63,7 +65,8 @@ constexpr int kCopies = 2;
 
 // A copy's payload, from CMemoryCardDriver::BuildSaveBuffer: SSaveHeader::PutTo (signature, index,
 // three present flags, the SAVH marker), the 192-byte system options, one 32-byte game-options block
-// per slot, the 32-byte global options, then one SGameFileSlot (0xa38) per present slot.
+// per slot, the 32-byte global options, then one SGameFileSlot (0xa38) per present slot, packed
+// (port_save_layout.h).
 constexpr size_t kSaveHeaderSize = 15;
 constexpr size_t kSystemDataSize = 192;
 constexpr size_t kGameOptionsSize = 32;
@@ -71,19 +74,12 @@ constexpr size_t kGlobalOptionsSize = 32;
 constexpr size_t kSlotsStart =
     kSaveHeaderSize + kSystemDataSize + 3 * kGameOptionsSize + kGlobalOptionsSize;
 constexpr size_t kSlotStride = 0xa38;
+static_assert(kSlotsStart == PortSaveLayout::kSlotsStart && kSlotStride == PortSaveLayout::kSlotStride);
 // What a copy holds after its CRC and generation: 0x2000 (mAlignedUserDataSize) - 8.
 constexpr size_t kUserDataSize = 0x1ff8;
 
 std::string sUserDirectory;
 constexpr std::streamoff kMaxReadBytes = 16 * 1024 * 1024;
-
-uint32_t Be32(const uint8_t* p) {
-  return (uint32_t(p[0]) << 24) | (uint32_t(p[1]) << 16) | (uint32_t(p[2]) << 8) | uint32_t(p[3]);
-}
-
-uint32_t Le32(const uint8_t* p) {
-  return (uint32_t(p[3]) << 24) | (uint32_t(p[2]) << 16) | (uint32_t(p[1]) << 8) | uint32_t(p[0]);
-}
 
 bool ReadAll(const std::string& path, std::vector<uint8_t>& out, std::string& error) {
   std::ifstream in(PortUtf8::FromUtf8(path), std::ios::binary);
@@ -273,14 +269,19 @@ bool ParseCopy(const uint8_t* user, size_t size, SCopy& out) {
     out.why = "the save data has no SAVH header";
     return false;
   }
-  out.saveIdx = int(Be32(user + 4));
+  out.saveIdx = int(port::ReadBE32(user + 4));
   const bool present[3] = {user[8] != 0, user[9] != 0, user[10] != 0};
   for (int i = 0; i < 3; ++i) {
     out.slots[i].present = present[i];
     if (!present[i]) {
       continue;
     }
-    const uint8_t* slot = user + kSlotsStart + size_t(i) * kSlotStride;
+    const size_t at = PortSaveLayout::SlotOffset(user, i);
+    if (at + kSlotStride > size) {
+      out.why = "the save data is too short for its slots";
+      return false;
+    }
+    const uint8_t* slot = user + at;
     if (std::memcmp(slot, "GMST", 4) != 0) {
       out.why = "a slot does not start with GMST";
       return false;
@@ -561,10 +562,10 @@ bool Inspect(const std::string& path, File& out, std::string& error) {
     // Legacy port saves stored generation and CRC in host order. New port saves, consoles and
     // Dolphin use big-endian; a match either way is a valid copy, and the byte order that
     // matched says how to read the generation.
-    const bool little = crc == Le32(block);
-    const bool big = crc == Be32(block);
+    const bool little = crc == port::ReadLE32(block);
+    const bool big = crc == port::ReadBE32(block);
     copies[i].crc = little || big;
-    copies[i].generation = little ? int(Le32(block + 4)) : int(Be32(block + 4));
+    copies[i].generation = little ? int(port::ReadLE32(block + 4)) : int(port::ReadBE32(block + 4));
     if (!copies[i].crc) {
       copies[i].why = "CRC mismatch";
       continue;
@@ -616,15 +617,11 @@ std::vector<std::string> Files() {
       continue;
     }
     const std::string path = PortUtf8::ToUtf8(entry.path());
-    // The directory entry, not the file name: a card folder can hold other games' files too.
+    // The directory entry, not the file name: a card folder can hold other games' files too, and
+    // the region's other release (G2ME and R3ME share USA/Card A), which an import must not replace.
     std::ifstream in(PortUtf8::FromUtf8(path), std::ios::binary);
     char head[6];
-    if (!in.read(head, sizeof head)) {
-      continue;
-    }
-    const bool game = std::memcmp(head, "G2ME", 4) == 0 || std::memcmp(head, "G2MP", 4) == 0 ||
-                      std::memcmp(head, "R3ME", 4) == 0 || std::memcmp(head, "R3MP", 4) == 0;
-    if (game && head[4] == '0' && head[5] == '1') {
+    if (in.read(head, sizeof head) && Mirror::IsCardForRelease({head, sizeof head}, GameCode())) {
       out.push_back(path);
     }
   }
@@ -703,6 +700,51 @@ bool RemountIfChanged() {
   return true;
 }
 
+namespace {
+
+// The GameCube releases convert into each other (PortSave::Convert), and G2ME into the Trilogy's
+// discs and back (PortSave::Trilogy); G2MP reaches R3ME/R3MP through G2ME.
+bool CanConvertCard(const std::string& from, const std::string& to) {
+  if (Convert::CanConvert(from, to) || Trilogy::CanConvertGci(from, to)) {
+    return true;
+  }
+  return (Convert::CanConvert(from, "G2ME") && Trilogy::CanConvertGci("G2ME", to)) ||
+         (Trilogy::CanConvertGci(from, "G2ME") && Convert::CanConvert("G2ME", to));
+}
+
+bool ConvertStep(std::vector<uint8_t>& bytes, const std::string& from, const std::string& to,
+                 std::string& summary, std::string& error) {
+  std::vector<uint8_t> out;
+  if (Convert::CanConvert(from, to)) {
+    Convert::Report report;
+    if (!Convert::Gci(bytes, to, out, report, error)) {
+      return false;
+    }
+    summary += (summary.empty() ? "" : "; ") + report.Summary();
+  } else {
+    Trilogy::ConvertReport report;
+    if (!Trilogy::ConvertGci(bytes, to, out, error, &report)) {
+      return false;
+    }
+    summary += (summary.empty() ? "" : "; ") + from + " to " + to + ", " +
+               std::to_string(report.Total()) + " flags with no counterpart dropped";
+  }
+  bytes.swap(out);
+  return true;
+}
+
+bool ConvertCard(std::vector<uint8_t>& bytes, const std::string& from, const std::string& to,
+                 std::string& summary, std::string& error) {
+  if (Convert::CanConvert(from, to) || Trilogy::CanConvertGci(from, to)) {
+    return ConvertStep(bytes, from, to, summary, error);
+  }
+  return ConvertStep(bytes, from, "G2ME", summary, error) && ConvertStep(bytes, "G2ME", to, summary, error);
+}
+
+} // namespace
+
+static bool ImportTrilogy(const std::string& saveBin, std::string& message, bool remountNow);
+
 bool Import(const std::string& source, std::string& message) {
   std::string path = source;
   if (path == "latest") {
@@ -726,6 +768,11 @@ bool Import(const std::string& source, std::string& message) {
     message = error;
     return false;
   }
+  // A Wii Trilogy save.bin (Dolphin's NAND copy): its Echoes file goes into the card's save.
+  std::string notTrilogy;
+  if (Trilogy::Validate(bytes.data(), bytes.size(), notTrilogy)) {
+    return ImportTrilogy(path, message, false);
+  }
   File info;
   if (!Inspect(path, info, error)) {
     message = error;
@@ -734,21 +781,17 @@ bool Import(const std::string& source, std::string& message) {
   std::string converted;
   if (info.game != GameCode()) {
     // The card is mounted for one game code (CARDInit's), and the save carries its release's SAVW
-    // layout. G2ME and G2MP are converted (PortSave::Convert, docs/SAVE_RELEASES.md); Trilogy's
-    // saves are a different format and stay refused.
-    if (!Convert::CanConvert(info.game, GameCode())) {
+    // layout: it is converted (docs/SAVE_RELEASES.md), or refused when no converter covers it.
+    if (!CanConvertCard(info.game, GameCode())) {
       message = path + " is a " + info.game + " save; this card is " + GameCode() +
-                ", and only G2ME and G2MP saves convert";
+                ", and it does not convert (G2ME, G2MP, R3ME and R3MP do)";
       return false;
     }
-    Convert::Report report;
-    std::vector<uint8_t> out;
-    if (!Convert::Gci(bytes, GameCode(), out, report, error)) {
+    if (!ConvertCard(bytes, info.game, GameCode(), converted, error)) {
       message = path + ": cannot convert " + info.game + " to " + GameCode() + ": " + error;
       return false;
     }
-    bytes.swap(out);
-    converted = " (converted: " + report.Summary() + ")";
+    converted = " (converted: " + converted + ")";
   }
 
   if (IsImage()) {
@@ -812,6 +855,8 @@ struct Release {
 constexpr Release kReleases[] = {
     {"G2ME", "Metroid Prime 2: Echoes (USA GameCube)", "USA"},
     {"G2MP", "Metroid Prime 2: Echoes (PAL GameCube)", "EUR"},
+    {"R3ME", "Metroid Prime Trilogy (USA)", "USA"},
+    {"R3MP", "Metroid Prime Trilogy (PAL)", "EUR"},
 };
 
 // The .gci files of `folder` whose directory entry is `code`, with their write times.
@@ -854,10 +899,12 @@ std::vector<OtherRelease> OtherReleaseSaves() {
   if (!folder.has_filename()) {
     folder = folder.parent_path(); // a trailing separator
   }
-  // <base>/<region>/Card A: the other region's card sits beside this one.
+  // <base>/<region>/Card A: the other region's card sits beside this one; the same region's other
+  // releases (G2ME and R3ME) share this folder.
   const std::filesystem::path base = folder.parent_path().parent_path();
   for (const Release& release : kReleases) {
-    if (std::strncmp(release.code, GameCode(), 4) == 0) {
+    // Only what this disc can take: a save offered and then refused helps nobody.
+    if (std::strncmp(release.code, GameCode(), 4) == 0 || !CanConvertCard(release.code, GameCode())) {
       continue;
     }
     const std::filesystem::path source = base / release.region / folder.filename();
@@ -1104,8 +1151,9 @@ bool ExportTrilogy(const std::string& saveBin, std::string& message) {
 }
 
 // Brings the Trilogy's file into the card: the converter updates the card's newest file (or makes
-// one), the card file is backed up first, and Aurora re-reads the card.
-static bool ImportTrilogy(const std::string& saveBin, std::string& message) {
+// one), the card file is backed up first, and Aurora re-reads the card: at once (the front end's
+// mirror), or at the save screen's next idle frame (Import, MarkCardChanged).
+static bool ImportTrilogy(const std::string& saveBin, std::string& message, bool remountNow) {
   std::vector<uint8_t> bin;
   if (!ReadAll(saveBin, bin, message) || !Trilogy::Validate(bin.data(), bin.size(), message)) {
     return false;
@@ -1140,7 +1188,11 @@ static bool ImportTrilogy(const std::string& saveBin, std::string& message) {
   if (!WriteAll(target, gci, message)) {
     return false;
   }
-  aurora_card_remount(0);
+  if (remountNow) {
+    aurora_card_remount(0);
+  } else {
+    MarkCardChanged();
+  }
   message = "Trilogy file " + std::to_string(file + 1) + " imported as " + target;
   return true;
 }
@@ -1198,7 +1250,7 @@ bool SyncTrilogyShare(bool pull) {
   if (!pull || binTime <= cardTime || binTime == sFailedBin) {
     return false;
   }
-  if (!ImportTrilogy(bin, message)) {
+  if (!ImportTrilogy(bin, message, true)) {
     std::fprintf(stderr, "[save] Trilogy mirror: import failed: %s\n", message.c_str());
     sFailedBin = binTime;
     return false;

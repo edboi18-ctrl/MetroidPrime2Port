@@ -172,10 +172,12 @@
 #include "port_savestate.h"
 #include "port_warp.h"
 #include "MetroidPrime/PortScanTarget.hpp"
+#include "MetroidPrime/PortSkipFrontEnd.hpp"
 #ifdef TARGET_PC
 #include "port_console.h"
 #endif
 #include "port_freecam.h"
+#include "port_third_person.h"
 #endif
 
 #include <alloca.h>
@@ -871,7 +873,22 @@ void CStateManager::PreRender(uint playerIndex) {
   mStateManagerContainer->mRenderLastAfterCameraFilters.clear();
   mProjectedShadows = nullptr;
 
+#ifdef TARGET_PC
+  // Port (MP1 #283): once per update for each player, as retail's one render per update did. An
+  // open door pings its occluded neighbour every Think and CGameArea::PreRender takes that ping;
+  // rendered twice between Thinks (frame rates above the simulation's) the second call counted
+  // the area as unwatched and it dropped and reloaded its textures over and over.
+  {
+    static uint sLastUpdate[4] = {~0u, ~0u, ~0u, ~0u};
+    uint& lastUpdate = sLastUpdate[playerIndex & 3];
+    if (lastUpdate != mUpdateFrameIdx) {
+      lastUpdate = mUpdateFrameIdx;
+      mWorld->PreRender();
+    }
+  }
+#else
   mWorld->PreRender();
+#endif
   BuildDynamicLightListForWorld();
   const CGameCamera* camera = mCameraManager->GetCurrentCamera(*this, true);
 #ifdef TARGET_PC
@@ -1758,6 +1775,9 @@ void CStateManager::DrawWorld(const CInGameGuiManagerSet& gui) {
 #endif
   if (visor == CPlayerState::kPV_Scan) {
     CScopedProfiler visorProfile(rstl::string_l("*GameVisor"), true);
+#ifdef TARGET_PC
+    CPortPipelineContextScope globalPipelines(AURORA_PIPELINE_CONTEXT_GLOBAL);
+#endif
     CapturePlayerTextures();
     mCurrentRenderPlayer->GetTargeting()->Draw(*this, gui);
   }
@@ -1777,14 +1797,16 @@ void CStateManager::DrawWorld(const CInGameGuiManagerSet& gui) {
     CPortPipelineContextScope globalPipelines(AURORA_PIPELINE_CONTEXT_GLOBAL);
     // Port (MP1 5fb236a91): the arm cannon is drawn at retail's FOV whatever the FOV setting, like
     // a view-model FOV in other shooters; otherwise a wide view shrinks it and pushes it into the
-    // corner. Morph ball and scripted cameras keep their own FOVs.
+    // corner. Morph ball and scripted cameras keep their own FOVs. The cannon's FOV is a setting
+    // (MP1 ae213ea30, retail 55), and "Arm cannon follows FOV" keeps the world's projection.
     const CGameCamera& gunCam = *mCameraManager->GetCurrentCamera(*this, true);
-    const bool gunFov = mCameraManager->IsInFPCamera() &&
-                        gunCam.GetFov() != CCameraManager::sFirstPersonFOV;
+    // Not in third person: its grapple beam leaves the body's hand, in the world's view.
+    const bool gunFov = mCameraManager->IsInFPCamera() && !PortThirdPerson::Active() &&
+                        PortOverlay::GunOwnFov(gunCam.GetFov());
     const CGraphics::CProjectionState gunProj = CGraphics::GetProjectionState();
     if (gunFov) {
       const CViewport& gunViewport = CGraphics::GetViewport();
-      gpRender->SetPerspective(CCameraManager::sFirstPersonFOV,
+      gpRender->SetPerspective(PortOverlay::GunDrawFov(gunCam.GetFov()),
                                static_cast< float >(gunViewport.mWidth),
                                static_cast< float >(gunViewport.mHeight),
                                gunCam.GetNearClipDistance(), gunCam.GetFarClipDistance());
@@ -2786,7 +2808,11 @@ CStateManager::~CStateManager() {
     PortLiveSplit::GameSessionEnd(gpGameState->GetTotalPlayTime());
     PortOverlay::ClearGameTime();
   }
+  // The overlay's world readout tells it a world runs (F1's card import is locked in game); no
+  // update clears it once this manager is gone, until the front end's or the next game's publishes.
+  PortOverlay::SetGameState(0u, -1, nullptr);
   PortSaveState::Forget(this);
+  PortThirdPerson::Reset();
 #endif
   mTearingDown = true;
   CMemory::OffsetFakeStatics(-(mObjectLists.size() * sizeof(CObjectList) +
@@ -3527,7 +3553,8 @@ void CStateManager::ApplyDamage(TUniqueId damagerId, TUniqueId damageeId, TUniqu
         useWeaponDirection ? damagee->GetDamageVulnerability(position, direction, info)
                            : damagee->GetDamageVulnerability();
 #ifdef TARGET_PC
-    if (const char* dbg = std::getenv("MP2_DEBUG_BALL"); dbg != nullptr) {
+    static const bool sDebugBallDamage = std::getenv("MP2_DEBUG_BALL") != nullptr;
+    if (sDebugBallDamage) {
       {
         std::fprintf(stderr,
                      "[ball] applydamage to %04x eid %04x: weapon %d hits %d damage %.1f "
@@ -3619,7 +3646,14 @@ CDamageInfo CStateManager::GetModifiedDamageInfo(TUniqueId damager, TUniqueId ow
     return damage;
   }
 
+#ifdef TARGET_PC
+  // Port: custom difficulty (F1 > Game > Difficulty) scales the player's damage to enemies at
+  // the same point as Hard, on top of a Hard file's own multiplier.
+  const float portDealt = IsMultiplayer() ? 1.f : PortOverlay::DamageDealtMultiplier();
+  if ((gpGameState->GetHardModeEnabled() || portDealt != 1.f) &&
+#else
   if (gpGameState->GetHardModeEnabled() &&
+#endif
       TCastToConstPtr< CPlayer >(GetObjectById(owner)) != nullptr) {
     bool aiDamage = false;
     if (TCastToConstPtr< CPatterned >(GetObjectById(damagee)) != nullptr) {
@@ -3631,7 +3665,15 @@ CDamageInfo CStateManager::GetModifiedDamageInfo(TUniqueId damager, TUniqueId ow
       }
     }
     if (aiDamage) {
+#ifdef TARGET_PC
+      CDamageInfo result = gpGameState->GetHardModeEnabled()
+                               ? NGunUtils::DifficultyModifyDamageInfo(damage)
+                               : damage;
+      result.MultiplyDamage(portDealt);
+      return result;
+#else
       return NGunUtils::DifficultyModifyDamageInfo(damage);
+#endif
     }
   }
   return damage;
@@ -3736,6 +3778,12 @@ bool CStateManager::ApplyLocalDamage(const CVector3f& pos, const CVector3f& dir,
         break;
       }
     }
+#ifdef TARGET_PC
+    // Port: custom difficulty (F1 > Game > Difficulty), every damage type, single player only.
+    if (!IsMultiplayer()) {
+      useDamage *= PortOverlay::DamageTakenMultiplier();
+    }
+#endif
 
     float damageReduction = 0.0f;
     const EWeaponType weaponType = EWeaponType(damageInfo.GetWeaponMode().GetRawType());
@@ -4209,7 +4257,9 @@ void CStateManager::ShowPausedHUDMemo(CAssetId strg, float time) {
 
 void CStateManager::SendScriptMsg(const CScriptMsg& msg) {
 #ifdef TARGET_PC
-  if (std::getenv("MP2_DEBUG_BALL") != nullptr && msg.GetMessage() == kSM_SetToZero) {
+  // Read once: this runs for every script message.
+  static const bool sDebugBall = std::getenv("MP2_DEBUG_BALL") != nullptr;
+  if (sDebugBall && msg.GetMessage() == kSM_SetToZero) {
     std::fprintf(stderr, "[ball] queue SetToZero -> %04x from %04x (depth %d)\n",
                  msg.GetId().Value(), msg.GetSenderId().Value(), int(mScriptMsgs.GetCount()));
   }
@@ -4688,6 +4738,13 @@ void CStateManager::Update(float inputDt, CArchitectureQueue& queue) {
 #endif
   float dt = inputDt;
   float cameraDt = inputDt;
+#ifdef TARGET_PC
+  // Port: Elevator and light beam cutscenes = Fast runs an elevator's or a light beam teleporter's
+  // departure and arrival cutscenes at the game's own double speed. Asked every update: it also
+  // times out an arrival that starts no cutscene.
+  const bool portTravelFast = PortOverlay::TravelSequenceActive(mUpdateFrameIdx, inputDt) &&
+                              PortOverlay::TravelCutscenes() == PortOverlay::kTravelCutscenes_Fast;
+#endif
   if (mCameraManagers[0]->IsInCinematicCamera()) {
     const CCinematicCamera* camera = mCameraManagers[0]->GetCinematicCamera();
     if ((camera->GetFlags() & 0x200) != 0) {
@@ -4699,6 +4756,7 @@ void CStateManager::Update(float inputDt, CArchitectureQueue& queue) {
         // game's own double speed.
         || (PortOverlay::RotatingRooms() == PortOverlay::kRotatingRooms_Fast &&
             PortOverlay::RotatingSequenceActive(mUpdateFrameIdx))
+        || portTravelFast
 #endif
     ) {
       dt *= 2.f;
@@ -4838,6 +4896,8 @@ void CStateManager::Update(float inputDt, CArchitectureQueue& queue) {
     // LiveSplit feed (game time, upgrade splits).
     PortOverlay::NoteGameTime(gpGameState->GetTotalPlayTime());
     if (PortOverlay::ConsumeReturnToTitleRequest()) {
+      // The special menu's card load arms the skip only now, as the game really quits.
+      PortSkipFrontEnd::ArmQueuedCardLoad();
       gpMain->SetRestartMode(CMain::kRM_Default);
       QuitGame();
     }
@@ -4980,6 +5040,10 @@ void CStateManager::Update(float inputDt, CArchitectureQueue& queue) {
     for (uint player = 0; player < mNumPlayers; ++player) {
       mCameraManagers[player]->Update(cameraDt, *this);
     }
+#ifdef TARGET_PC
+    // Port: the third-person camera follows the first-person one it moves back from.
+    PortThirdPerson::Update(*this, cameraDt);
+#endif
   }
   ThinkNewObjects(dt);
   if (mGameState != kGS_Paused) {

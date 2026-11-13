@@ -67,6 +67,8 @@ Save states page:
 - `quick_resume`: Save states > Quick resume (default on); env `MP2_QUICK_RESUME`. On quitting during
   play (and as the game keeps safe points, see Resume below) `savestates/resume.mp2ss` is written; the
   next launch asks "Resume where you left off?". Console: `resume [status|save|load|clear]`.
+- `state_slot`: the save state slot the Save state / Load state bindings (F5 / F9) use, 1 to 8 (default 1).
+  Set from Save states, the Next / Previous state slot bindings or the console; kept between launches.
 - Save state bindings and room objects: no settings. The Save state / Load state bindings always
   work (unbind them in Controls > Remap); env `MP2_SAVESTATE_HOTKEYS=0` turns them off. States and
   quick resume store the loaded rooms' objects; env `MP2_SAVESTATE_ROOM_STATE=0` stores none, and a
@@ -77,12 +79,20 @@ Game page:
 - `original_experience`: Cutscenes > Original experience (default off); env
   `MP2_ORIGINAL_EXPERIENCE`, console `original`. While on, the port's gameplay and cutscene tweaks read
   as retail and their rows are greyed: skippable cutscenes, seamless item pickups, world name on load, walk speed, hint
-  delay, scan speed, elevator ride, portal transition, rotating rooms, fast morph, spring ball, the Enhancements page, toggle lock-on, sticky charge, remastered
+  delay, scan speed, elevator ride, portal transition, rotating rooms, travel cutscenes, fast morph, spring ball, the Enhancements page, toggle lock-on, sticky charge, remastered
   charge, auto-aim (on). Your saved values are kept and return when it is switched off. Mods, input,
   video and audio settings are not affected.
 - `skip_cinematics`: Enhancements > Pace > Skippable cutscenes.
-- `seamless_pickups`: Enhancements > Pace > Seamless item pickups (default off); env
-  `MP2_SEAMLESS_PICKUPS`, console `seamlesspickups`. Single player, as in the Prime 1 randomizer:
+- `skip_prompt_box`: Enhancements > Pace > Game-style skip prompt (default on; env
+  `MP2_SKIP_PROMPT_BOX`). The armed skip asks "Skip cutscene?" in a compact game message box at the
+  bottom of the screen (platform/port_skip_prompt.cpp, built with platform/port_game_ui.cpp); off,
+  the overlay's "Press [A] to skip".
+- `seamless_pickups`: Enhancements > Pace > Seamless item pickups: 0 Off (default), 1 All,
+  2 Repeats only (a saved checkbox's 0/1 reads the same); env `MP2_SEAMLESS_PICKUPS` (a flag, or
+  `2`/`repeats`), console `seamlesspickups`. Repeats only applies it to a pickup whose item the
+  player already had (`CPlayerState::HasPowerUp` before the pickup: the second and later expansion,
+  tank or beam ammo pickup), so each kind's first message box still explains it; map stations keep
+  theirs. Single player, as in the Prime 1 randomizer:
   picking up an item keeps control (its "Disable Controls" hint is dropped), shows the message box's
   headline ("Missile Expansion acquired!") as a HUD memo instead of pausing, and skips the cinematic
   some items start (20 of the 124 item pickups) the way the skip button does, so the doors, platforms
@@ -115,6 +125,10 @@ Game page:
 - `scan_speed`: Enhancements > Pace > Scan speed (50 to 400 percent, default 100 = retail); env
   `MP2_SCAN_SPEED`, console `scanspeed`. Scales how fast a scan fills (CPlayer::UpdateScanningState);
   the visor, scan-point and hint text are unchanged.
+- `beam_switch_speed`: Enhancements > Pace > Beam switch speed (100 to 400 percent, default 100 =
+  retail); env `MP2_BEAM_SWITCH_SPEED`, console `beamswitch`. Scales a beam change's close, wipe
+  and open animations while one runs; the rest of the gun keeps its speed. Retail under Original
+  experience.
 - `elevator_ride`: Enhancements > Pace > Elevator ride cutscene (0 original, 1 fast, 2 skip); env `MP2_ELEVATOR_RIDE`
   (`original|fast|skip`). Fast runs the world-transition ride at double speed; Skip ends it as soon as
   the next world has loaded (the load itself still takes its time). Text transitions are unchanged.
@@ -123,6 +137,14 @@ Game page:
   room turning) at the game's own double speed: while a cinematic camera is active and a timed,
   one-shot CScriptActorRotate of 5 s or more plays (any such room, no list), `CStateManager::Update`
   doubles dt and the camera's dt. Other cutscenes and gameplay are unchanged.
+- `travel_cutscenes`: Enhancements > Pace > Elevator and light beam cutscenes (0 original, 1 fast);
+  env `MP2_TRAVEL_CUTSCENES` (`original|fast`), console `travel`. Fast runs the in-room departure
+  and arrival cutscenes of the elevators and the light beam teleporters (energy controllers, Great
+  Temple, Sky Temple Gateway; #86) at the game's own double speed, as rotating rooms does: under a
+  cinematic camera while a CScriptSequenceTimer runs that sends to a CScriptWorldTeleporter
+  (directly, or through one CScriptRelay), or that is the first camera sequence started after a
+  teleporter's world change (the light beam arrivals reach no teleporter; 3 s timeout). No room
+  list. The ride between the worlds is `elevator_ride`'s.
 - `combo_beam_cost`: Debug > Cheats > Combo beam ammo cost (0 to 30, default 30 = retail); env
   `MP2_COMBO_BEAM_COST`, console `combocost`. The beam ammo a combo (super missile) takes; a Reset button
   restores 30. Ignored with Original experience.
@@ -161,6 +183,18 @@ Game page:
   Stack beams (each shot also fires the other beams you own, at no extra ammo cost); env `MP2_UNLOCK_HARD_MODE`,
   `MP2_UNLOCK_GALLERIES`, `MP2_STACK_BEAMS`. Not written into the save, and Original experience
   greys them.
+- `damage_taken`, `damage_dealt`: Game > Difficulty > Damage taken / Damage dealt (x0.1 to x10, default
+  1; Reset difficulty sets both to 1); env `MP2_DAMAGE_TAKEN`, `MP2_DAMAGE_DEALT`. Single player only:
+  multiply the damage Samus takes (every type, Dark Aether's atmosphere included) and the damage she
+  deals to enemies, at the points Hard mode uses, on top of a Hard file's own multipliers. Original
+  experience reads 1.
+- `beam_doors_stay_unlocked`: Game > Unlocks > Unlock beam doors once opened (#129); env
+  `MP2_BEAM_DOORS_STAY_UNLOCKED`. Retail turns an opened Dark, Light or Annihilator door blue only
+  until its room reloads. With this on, a colour-locked door that was opened before (the save's
+  visited doors, which the map already keeps for both sides of a doorway) is reset to a blue door
+  when its room loads, and its map icon is blue. No extra save data: it covers doors opened before
+  it was turned on, and turning it off brings the colours back on the next room load. Missile-type
+  locks are not colour locks and stay. Off by default; Original experience greys it.
 - `unlock_beam_doors`: Debug > Cheats > Unlock beam doors; env `MP2_UNLOCK_BEAM_DOORS`.
   Colour-locked doors (the door's own vulnerability, or a damageable-trigger lock) open to any of
   the four beams; missile locks stay. Saved, not written into the save file; Original experience
@@ -191,7 +225,9 @@ Controls > Options:
 - Quick setup > Use twin-stick controller: one click turns on Twin Stick Aim (`twin_stick`) and
   applies the Remastered layout to all controllers (Remap > Presets...), replacing your own
   controller bindings; greyed out with a GameCube adapter.
-- `lockon_toggle`: Buttons > Toggle Lock-On; env `MP2_LOCK_ON_TOGGLE`.
+- `lockon_toggle`: Buttons > Toggle Lock-On; env `MP2_LOCK_ON_TOGGLE`. An L binding whose own
+  trigger is Toggle (F1 Remap) also lets go once a lock or grapple it held ends; one that never
+  locked stays on until pressed again.
 - `spider_toggle`: Buttons > Toggle Spider Ball (default off, off under Original Experience; env
   `MP2_SPIDER_TOGGLE`): an R press on a Spider Ball track clings until the next press; leaving the
   track (more than 0.15 s) or the morph ball ending lets go. Away from a track, R works as usual.
@@ -202,6 +238,10 @@ Controls > Options:
   weighed by the aspect ratio) with line of sight still required. Retail prefers a target nearer the
   player by more than the orbit distance threshold even when it is off to the side. Grapple points
   and the scan visor keep retail's pick.
+- `scan_shoot`: Buttons > Shoot in Scan Visor (default off, off under Original Experience; env
+  `MP2_SCAN_SHOOT`): the arm cannon stays out in the Scan Visor and Fire, Missile and charge work
+  there; scanning stays on the Scan bind. Off, a fire or missile press switches to the Combat Visor
+  as in the original game.
 - Dodge (Controls > Remap > Move and aim, binding `dodge`, unbound by default): pressed on the
   ground while strafing (strafe at least as strong as forward/back), it dashes. Locked on, it does
   what a jump tapped while strafing does: retail's dash around the target. Not locked on, it does
@@ -209,6 +249,12 @@ Controls > Options:
   press, with mouse/stick look free during it. A press is kept for 0.12 s, so pressing just before
   the strafe works. Like any digital action it can be a touch button in the layout editor. Off under
   Original Experience; the jump-tap dash is unchanged.
+- Next/Previous target (Controls > Remap > Move and aim, bindings `target_next` and `target_prev`,
+  unbound by default; MP1 8c7d45fab): while locked on, a press moves the lock to the visible target
+  nearest to the right (Next) or left (Previous) of the current one, wrapping to the far side; grapple
+  points are skipped. The actions work only while locked on (input context `lockon`), where their
+  inputs do nothing else, so e.g. the mouse wheel can move the lock while locked on and still cycle
+  beams otherwise. Console `target next|prev`. Off under Original Experience.
 - `sticky_charge`, `rapid_charge`: Buttons > Sticky Charge, Remastered charge (rapid fire).
 - `auto_aim`: Aiming > Auto-aim.
 - `manual_aim`: Aiming > Manual aim (default off, off under Original Experience and in split screen;
@@ -264,9 +310,22 @@ Controls > Options:
   the pause screens and the map, where a click on a room selects it; default on; env
   `MP2_POINTER_MENUS`), Swap map finger gestures
   (touch: one finger pans the map, two rotate; env `MP2_MAP_SWAP_FINGERS`).
+- `menu_exit`: Options > Menus > Exit Game on the main menu (issue #80; default on): the main
+  menu shows "Exit Game" in its bottom-left corner with the Z button's prompt
+  (RB by default, View on the Remastered preset); holding it 1.5 s fills the letters orange and
+  quits as F1 > Game > Exit does. A finger or mouse button held on the legend does the same
+  (the touch overlay has no Z on pointer-menu screens). Env `MP2_MENU_EXIT`.
 - `prompt_glyphs`: Options > On-screen prompts > Button glyphs (Auto follows the last-used device;
-  Xbox, PlayStation, Switch, GameCube or Keyboard forces the set in the F1 UI and the game's
-  prompts; env `MP2_PROMPT_GLYPHS` 0-5, and `MP2_TEXTURE_DEVICE` still wins).
+  Xbox, PlayStation, Switch, GameCube, Keyboard or Steam Deck forces the set in the F1 UI and the
+  game's prompts; a Valve controller (Steam Deck, Steam Controller, also behind Steam Input's
+  virtual pad when Steam reports which it is) follows the Steam Deck set on Auto; env
+  `MP2_PROMPT_GLYPHS` 0-6, and `MP2_TEXTURE_DEVICE` still wins).
+- `prompt_ring`: Options > On-screen prompts > Render button prompt rings (default on; env
+  `MP2_PROMPT_RING`). Draws the ring around the scan, message and logbook boxes' button as geometry
+  instead of leaving a gap in the box for a texture: sharp at any resolution, the box's frame closed
+  around it, the game's teal disc with the bound button inside (platform/port_prompt_ring.cpp), with
+  every glyph set, the GameCube's included. Off: the game's own button with GameCube glyphs, else a
+  ring and a grey disc drawn into the game's two textures. Off under Original experience.
 - `minimap_tap`: Options > Menus > Tap minimap for map (a tap or click on the HUD minimap opens the
   map screen; default on; env `MP2_MINIMAP_TAP`; console `minimap`, `maptap`).
 - `map_pickups`: Tracker > Map > Pickups on the map (0 off, 1 rooms: tint the map rooms that still
@@ -279,6 +338,38 @@ Controls > Options:
   it, Dark Aether's too, and the universe map lists every world; nothing is saved; default off; env
   `MP2_REVEAL_MAP`; console `tracker reveal 0|1`; off under Original experience).
 - `fast_morph`, `spring_ball`: Enhancements > Morph Ball > Fast Morph, Spring Ball (one row; C-stick up, the Spring Ball binding on the Remap page, touch swipe up, or a gyro flick).
+- `prime1_air_physics`: Enhancements > Prime 1 Player Physics > Restore Prime 1 Jumps and Dashes
+  (off by default, off under Original experience); env `MP2_PRIME1_AIR_PHYSICS`. Single player only. While airborne, Samus moves by
+  Metroid Prime 1's rules (GM8E01_00) instead of Echoes': no friction while the jump is held
+  and rising, only the speed along her facing is capped (sideways speed is kept), and a sideways dash
+  that ends in the air keeps its speed (no `skDashClampSpeeds` clamp). L-jumps, R-jumps and scan
+  dashes carry again; under mouse aim, arcing the view in the air does what R does on a pad, as in
+  the Prime 1 port. Movement on the ground is unchanged.
+- `prime1_boost_ball`: Enhancements > Prime 1 Player Physics > Restore Prime 1 Boost Ball (off
+  by default, off under Original experience, greyed out until a Prime 1 disc is read); env `MP2_PRIME1_BOOST_BALL`. Single player only. The Boost Ball as in
+  Metroid Prime 1 (GM8E01_00): a new charge can start as soon as a boost ends (Echoes holds the
+  charge at zero until the tweak's drain time has passed since the boost began), and the impulse is
+  not scaled down by the ball's speed (Echoes multiplies it by 1 - speed/50 outside half-pipes), so
+  boosts chain and stack, and the boost's timing, strength and camera spring are Prime 1's, read
+  from the player's Prime 1 disc (`prime1_disc`). Without a readable disc the option has no effect.
+  On a Spider Ball track (charging, and the boost off it) and in a half-pipe, Echoes' Boost Ball
+  values stay: Echoes' spider gaps need its 0.75 s boost at 35 from any charge, and its half-pipes
+  are climbed with quick boosts that Prime 1's charge tiers make much tighter.
+  Half-pipe scaling, the half impulse under water without the Gravity Boost and rooms that damp the
+  entry speed are unchanged.
+- `prime1_boost_falloff`: Enhancements > Prime 1 Player Physics > Boost Dampening (0 to 100 percent,
+  default 0; env `MP2_PRIME1_BOOST_FALLOFF`). With Prime 1 boost ball on, brings part of Echoes'
+  speed falloff back: the impulse is scaled by 1 - (percent/100) * speed/50, so 0 is Prime 1 and
+  100 is Echoes. Chained Prime 1 boosts can carry further than Echoes' rooms and collision were
+  built for; this tunes that. A boost from a standstill is the same at every value.
+- `prime1_disc`: Enhancements > Prime 1 Player Physics > Choose Prime 1 disc...: the player's own Metroid
+  Prime 1 disc (GameCube, GM8E01/GM8P01/GM8J01; any image nod reads); env `MP2_PRIME1_DISC`. With
+  Prime 1 boost ball on, the Boost Ball's drain time, charge times and incremental speeds and the
+  ball camera's boost spring tardis are read from its Tweaks.pak (the CTWK named Ball, refused
+  unless it is Prime 1's 114-float layout) and replace Echoes' (`CTweakBall`,
+  `platform/port_prime1_tweaks.cpp`). The port ships none of these values; without a readable disc
+  Restore Prime 1 Boost Ball stays greyed out and off. The row beside the button shows the disc
+  read ("GM8E01 rev 0") or why it could not be.
 - `ball_cam`, `ball_cam_speed`: Controls > Options > Morph Ball camera (issue #54; off by default,
   speed 25-400%, 100 default; env `MP2_BALL_CAM`, `MP2_BALL_CAM_SPEED`; off under Original
   experience). The mouse, twin stick, touch aim swipes and the C-stick turn the Morph Ball camera
@@ -320,6 +411,22 @@ Controls > Controller settings:
   counts as full; the inner edge is the C-stick dead zone, round under flick stick.
 - `touch_flick_stick`: Touch controls > Flick stick (`MP2_TOUCH_FLICK_STICK`): the same for the
   touch twin-stick layout while touch is the last-used input.
+- `precise_stick_deadzones` (default off, env `MP2_PRECISE_STICK_DEADZONES`, issue #131): Sticks
+  and triggers > Precise stick deadzones. The Stick and C-stick deadzone sliders become the only
+  deadzone: tilt past a slider runs from zero (no jump at its edge), and each stick axis reaches
+  the game from 17 of 127 up, past the 15 its PADClamp drops (about 12% of the tilt on retail),
+  so movement and aim start at the first step past the slider. Twin-stick aim, flick stick and
+  every player's pad follow it; lower the sliders with it. Tilt under 2% always stays 0 (a
+  resting stick's noise, even at 0% or with deadzones off).
+- `steam_input_back_buttons`: Back buttons > Steam Input back buttons (default on, env
+  `MP2_STEAM_INPUT_BACK_BUTTONS`; Linux only). Under Steam Input, Player 1 also gets the back
+  buttons (SDL's paddles) of the physical controller behind its virtual pad, which Steam Input
+  doesn't pass to the game: L4, R4, L5, R5 on a 2026 Steam Controller or a Steam Deck (shown on the
+  Remap page as Paddle 1 (R4) and so on), the DualSense Edge's back and Fn buttons, SL and SR of a
+  Joy-Con pair (a single sideways Joy-Con's are its shoulders, which Steam passes on). Bind Gyro
+  aim to one on the Remap page, say. If the game's Steam layout also maps them, one press does
+  both, so bind each in one place. The row shows which controller is behind Steam Input.
+  On its own (gyro off) this setting leaves a controller's motion sensor as Steam set it.
 
 Controls > Remap:
 
@@ -387,6 +494,32 @@ Controls > Touch & gyro (Gyro aim):
 
 - `gyro_aim`, `gyro_mode`: Mode (Off, or one of the four modes; Off clears `gyro_aim`).
 - `gyro_source`, `gyro_space`, `gyro_auto_calibrate`: Source, Space, Auto calibrate.
+- Gyro under Steam Input (Linux only): Steam Input hands the game virtual Xbox pads with no motion
+  sensors and hides the physical controllers from SDL (its `SDL_GAMECONTROLLER_IGNORE_DEVICES`
+  list). Source Controller (or Auto) still reads the gyro of the controller behind Player 1's
+  virtual pad (Player 1 only), from the controller's own HID reports beside Steam: a 2026 Steam
+  Controller (wired, Bluetooth or its puck), a Steam Deck's own controls, a DualSense (and Edge),
+  a DualShock 4, a Switch Pro Controller or Joy-Cons (a pair: the right one's gyro). SDL stays out
+  of them: its drivers change lizard mode, the motion sensor, lights and report modes against Steam
+  (a DualSense's lightbar would turn blue). Nothing is written to them but the motion-sensor-on
+  request below; Sony controllers are sent nothing (their factory calibration is read once).
+  Switch controllers use SDL's nominal scale (their own calibration is not read). It needs read
+  access to `/dev/hidraw*`, which Steam's udev rules give (the Flatpak's `--device=all` covers it).
+  The status line shows `controller (behind Steam Input, read directly)`. Steam doesn't say which
+  physical pad is behind which virtual one, so with two of one model (or, if Steam reports another
+  product id, one vendor) behind Steam Input neither is read rather than another player's. Not the
+  Switch 2 controllers (Steam uses their USB interface) or a Joy-Con charging grip.
+  Launched outside Steam (or with Steam Input off for a controller), none of this is used: SDL
+  drives every one of these controllers itself, gyro and back buttons included.
+  Steam turns a controller's motion sensor off when its layout uses no gyro; the game notices the
+  frozen readings and turns it back on (Valve and Switch controllers; Sony ones always report). Set
+  the Steam layout's Gyro Behavior to None, or Steam's gyro also arrives as mouse motion. The log
+  has `[steamctl]` and `[gyro]` lines.
+- Player 1 on a Steam Deck: the Deck's built-in controller ranks below any other controller for
+  Player 1. A connected controller takes Player 1 from it whatever Steam's order, and the Deck
+  gets it back when that controller leaves. Choosing Player 1's controller on the Remap page saves
+  it (`user/controller_ports.dat`), and that choice overrides this; delete the file to go back to
+  the automatic choice.
 - `gyro_sensitivity`, `gyro_cursor_angle`, `gyro_cursor_camera`: Sensitivity, Pointer speed,
   Gyro also turns the camera.
 - `gyro_split`, `gyro_sensitivity_y`: Separate vertical speed, Vertical sensitivity (under
@@ -434,6 +567,12 @@ Video > Display:
   crosshair there, turned down the pointer ray (Classic on a GameCube disc; MP1 255afaf13).
 - `no_helmet`, `no_visor_fx`: HUD and view > Hide helmet, Hide visor effects; env
   `MP2_NO_HELMET`, `MP2_NO_VISOR_FX`.
+- `third_person` (default off): Video > Third-person camera (MP1's): the camera sits behind Samus's
+  shoulder in single player while she is unmorphed, first person and no cutscene plays, and pulls
+  in at walls; shots leave the body's cannon toward the screen centre (or the locked target), the
+  helmet and arm cannon are hidden. `third_person_distance` (m, default 3.5),
+  `third_person_shoulder` (m right, default 0.9, negative = left) and `third_person_height` (m,
+  default 0.25) are file/console only; console `thirdperson`.
 - `cinema_bars` (default on, env `MP2_CINEMA_BARS`): HUD and view > Cutscene black bars; off drops
   the cutscene letterbox and its viewport shrink. Original experience keeps them.
 - `crosshair_dark`, `crosshair_echo` (default off, env `MP2_CROSSHAIR_DARK`, `MP2_CROSSHAIR_ECHO`):
@@ -454,6 +593,11 @@ Video > Display:
 - `infinite_beam_ammo` (default off, env `MP2_INFINITE_BEAM_AMMO`): Enhancements > Infinite Light
   and Dark Ammo; the beams spend no ammo and the HUD shows infinity. Saved, unlike the Infinite
   cheat. Original experience turns it off.
+- `charge_only_beam_ammo` (default off, env `MP2_CHARGE_ONLY_BEAM_AMMO`, issue #130):
+  Enhancements > Only charged shots use ammo; uncharged Dark, Light and Annihilator shots cost no
+  ammo and fire at full strength with none left. Charged shots (5) and combos keep their cost, and
+  a charge needs the ammo for it. Single-player only (a match keeps its ammo rules). Original
+  experience turns it off.
 - `dark_world_light_music` (default off, env `MP2_DARK_WORLD_LIGHT_MUSIC`, issue #36):
   Enhancements > Music > Light world music in Dark Aether; each region's Dark Aether theme plays
   its light world theme (Temple Grounds, Agon, Torvus and its underground, Sanctuary, energy
@@ -465,14 +609,25 @@ Video > Display:
   separate opacity. Console `hudopacity <echo|dark|scan> <visor|0..100>`. Original experience
   ignores them.
 - `fov`: HUD and view > Field of view (30..120; 0, the **Retail** button, keeps the game's own);
-  env `MP2_FOV`.
+  env `MP2_FOV`. Console `fov [30..120|retail]`.
+- `ball_follows_fov`: HUD and view > Morph ball follows FOV (default on; env `MP2_BALL_FOLLOWS_FOV`):
+  the ball, path and spindle cameras and camera hints' FOVs scale by the ratio of `fov`'s view
+  tangent to retail's 55 (the ball's 60 is ~86 at 80); a change mid-roll rescales the live cameras.
+  Console `fov ball [0|1]`. Original experience: off. Cutscene cameras never follow.
+- `gun_fov`: HUD and view > Arm cannon FOV (45..120, default the retail 55; env `MP2_GUN_FOV`): the
+  FOV the arm cannon is drawn at whatever the view's, like a view-model FOV; higher draws it smaller
+  and further into the corner. `gun_follows_fov` (Arm cannon follows FOV, default off; env
+  `MP2_GUN_FOLLOWS_FOV`) draws it in the world's perspective instead. Console `fov cannon [45..120]`,
+  `fov gun [0|1]`. Original experience: retail 55, not following.
 - `gun_offset`: HUD and view > Arm cannon right/forward/up, written `right,forward,up`; env
   `MP2_GUN_OFFSET`.
 
 Video > Quality and Frame rate:
 
 - `msaa`, `aniso`, `render_scale`: Quality > Anti-aliasing (1 or 4), Anisotropic filtering (env
-  `MP2_ANISO`), Resolution scale (0 = Auto render scale).
+  `MP2_ANISO`), Resolution scale (0 = Auto render scale, else 1x-8x of 480 lines; 8x with MSAA 4
+  takes about 2 GB, and the frame buffer is shrunk to fit the GPU's texture size limit, usually
+  8192 or 16384).
 - `frame_limit`: Frame rate > 60 FPS cap (target).
 - `smooth_frames`, `pose_interpolation`, `particle_interpolation`, `look_interpolation`: Frame
   rate > Smooth frames, one switch that sets all four (all on by default).
@@ -607,10 +762,17 @@ Video > Quality and Frame rate:
   builds pipelines when first drawn instead of all at startup (default on for Android, where a
   low-RAM device - `isLowRamDevice()` or under 4 GiB - is also named in the startup line; off on
   desktop). With it on, the memory log (Linux and Android) checks system memory every 5 s and evicts idle pipelines when
-  available memory falls below `MP2_PIPELINE_TRIM_MIB` (default 1024: those unused for 3600
-  frames) or `MP2_PIPELINE_TRIM_SEVERE_MIB` (default 512: those unused for 16 frames), at most
-  every 30 s while it stays low. `MP2_PIPELINE_EVICT=<frames>` evicts pipelines unused for that
+  available memory falls below `MP2_PIPELINE_TRIM_MIB` (default 1024, 0 = off on Android: those unused for
+  3600 frames) or `MP2_PIPELINE_TRIM_SEVERE_MIB` (default 512: those unused for 1800 frames, 30 s; Android's memory warnings in play do the same, a backgrounded app 16), at most
+  every 30 s while it stays low. GLOBAL pipelines (Samus and her morph ball, gun, HUD, visors) are
+  never evicted. `MP2_PIPELINE_EVICT=<frames>` evicts pipelines unused for that
   many frames regardless of memory. Console `pipetrim [frames]` forces one eviction.
+- Texture-pack memory (env only, MP1 issue #266; `platform/port_memory_log.cpp`): each second the memory log
+  (Linux, Windows, Android) takes the smallest headroom of available memory, the commit limit (Windows) and
+  the GPU budget (Windows/DXGI) and hands it to Aurora. Under `MP2_TEXTURE_PRESSURE_MIB` (default 1024)
+  replacement textures unused for a while are dropped and reloads come back smaller; under `MP2_TEXTURE_PRESSURE_SEVERE_MIB` (default 512) more are dropped.
+  0 turns a level off. An Android low-memory warning does a severe sweep at once. The memory log line also
+  shows `commit` and `gpu` where known.
 - `dynamic_res`, `dynamic_res_target`, `dynamic_res_min`: Quality > Dynamic resolution (Off, Auto,
   User; the mode is `dynamic_res` with `render_scale`: Auto goes up to the window's own scale
   (`render_scale` 0), User up to the "Maximum resolution scale" set), Frame rate target (0 =

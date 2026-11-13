@@ -23,18 +23,23 @@
 #include "MetroidPrime/Player/CPlayer.hpp"
 #include "MetroidPrime/TStateMachineState.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptDebris.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptDock.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptDoor.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptPickup.hpp"
 #include "MetroidPrime/TCastTo.hpp"
 
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <initializer_list>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
-// The kTagFields block: an enemy's own fields, read and written through the generated schema
-// (port_entity_schema.h) instead of per-class code. See SavedField for what is kept.
+// The kTagFields block: a script object's own fields (enemies, cutscene actors, keyframes, fades...),
+// read and written through the generated schema (port_entity_schema.h) instead of per-class code.
+// EntityFieldsSaved says which objects get one, SavedField which fields.
 
 // The codecs for what the schema can't copy as plain values. A friend of the classes it reads, so
 // the private members are reachable from here. Each Put writes one payload; each Get validates all
@@ -42,9 +47,13 @@
 
 // The version of a kTagFields block, written at its head. 1: engine references were saved in their
 // raw POD bytes, trusted as they were. 2: those references are stable identities (PutUid/GetUid).
-// 3: a body-state command's TUniqueId members are too. A reader takes any policy from 1 to this
-// one, so a block an older port wrote still reads (each rule asks for the level it needs).
-constexpr uint32_t kFieldPolicy = 3;
+// 3: a body-state command's TUniqueId members are too. 4: each class's block is fingerprinted with
+// the fields it saved (BlockFingerprint), so a block written with another field list is skipped;
+// read by position, it put each field's value in the next one's place (a CActor block from before
+// mNotInSortedLists left the list made the scan visor's targets combat-only). A reader takes any
+// policy from 1 to this one, so a block an older port wrote still reads (each rule asks for the level
+// it needs); blocks before 4 no longer match a class (their field list is unknown) and are skipped.
+constexpr uint32_t kFieldPolicy = 4;
 constexpr uint32_t kPolicyBodyCmdUids = 3;
 
 constexpr uint32_t kUidNone = 0xFFFFFFFFu;
@@ -64,7 +73,13 @@ static uint32_t PutUid(const CStateManager& mgr, const CEntity& owner, TUniqueId
   if (target != nullptr && target == mgr.Player(0)) {
     return kUidPlayer;
   }
-  if (target != nullptr && eid.Value() != kInvalidEditorId.Value() &&
+  // An editor id several live objects share (each Lightbringer's own copy of one generated safe
+  // zone, #108) names none of them: on load it resolves to the first copy for every owner, and the
+  // others' copies are left behind. The rebuilt owner made its own copy again, so keep that one.
+  const CStateManager::TIdListResult copies = mgr.GetIdListForScript(eid);
+  CStateManager::TIdList::const_iterator second = copies.first;
+  const bool shared = second != copies.second && ++second != copies.second;
+  if (target != nullptr && eid.Value() != kInvalidEditorId.Value() && !shared &&
       !PortSaveState::IsScriptGeneratedCopy(mgr, *target)) {
     return eid.Value();
   }
@@ -668,15 +683,20 @@ struct PortStateCodec {
     w.U32(static_cast< uint32_t >(static_cast< int >(a->mCurrentAnim)));
     w.U8((a->mLoop ? 1 : 0) | (a->mAnimating ? 2 : 0));
     w.F32(a->mSpeedScale);
+    w.F32(Phase(*a));
+  }
+
+  // How far into its animation the tree is (0 to 1), or -1 without one.
+  static float Phase(CAnimData& a) {
     float phase = -1.f;
-    if (CAnimTreeNode* root = a->mAnimRoot.GetPtr()) {
+    if (CAnimTreeNode* root = a.mAnimRoot.GetPtr()) {
       const float dur = root->VGetSteadyStateAnimInfo().GetDuration().GetSeconds();
       if (dur > 0.f) {
         phase = 1.f - root->VGetTimeRemaining().GetSeconds() / dur;
         phase = phase < 0.f ? 0.f : phase > 1.f ? 1.f : phase;
       }
     }
-    w.F32(phase);
+    return phase;
   }
 
   static bool GetAnim(CEntity& ent, const PortSchemaField& f, const std::string& data) {
@@ -692,16 +712,31 @@ struct PortStateCodec {
     if (!r.ok || !Ok(speed) || phase != phase) {
       return false;
     }
+    // Counted only when it changes (GetField): an idle actor's animation usually still matches.
+    bool changed = a->mLoop != ((bits & 1) != 0) || a->mAnimating != ((bits & 2) != 0) || a->mSpeedScale != speed;
+    // A third-person body's borrowed animation (CAnimData::PortBorrowAnimation) may not be in this
+    // run's list yet.
+    if (anim >= static_cast< int >(a->mCharInfo.GetAnimationIndexList().size())) {
+      return false;
+    }
+    // Without a transition (noTrans): the rebuilt actor's own animation must not blend into the saved
+    // one, as a transition tree that is not animating (a finished one-shot: the Landing Site statue's
+    // eye) stays at its start, near the old pose, and its phase is not the saved animation's.
     if (anim >= 0 && anim != a->GetCurrentAnimation()) {
-      a->SetAnimation(CAnimPlaybackParms(anim, -1, 1.f, (bits & 2) != 0), false);
+      a->SetAnimation(CAnimPlaybackParms(anim, -1, 1.f, (bits & 2) != 0), true);
+      changed = true;
     }
     a->mLoop = (bits & 1) != 0;
     a->mAnimating = (bits & 2) != 0;
     a->mSpeedScale = speed;
     if (phase >= 0.f && phase <= 1.f && a->mAnimRoot.GetPtr() != nullptr) {
-      a->SetPhase(phase);
+      const float now = Phase(*a);
+      if (now < 0.f || std::fabs(now - phase) > 1e-3f) {
+        a->SetPhase(phase);
+        changed = true;
+      }
     }
-    return anim < 0 || a->GetCurrentAnimation() == anim;
+    return changed && (anim < 0 || a->GetCurrentAnimation() == anim);
   }
 
   // ---- path search ----
@@ -813,15 +848,18 @@ bool SavedField(const PortSchemaClass& cls, const PortSchemaField& f) {
   if (std::strcmp(cls.name, "CEntity") == 0) {
     return false;
   }
-  // Asset streaming is this run's, not the game's.
-  if (std::strstr(f.name, "oaded") != nullptr || std::strstr(f.name, "oading") != nullptr) {
+  // Asset streaming is this run's, not the game's; so is per-frame bookkeeping.
+  if (std::strstr(f.name, "oaded") != nullptr || std::strstr(f.name, "oading") != nullptr ||
+      std::strstr(f.name, "ThisFrame") != nullptr) {
     return false;
   }
+  // Not mNotInSortedLists (GetTransformDirty): SetTransform sets it and CStateManager's
+  // UpdateActorInSortedLists clears it once the actor's bounds are in the collision lists. A saved
+  // false put back after a restore moved or reactivated the actor left those lists on the rebuilt
+  // room's pose: a platform drawn at its saved place with no collision there.
   if (std::strcmp(cls.name, "CActor") == 0) {
     return Named(f.name, {"mModelData", "mDrawFlags", "mMuted", "mCallTouch", "mRenderParticleDBInside",
-                          "mTargetableVisorFlags", "mEnableRender", "mDrawEnabled", "mDoTargetDistanceTest",
-                          // Render-sort cache: SetTransform sets it, the next sort clears it.
-                          "mNotInSortedLists"});
+                          "mTargetableVisorFlags", "mEnableRender", "mDrawEnabled", "mDoTargetDistanceTest"});
   }
   if (std::strcmp(cls.name, "CPhysicsActor") == 0) {
     // Motion too, though kTagMotion has velocity and momentum: these are applied after the
@@ -833,6 +871,29 @@ bool SavedField(const PortSchemaClass& cls, const PortSchemaField& f) {
   // CAi's health is the kTagHealth block's.
   if (std::strcmp(cls.name, "CAi") == 0) {
     return std::strcmp(f.name, "mHealthInfo") != 0;
+  }
+  // Script objects' state held with something the save does not keep, or this run's:
+  // the player's sustained-damage stack a trigger or area damage pushed, a sound modifier's
+  // attachment, the room's reverb slot, a player actor's model loads. A timer is kTagTimer's,
+  // which holds a running one stopped until every saved area is in (and its start frame is this
+  // run's).
+  if (std::strcmp(cls.name, "CScriptTimer") == 0) {
+    return false;
+  }
+  if (std::strcmp(cls.name, "CScriptTrigger") == 0) {
+    return !Named(f.name, {"mPlayerInside", "mPlayerEnvironmentDamage"});
+  }
+  if (std::strcmp(cls.name, "CScriptSpecialFunction") == 0) {
+    return std::strcmp(f.name, "mInAreaDamage") != 0;
+  }
+  if (std::strcmp(cls.name, "CScriptSound") == 0) {
+    return !Named(f.name, {"mSoundModifierAttached", "mProcessedThisFrame"});
+  }
+  // Music, layers and world teleports act on the engine or the world, not the room: their own
+  // state follows the world's (layer and music blocks), not these fields.
+  if (Named(cls.name, {"CScriptRoomAcoustics", "CScriptPlayerActor", "CScriptStreamedMusic", "CScriptRsfAudio",
+                       "CScriptMidi", "CScriptLayerController", "CScriptWorldTeleporter"})) {
+    return false;
   }
   return true;
 }
@@ -1039,8 +1100,10 @@ bool GetField(CStateManager& mgr, CEntity& ent, const PortSchemaField& f, BlockR
     if (f.kind == PortSchemaKind::bool_ && v != 0 && v != 1) {
       return false;
     }
+    // Counted only when it changes: most fields of a restored room already hold their value.
+    const bool changed = f.getInt == nullptr || f.getInt(ent) != v;
     f.setInt(ent, v);
-    return true;
+    return changed;
   }
   case PortSchemaKind::uid: {
     const uint32_t id = r.U32();
@@ -1048,8 +1111,10 @@ bool GetField(CStateManager& mgr, CEntity& ent, const PortSchemaField& f, BlockR
       return false;
     }
     auto* dst = static_cast< TUniqueId* >(f.addr(ent));
-    *dst = GetUid(mgr, ent, id, *dst);
-    return true;
+    const TUniqueId uid = GetUid(mgr, ent, id, *dst);
+    const bool changed = uid != *dst;
+    *dst = uid;
+    return changed;
   }
   default: {
     const uint32_t size = r.U32();
@@ -1083,10 +1148,51 @@ bool GetField(CStateManager& mgr, CEntity& ent, const PortSchemaField& f, BlockR
       const size_t off = reinterpret_cast< char* >(ref) - static_cast< char* >(dst);
       std::memcpy(buf.data() + off, &uid, sizeof(uid));
     }
+    const bool changed = std::memcmp(dst, buf.data(), f.size) != 0;
     std::memcpy(dst, buf.data(), f.size);
-    return true;
+    return changed;
   }
   }
+}
+
+// A class's block fingerprint: the class's layout (the schema's fingerprint) and the names and kinds
+// of the fields SavedField keeps, in order. A block's fields are by position, so a block written
+// while the list differed (a field added or taken out of SavedField) must not be read with this one.
+uint64_t ComputeBlockFingerprint(const PortSchemaClass& cls) {
+  uint64_t h = cls.fingerprint ^ 0xcbf29ce484222325ull;
+  const auto mix = [&h](unsigned char c) {
+    h ^= c;
+    h *= 0x100000001b3ull;
+  };
+  for (int i = 0; i < cls.fieldCount; ++i) {
+    const PortSchemaField& f = cls.fields[i];
+    if (!SavedField(cls, f)) {
+      continue;
+    }
+    for (const char* c = f.name; *c != '\0'; ++c) {
+      mix(static_cast< unsigned char >(*c));
+    }
+    mix(static_cast< unsigned char >(f.kind));
+    mix(0xff); // between names
+  }
+  return h;
+}
+
+// ComputeBlockFingerprint, taken once per class: every block of every object compares each class of
+// its chain in every pass, and SavedField walks names with strcmp/strstr.
+uint64_t BlockFingerprint(const PortSchemaClass& cls) {
+  static const std::unordered_map< const PortSchemaClass*, uint64_t > sFingerprints = [] {
+    std::unordered_map< const PortSchemaClass*, uint64_t > table;
+    int count = 0;
+    const PortSchemaClass* const* classes = PortEntitySchema::Classes(count);
+    table.reserve(count);
+    for (int i = 0; i < count; ++i) {
+      table.emplace(classes[i], ComputeBlockFingerprint(*classes[i]));
+    }
+    return table;
+  }();
+  const auto found = sFingerprints.find(&cls);
+  return found != sFingerprints.end() ? found->second : ComputeBlockFingerprint(cls);
 }
 
 // One pass over the classes of a kTagFields block (GetField's `pass`).
@@ -1103,7 +1209,7 @@ int ApplyClasses(CStateManager& mgr, CEntity& ent, const std::vector< const Port
     }
     const PortSchemaClass* cls = nullptr;
     for (const PortSchemaClass* k : chain) {
-      if (k->fingerprint == fingerprint) {
+      if (BlockFingerprint(*k) == fingerprint) {
         cls = k;
       }
     }
@@ -1125,11 +1231,21 @@ int ApplyClasses(CStateManager& mgr, CEntity& ent, const std::vector< const Port
 } // namespace
 
 bool EntityFieldsSaved(const CStateManager& mgr, CEntity& ent) {
-  // Enemies, and the pickups and debris a generator made (life timers, generated flag).
-  return Enabled() &&
-         (TCastToPtr< CPatterned >(&ent) != nullptr ||
-          (IsScriptGeneratedCopy(mgr, ent) &&
-           (TCastToPtr< CScriptPickup >(&ent) != nullptr || TCastToPtr< CScriptDebris >(&ent) != nullptr)));
+  if (!Enabled()) {
+    return false;
+  }
+  // Enemies, and of the copies a generator made the pickups and debris (life timers, generated flag).
+  if (TCastToPtr< CPatterned >(&ent) != nullptr) {
+    return true;
+  }
+  if (IsScriptGeneratedCopy(mgr, ent)) {
+    return TCastToPtr< CScriptPickup >(&ent) != nullptr || TCastToPtr< CScriptDebris >(&ent) != nullptr;
+  }
+  // Every other script object too: a cutscene is made of them (actor keyframes and animations,
+  // fades, sound modifiers, effects, platforms' motion), and a list of per-class blocks missed one
+  // each time. Doors and docks keep their own blocks, restored through their own calls.
+  return ent.GetEditorId().value != kInvalidEditorId.value && TCastToPtr< CScriptDoor >(&ent) == nullptr &&
+         TCastToPtr< CScriptDock >(&ent) == nullptr;
 }
 
 bool SchemaFieldSaved(const PortSchemaClass& cls, const PortSchemaField& f) { return SavedField(cls, f); }
@@ -1149,8 +1265,9 @@ bool CaptureEntityFields(const CStateManager& mgr, CEntity& ent, std::string& ou
         PutField(mgr, ent, cls->fields[i], body);
       }
     }
-    w.U32(static_cast< uint32_t >(cls->fingerprint));
-    w.U32(static_cast< uint32_t >(cls->fingerprint >> 32));
+    const uint64_t fingerprint = BlockFingerprint(*cls);
+    w.U32(static_cast< uint32_t >(fingerprint));
+    w.U32(static_cast< uint32_t >(fingerprint >> 32));
     w.U32(static_cast< uint32_t >(body.bytes.size()));
     w.bytes += body.bytes;
   }
@@ -1171,8 +1288,8 @@ int ApplyEntityFields(CStateManager& mgr, CEntity& ent, const std::string& data)
   const int classes = r.U8();
   const size_t start = r.at;
   // The plain fields go in before the codecs too, so the saved state's Activate starts from
-  // the saved fields, and again after, over what entering the states changed. The first
-  // pass is not counted.
+  // the saved fields, and again after, over what entering the states changed. Counts the
+  // writes that changed a value, in any pass.
   int set = 0;
   const int passes[] = {1, 0, 3, 2, 1};
   for (int i = 0; i < 5; ++i) {
@@ -1181,10 +1298,7 @@ int ApplyEntityFields(CStateManager& mgr, CEntity& ent, const std::string& data)
     if (i >= 2 && mgr.ObjectById(ent.GetUniqueId()) != &ent) {
       break;
     }
-    const int n = ApplyClasses(mgr, ent, chain, classes, r, passes[i], policy);
-    if (i > 0) {
-      set += n;
-    }
+    set += ApplyClasses(mgr, ent, chain, classes, r, passes[i], policy);
   }
   return set;
 }
@@ -1209,7 +1323,7 @@ bool EntityFieldsCover(CEntity& ent, const std::string& data) {
       return false;
     }
     for (const PortSchemaClass* k : chain) {
-      if (k->fingerprint == fingerprint) {
+      if (BlockFingerprint(*k) == fingerprint) {
         ++matched;
       }
     }

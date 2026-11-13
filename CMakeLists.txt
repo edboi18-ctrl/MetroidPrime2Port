@@ -126,34 +126,6 @@ target_compile_definitions(mp_game PUBLIC BUILD_VERSION=0 VERSION=0)
 # (CAudioSys.hpp, CAuxEffect.hpp) must agree, or its Dolphin typedefs clash with Aurora's.
 target_compile_definitions(mp_game PUBLIC MUSY_TARGET=MUSY_TARGET_PC)
 
-# DIAGNOSTIC ONLY, and off by default. Adds src/MetroidPrime/PortReachStubs.cpp, which
-# defines the undefined symbols that the boot path *does* reach, so a diagnostic build can
-# run far enough to print which ones it asks for and in what order. Only
-# tools/boot_probe.sh passes -DMP_BOOT_STUBS=ON.
-#
-# **It must never be on for a real build, and the reason is not caution, it is arithmetic:**
-# with these stubs the link *succeeds*, so `link_check.sh` would report 0 undefined and be
-# wrong by 318. `link_check.sh` never passes this option, which is the only thing keeping the
-# honest number honest - so if anything ever adds it there, the gate becomes a liar with no
-# symptom. `tools/check_boot_stubs.py` fails if the option is on while the target is the
-# real executable.
-option(MP_BOOT_STUBS
-    "Diagnostic only: stub the REACHABLE undefined symbols so the boot path's order becomes \
-observable. NEVER for a real build - it makes the link succeed and lie."
-    OFF)
-if(MP_BOOT_STUBS)
-    if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/MetroidPrime/PortReachStubs.cpp")
-        message(FATAL_ERROR
-            "MP_BOOT_STUBS=ON but src/MetroidPrime/PortReachStubs.cpp is missing. "
-            "Generate it with: python3 tools/gen_link_stubs.py --reachable")
-    endif()
-    message(WARNING
-        "MP_BOOT_STUBS=ON: the REACHABLE undefined symbols are being stubbed. This build "
-        "is a diagnostic. It is not the port, it must not be run as one, and the undefined "
-        "count it reports is 0 by construction.")
-    target_sources(mp_game PRIVATE src/MetroidPrime/PortReachStubs.cpp)
-endif()
-
 # ---------------------------------------------------------------------------
 # MP_PORT_COVERAGE: compiler branch coverage for the port's REL module bodies.
 #
@@ -253,6 +225,13 @@ else()
     # decompilation is complete.
     target_compile_options(mp_game PRIVATE
         -Wformat -Wno-error=return-type -Wno-narrowing -Wno-multichar -Wno-write-strings
+        # rstl's smart pointers delete in headers: on an incomplete type that silently skips
+        # the destructor, and which unit's copy survives the link is arbitrary.
+        $<$<COMPILE_LANGUAGE:CXX>:-Werror=delete-incomplete>
+        # The decomp reads floats, colours and boxes through uint* as MWCC allowed (the stream
+        # writer, CGX colour compares, the collision cache); type-based alias analysis may
+        # reorder those loads. -fwrapv: its hashes and counters overflow signed ints, which wrapped on PowerPC.
+        -fno-strict-aliasing -fwrapv
         # The game's allocator API carries the literal "??(??)" call-stack tags
         # from the PowerPC build; they are trigraphs to the host compiler and
         # are intentional, so keep them out of the log.
@@ -275,7 +254,8 @@ foreach(m ${MP_MODULES})
     if(NOT MSVC)
         target_compile_options(mp_mod_${m} PRIVATE
             -Wformat -Wno-error=return-type -Wno-narrowing -Wno-multichar -Wno-write-strings
-            -Wno-trigraphs
+            $<$<COMPILE_LANGUAGE:CXX>:-Werror=delete-incomplete>
+            -fno-strict-aliasing -fwrapv -Wno-trigraphs
             "$<$<COMPILE_LANGUAGE:CXX>:-include${CMAKE_CURRENT_SOURCE_DIR}/platform/compat.h>")
     else()
         target_compile_options(mp_mod_${m} PRIVATE ${MP_MSVC_GAME_OPTIONS})
@@ -435,7 +415,6 @@ add_library(mp_platform OBJECT
     platform/rel.cpp
     platform/shims.cpp
     platform/sdk_stubs.cpp
-    platform/port_reset.cpp
     platform/port_settings.cpp
     platform/port_collision_view.cpp
     platform/port_mods.cpp
@@ -651,9 +630,9 @@ if(AURORA_SDL3_TARGET)
         platform/port_pointer.cpp platform/port_pointer_menu.cpp
         platform/port_events.cpp platform/port_vpads.cpp platform/port_livesplit.cpp platform/port_harness.cpp platform/port_mouse.cpp
         platform/port_radial.cpp
-        platform/port_warp.cpp platform/port_freecam.cpp platform/port_photo.cpp platform/port_console.cpp platform/port_overlay.cpp platform/port_map_pickups.cpp platform/port_disc_replace.cpp
-        platform/port_gyro_motion.cpp
-        platform/port_dynamic_res.cpp platform/port_video.cpp platform/port_gpu_driver.cpp
+        platform/port_warp.cpp platform/port_freecam.cpp platform/port_third_person.cpp platform/port_photo.cpp platform/port_console.cpp platform/port_overlay.cpp platform/port_map_pickups.cpp platform/port_disc_replace.cpp
+        platform/port_gyro_motion.cpp platform/port_steam_triton.cpp
+        platform/port_dynamic_res.cpp platform/port_video.cpp platform/port_gpu_driver.cpp platform/port_imgui_fonts.cpp
         platform/port_data_folder.cpp
         platform/port_json.cpp platform/port_ws.cpp platform/port_update_check.cpp
         platform/debug_ui/audio.cpp platform/debug_ui/card_data.cpp platform/debug_ui/cheats.cpp platform/debug_ui/controls.cpp platform/debug_ui/multiplayer.cpp platform/debug_ui/debug.cpp
@@ -664,9 +643,9 @@ if(AURORA_SDL3_TARGET)
         platform/debug_ui/window.cpp platform/debug_ui/touch_overlay.cpp
         platform/port_touch.cpp platform/port_touch_jni.cpp platform/touch_pad.cpp
         platform/input/port_input_remap_ui.cpp
-        platform/input/port_input_devices.cpp
+        platform/input/port_input_devices.cpp platform/input/port_steam_triton_hid.cpp
         platform/input/port_input_user_presets.cpp platform/input/port_input_user_presets_store.cpp
-        platform/port_embedded.cpp platform/port_textures.cpp platform/port_pbr_maps.cpp platform/port_texture_manifest.cpp platform/port_zip.cpp platform/port_prompts.cpp
+        platform/port_embedded.cpp platform/port_textures.cpp platform/port_pbr_maps.cpp platform/port_texture_manifest.cpp platform/port_zip.cpp platform/port_prime1_tweaks.cpp platform/port_prompts.cpp platform/port_prompt_ring.cpp platform/port_game_ui.cpp platform/port_game_ui_page.cpp platform/port_cheats.cpp platform/port_play_options.cpp platform/port_special_menu.cpp platform/port_skip_prompt.cpp platform/port_menu_hint.cpp platform/port_resume_prompt.cpp platform/port_shader_toast.cpp platform/port_note_toast.cpp platform/port_update_toast.cpp
         platform/port_discord.cpp
         platform/port_disc_verify.cpp
         platform/port_disc_verify_core.cpp)
@@ -735,6 +714,17 @@ foreach(t ${MP_MODULE_OBJECT_TARGETS})
         aurora::core aurora::gx aurora::gd aurora::si aurora::vi aurora::pad
         aurora::mtx aurora::os aurora::dvd aurora::thp aurora::card musyx)
 endforeach()
+
+# Which GX pipeline-cache key fields never change the pipeline (tools/pipeline_key_audit.cpp).
+# Desktop only, not built by default: ninja -C build-port-link pipeline_key_audit.
+if(NOT ANDROID AND NOT IOS)
+    add_executable(pipeline_key_audit EXCLUDE_FROM_ALL tools/pipeline_key_audit.cpp)
+    target_include_directories(pipeline_key_audit PRIVATE extern/aurora/lib)
+    target_compile_definitions(pipeline_key_audit PRIVATE WEBGPU_DAWN)
+    target_link_libraries(pipeline_key_audit PRIVATE aurora::core aurora::gx aurora::gd aurora::si aurora::vi
+        aurora::pad aurora::mtx aurora::os aurora::dvd aurora::card absl::btree absl::flat_hash_map sqlite3
+        Tracy::TracyClient PNG::PNG)
+endif()
 
 # The touch overlay's virtual gamepad, on the host. `platform/touch_pad.cpp` is platform
 # independent by construction (that is the whole point of the file), so its axis conversion
@@ -838,6 +828,10 @@ if(AURORA_SDL3_TARGET)
     target_compile_options(port_save_framing_tests PRIVATE $<IF:$<BOOL:${MSVC}>,/FIcstdint,-include$<SEMICOLON>cstdint>)
     add_test(NAME port_save_framing_tests COMMAND port_save_framing_tests)
     set_tests_properties(port_save_framing_tests PROPERTIES TIMEOUT 30 LABELS port)
+    add_executable(port_save_layout_tests tests/port_save_layout.cpp)
+    target_include_directories(port_save_layout_tests PRIVATE platform/include)
+    add_test(NAME port_save_layout_tests COMMAND port_save_layout_tests)
+    set_tests_properties(port_save_layout_tests PROPERTIES TIMEOUT 30 LABELS port)
 
     add_executable(port_save_mirror_tests tests/port_save_mirror.cpp)
     target_include_directories(port_save_mirror_tests PRIVATE platform/include tests)
@@ -884,6 +878,12 @@ if(AURORA_SDL3_TARGET)
         add_test(NAME port_zip_tests COMMAND port_zip_tests)
         set_tests_properties(port_zip_tests PROPERTIES TIMEOUT 30 LABELS port)
     endif()
+
+    # Prime 1's Boost Ball values: the PAK and CTWK parsing (port_prime1_tweaks.h) on files built here.
+    add_executable(port_prime1_tweaks_tests tests/port_prime1_tweaks.cpp)
+    target_include_directories(port_prime1_tweaks_tests PRIVATE platform/include tests)
+    add_test(NAME port_prime1_tweaks_tests COMMAND port_prime1_tweaks_tests)
+    set_tests_properties(port_prime1_tweaks_tests PROPERTIES TIMEOUT 15 LABELS port)
 
     add_executable(port_config_reset_tests tests/port_config_reset.cpp)
     target_include_directories(port_config_reset_tests PRIVATE platform/include)
@@ -999,6 +999,11 @@ if(AURORA_SDL3_TARGET)
     target_include_directories(port_flick_stick_tests PRIVATE platform/include)
     add_test(NAME port_flick_stick_tests COMMAND port_flick_stick_tests)
     set_tests_properties(port_flick_stick_tests PROPERTIES TIMEOUT 30 LABELS port)
+    # The third-person camera's pure maths (platform/include/port_third_person.h, MP1's).
+    add_executable(port_third_person_tests tests/port_third_person.cpp)
+    target_include_directories(port_third_person_tests PRIVATE platform/include)
+    add_test(NAME port_third_person_tests COMMAND port_third_person_tests)
+    set_tests_properties(port_third_person_tests PROPERTIES TIMEOUT 30 LABELS port)
     add_executable(port_tri_orbit_tests tests/port_tri_orbit.cpp)
     target_include_directories(port_tri_orbit_tests PRIVATE platform/include)
     add_test(NAME port_tri_orbit_tests COMMAND port_tri_orbit_tests)
@@ -1032,6 +1037,27 @@ if(AURORA_SDL3_TARGET)
     target_include_directories(port_gyro_motion_tests PRIVATE platform/include)
     add_test(NAME port_gyro_motion_tests COMMAND port_gyro_motion_tests)
     set_tests_properties(port_gyro_motion_tests PROPERTIES TIMEOUT 30 LABELS port)
+    # The Steam Controller (2026) and Steam Deck reports (platform/port_steam_triton.cpp): state
+    # reports captured from a controller, their axes and scaling, the back buttons and the IMU enable
+    # request.
+    add_executable(port_steam_triton_tests tests/port_steam_triton.cpp platform/port_steam_triton.cpp
+        platform/port_gyro_motion.cpp)
+    target_include_directories(port_steam_triton_tests PRIVATE platform/include)
+    add_test(NAME port_steam_triton_tests COMMAND port_steam_triton_tests)
+    set_tests_properties(port_steam_triton_tests PROPERTIES TIMEOUT 30 LABELS port)
+    # The box construction kit's arithmetic (platform/include/port_game_ui_math.h, header-only): a
+    # box model's zones from its own vertices, and where each vertex goes for another size.
+    add_executable(port_game_ui_tests tests/port_game_ui.cpp)
+    target_include_directories(port_game_ui_tests PRIVATE platform/include)
+    add_test(NAME port_game_ui_tests COMMAND port_game_ui_tests)
+    set_tests_properties(port_game_ui_tests PROPERTIES TIMEOUT 30 LABELS port)
+    # The drawn button ring's arithmetic (platform/include/port_prompt_ring_math.h, header-only): the
+    # ring's profile, display-list parsing, the quad-to-model map, the line ends' circle, the fill's
+    # round hole and the ring's fit to its disc.
+    add_executable(port_prompt_ring_tests tests/port_prompt_ring.cpp)
+    target_include_directories(port_prompt_ring_tests PRIVATE platform/include)
+    add_test(NAME port_prompt_ring_tests COMMAND port_prompt_ring_tests)
+    set_tests_properties(port_prompt_ring_tests PROPERTIES TIMEOUT 30 LABELS port)
     # The bindings parser/writer (platform/input/port_input_bindings.cpp): a controls file parses
     # into engine bindings and round-trips, with bad input rejected rather than half-applied.
     add_executable(port_input_bindings_tests tests/port_input_bindings.cpp

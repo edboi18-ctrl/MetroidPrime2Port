@@ -56,7 +56,8 @@ name, how many of the pack's textures the game has used so far (and how many fai
 R3M on Trilogy), the Use the texture pack switch (`texture_pack`), Reload texture pack and
 Import texture pack .zip... (desktop). Android: Choose texture pack folder... copies the pick to
 `<user>/user_textures.new`, which `PortTextures` swaps in (Remove texture pack deletes it). Console:
-`reloadmods`.
+`reloadmods`. `<user>/user_textures` is created at startup (MP1 sync 34), so there is a folder to drop a
+pack into; a low-memory sweep thins the pack's textures (docs/SETTINGS.md, Texture-pack memory).
 
 **Texture roles from the disc (for PBR, step 1 of `docs/research/PBR_TEXTURES.md`).** No play needed:
 `python tools/pbr/disc_texture_scan.py "<Echoes>.iso"` (an `.iso`, `.gcm` or `.ciso`; RVZ/WIA/GCZ need

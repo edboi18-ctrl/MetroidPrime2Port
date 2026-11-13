@@ -252,6 +252,9 @@ bool sPhotoOwnsCapture = false;
 // A pointer screen (pause, map, a GUI menu) is up: its cursor must stay free and visible. The
 // game does not tick the player while paused, so nothing else would release the aim's grab.
 bool sPointerScreen = false;
+// The aim's grab the open settings window is holding off: what it took when it opened, then
+// what each player tick under it would have asked for. SetUiActive hands it back on close.
+bool sUiHeldCapture = false;
 
 // Relative capture is what makes the motion relative and keeps the desktop cursor out of the
 // game; leaving it off outside gameplay keeps the cursor usable for menus and the desktop.
@@ -570,11 +573,6 @@ void AddStickAim(float x, float y, float dt, int player) {
   s.stickPendingY += dy;
 }
 
-bool TouchEnabled() {
-  ReadEnv();
-  return sTouchEnabled.load();
-}
-
 void SetTouchEnabled(bool enabled) {
   ReadEnv();
   sTouchEnabled = enabled;
@@ -615,21 +613,11 @@ bool TouchAimActive() {
          (sTouchAimDown.load() || SDL_GetTicksNS() < sTouchHoldUntilNs.load());
 }
 
-float TouchAimSpeed() {
-  ReadEnv();
-  return sTouchAimSpeed;
-}
-
 void SetTouchAimSpeed(float pixelsPerDp) {
   ReadEnv();
   if (std::isfinite(pixelsPerDp)) {
     sTouchAimSpeed = ClampTouchAimSpeed(pixelsPerDp);
   }
-}
-
-float TouchAimSpeedY() {
-  ReadEnv();
-  return sTouchAimSpeedY;
 }
 
 void SetTouchAimSpeedY(float pixelsPerDp) {
@@ -640,11 +628,24 @@ void SetTouchAimSpeedY(float pixelsPerDp) {
 }
 
 void SetUiActive(bool active) {
+  const bool was = sUiActive;
   sUiActive = active;
   if (active) {
+    if (!was) {
+      sUiHeldCapture = sCaptured && !sPhotoOwnsCapture;
+    }
     PortRadial::Cancel();
     sSlots[0].aiming = false;
     SetCapture(false);
+  } else if (was) {
+    // #126: hand the grab back. A paused game (a message box, a save station's prompt) does
+    // not tick the player, so UpdateAim would not re-take it until the box was gone - and the
+    // mouse buttons under mouse aim only read while the window is grabbed, so a click could
+    // never dismiss the box. A running game decides again on its next tick.
+    if (sUiHeldCapture && sEnabled) {
+      SetCapture(true);
+    }
+    sUiHeldCapture = false;
   }
 }
 
@@ -844,6 +845,9 @@ bool UpdateAim(bool active, bool locked, float x, float y, float z, float dt, bo
     s.pointer.Center();
     if (first) {
       SetCapture(false);
+      if (sUiActive) {
+        sUiHeldCapture = live && sEnabled && (active || locked);
+      }
     }
     return false;
   }
@@ -1040,6 +1044,12 @@ void SetPointerAimHold(bool hold, int player) { SlotFor(player).debugHold = hold
 
 void Synchronize(float x, float y, float z, int player) {
   if (player == 0 ? Enabled() : StickEnabled(player)) {
+    SlotFor(player).aim.Synchronize(x, y, z);
+  }
+}
+
+void Place(float x, float y, float z, int player) {
+  if (DirectAim(player)) {
     SlotFor(player).aim.Synchronize(x, y, z);
   }
 }

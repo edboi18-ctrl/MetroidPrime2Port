@@ -13,7 +13,7 @@ Each claim carries one of two labels:
 | G2ME01 (USA GC) | USA GC ISO | Measured |
 | G2MP01 (PAL GC) | `G2MP01.iso` | Measured |
 | R3ME01 (Trilogy USA Wii) | Trilogy USA image, partition DATA, `MP2/` | Measured |
-| R3MP01 (Trilogy PAL) | — | **No disc available. Nothing in this document is measured for it.** `config/R3MP01/` holds symbols only. |
+| R3MP01 (Trilogy PAL) | — | Measured 2026-11-05: its Echoes SAVW lists (every world, scan union 817, system/game variables), HINT bytes and card signature (`fe44ecfe`) equal R3ME01's (`savw_diff.py`), and `trilogy_tables.py` writes byte-identical tables from it. |
 
 The paks and DOLs were extracted read-only, with `dolphin-tool extract`, to `/tmp/opencode/discs/<id>/`.
 
@@ -57,7 +57,7 @@ Every save-serialisation function has the same size in both, from `config/G2M?01
 
 `kPowerUpMax` (0x1B4) and `kShouldPersist` (0x6D, 59 persisted items) are byte-identical [M]. Measured by taking the sha1 of the rodata bytes at each DOL's symbol address.
 
-### Trilogy (R3ME01; R3MP01 unknown)
+### Trilogy (R3ME01; R3MP01 has the same save data)
 
 What is measured, from string and immediate scans of the DOLs [M]:
 
@@ -89,7 +89,12 @@ Sources are `CMemoryCardDriver::BuildSaveBuffer`, `SSaveHeader`, `SGameFileSlot`
 
 ### Signature
 
-The signature is `0x5553413e ^ Σxor CWorldSaveGameInfo::CalculateHash()`, taken over every world in MemoryWorlds.
+The signature is `seed ^ Σxor CWorldSaveGameInfo::CalculateHash()`, taken over every world in MemoryWorlds.
+The seed is the region's: `0x5553413e` ('USA>') in G2ME01's `GetSaveSignature`, `0x45555250` ('EURP')
+in G2MP01's (`lis r4,0x4555; addi r0,r4,0x5250` at 0x8017C730) [M, DOL]. Port builds before issue #95
+used the USA seed on every disc, so a real PAL card (`d13a209f`) read as corrupt; the port now seeds
+by disc (the Trilogy keeps the USA seed, which its port-written card always had) and still accepts the
+old PAL values (`c13c33f1`, `467484b3`).
 
 - A mismatch marks the save invalid (`CMemoryCardDriver::UpdateFileRead` → `kE_FileCorrupted`).
 - The console hashes its big-endian words. The port swaps each 32-bit word before `CCRC32::Calculate` (`CalculateHash(bool consoleOrder = true)`, `TARGET_PC`), so it writes the console value. It also accepts the value older port builds wrote, which hashed host-LE words. At startup it logs both: `[save] console signature 44bfc715` and `[save] legacy port signature 37d0412e` on G2ME01 [M, port run].
@@ -184,8 +189,9 @@ Summary of the output below [M]:
 
 | Item | G2ME01 | G2MP01 | R3ME01 |
 | --- | --- | --- | --- |
-| Signature, console (BE words; the port writes this) | `44bfc715` | `c13c33f1` | `fe44ecfe` |
-| Signature, legacy port (LE words; older port builds; accepted on read, see §6) | `37d0412e` | `467484b3` | `9c307b43` |
+| Signature, console (BE words, region seed; the port writes this) | `44bfc715` | `d13a209f` | `fe44ecfe` (USA seed) |
+| Signature, port before #95 (BE words, USA seed; accepted on read) | `44bfc715` | `c13c33f1` | `fe44ecfe` |
+| Signature, legacy port (LE words, USA seed; older port builds; accepted on read, see §6) | `37d0412e` | `467484b3` | `9c307b43` |
 | Scan union | 815 | 818 | 817 |
 | Cinematic bits | 1064 | 1064 | 1030 |
 | System / game vars | 19 / 1 | 19 / 1 | 19 / 1 |
@@ -221,7 +227,7 @@ Full output of `cd /tmp && python3 -I <worktree>/tools/savw_diff.py`, with the d
     a50a80cc 39f4c4a7 Metroid6.pak        1    5    3    0    0    0    2    0     80 ba64b6d3 c4ab8e3a
     ae171602 32e95269 Metroid6.pak        1    5    3    0    0    0    0    0     80 5009de08 e5da5dad
     e3b0c703 7f4e8368 Metroid6.pak        1    5    3    0    0    0    0    0     81 461e18a1 58b32000
-  signature console (BE words; port writes) 44bfc715   legacy port (LE words) 37d0412e
+  signature console (BE words; port writes) 44bfc715   port before #95 (USA seed) 44bfc715   legacy port (LE words) 37d0412e
   scan union 815 entries (+4 fixed) -> POWR..SCAN scan bits 1638
   cinematic bits 1064; system vars 19 (29 bits); game vars 1 (1 bits)
   HINT_Hints 2255c7bc v1 count 44 crc 302f9b1d (NoARAM.pak)
@@ -240,7 +246,7 @@ Full output of `cd /tmp && python3 -I <worktree>/tools/savw_diff.py`, with the d
     a50a80cc 39f4c4a7 Metroid6.pak        1    5    3    0    0    0    2    0     80 ba64b6d3 c4ab8e3a
     ae171602 32e95269 Metroid6.pak        1    5    3    0    0    0    0    0     80 5009de08 e5da5dad
     e3b0c703 7f4e8368 Metroid6.pak        1    5    3    0    0    0    0    0     81 461e18a1 58b32000
-  signature console (BE words; port writes) c13c33f1   legacy port (LE words) 467484b3
+  signature console (BE words; port writes) d13a209f   port before #95 (USA seed) c13c33f1   legacy port (LE words) 467484b3
   scan union 818 entries (+4 fixed) -> POWR..SCAN scan bits 1644
   cinematic bits 1064; system vars 19 (29 bits); game vars 1 (1 bits)
   HINT_Hints 2255c7bc v1 count 44 crc ab8f7068 (NoARAM.pak)
@@ -259,7 +265,7 @@ Full output of `cd /tmp && python3 -I <worktree>/tools/savw_diff.py`, with the d
     ae171602 32e95269 Metroid6.pak        1    5    3    0    0    0    0    0     80 5009de08 e5da5dad
     daea74a3 461430c8 FrontEnd.pak        1    5    1    0    0    0    0    0     80 44bc9114 b1a24f14
     e3b0c703 7f4e8368 Metroid6.pak        1    5    3    0    0    0    0    0     81 461e18a1 58b32000
-  signature console (BE words; port writes) fe44ecfe   legacy port (LE words) 9c307b43
+  signature console (BE words; port writes) fe44ecfe   port before #95 (USA seed) fe44ecfe   legacy port (LE words) 9c307b43
   scan union 817 entries (+4 fixed) -> POWR..SCAN scan bits 1642
   cinematic bits 1030; system vars 19 (29 bits); game vars 1 (1 bits)
   HINT_Hints e1729bc1 v1 count 42 crc e709f7c0 (NoARAM.pak)
@@ -288,7 +294,7 @@ Full output of `cd /tmp && python3 -I <worktree>/tools/savw_diff.py`, with the d
   world a50a80cc: identical
   world ae171602: identical
   world e3b0c703: identical
-  signature console 44bfc715 -> c13c33f1
+  signature console 44bfc715 -> d13a209f
     scan union: 815 -> 818; only base 0, only other 3; common entries keep relative order
     sysvars identical (19)
     gamevars identical (1)
@@ -374,7 +380,7 @@ Full output of `cd /tmp && python3 -I <worktree>/tools/savw_diff.py`, with the d
   world a50a80cc: identical
   world ae171602: identical
   world e3b0c703: identical
-  signature console c13c33f1 -> fe44ecfe
+  signature console d13a209f -> fe44ecfe
     scan union: 818 -> 817; only base 1, only other 0; common entries keep relative order
     sysvars identical (19)
     gamevars identical (1)
@@ -392,7 +398,7 @@ The per-player options and header fields map 1:1 in every pair [I]. The `PLST` f
 | G2MP → G2ME | **Remap by ID** (lossy) | The inverse of the above. Drop the PAL-only scans, relay and layer bit. |
 | G2ME → R3ME | **Done (2026-10-27), unverified in the Trilogy** | `port_save_trilogy.cpp` (container) and `port_save_trilogy_payload.cpp` (stream, remap by ID with the tables `tools/trilogy_tables.py` writes from both discs). Wii part B = 20 zero bytes, GMST stream with 2 flag bits (hard, dark; the GC's initPowerups bit is dropped and the card's kept), cinematics inline, 12 world records, no GMND; part A = signature, SYST + 29 system variables + SYND. The 2000-byte part B is 5 bytes short of the whole stream: the last world's (e3b0c703) record is cut off in every real save, and the importer reads it from zeros with its layers at the MLVL defaults. The flag meaning (hard, dark) is inferred from the fixtures, not proven. |
 | R3ME → G2ME | **Done, same caveats** | The inverse; a cinematic set on the card is kept (union). Lossy: scans/hints/relays/doors/layers/cinematics with no counterpart, counted in `ConvertReport`. |
-| any ↔ R3MP | **Blocked** | No disc, no data |
+| any ↔ R3MP | **Done (2026-11-05)** | R3MP's tables are R3ME's: G2ME ↔ R3MP is G2ME ↔ R3ME, R3ME ↔ R3MP only changes the game code. G2MP reaches it through G2ME. |
 
 G2ME → G2MP rewrites:
 
@@ -433,8 +439,8 @@ One save written by an older port build was decoded [M]: `~/.cache/mp2-orch/save
 
 1. ~~Trilogy `save.bin` framing~~ - resolved 2026-10-27 (§1).
 2. ~~Trilogy header and slot layout~~ - resolved; what is left is the payload stream (part A/B) conversion.
-3. **R3MP01.** There is no disc.
-4. **Port versus console signature — measured and fixed.** Older port builds hashed host-LE words and wrote `37d0412e` on G2ME, so they would have refused a real console GCI (`44bfc715`). `CalculateHash` now swaps to big-endian words under `TARGET_PC`. The port writes the console value and accepts either (§2 Signature). The two logged values equal `savw_diff.py`'s predictions. Still unverified: a real console (Dolphin) save, which none is available to test.
+3. ~~R3MP01~~ - resolved 2026-11-05: same save data as R3ME01 (§1).
+4. **Port versus console signature — measured and fixed.** Older port builds hashed host-LE words and wrote `37d0412e` on G2ME, so they would have refused a real console GCI (`44bfc715`). `CalculateHash` now swaps to big-endian words under `TARGET_PC`. The port writes the console value and accepts either (§2 Signature). The two logged values equal `savw_diff.py`'s predictions. Verified 2026-11-09 against real saves: all 22 GameBanana "Save Collection (USA)" GCIs carry `44bfc715`; the PAL save of issue #95 carries `d13a209f` (EURP seed, see §2 Signature) and loads on the PAL disc.
 5. **HINT order.** The G2ME and G2MP lists have the same count but different bytes. Check the names before copying hint states 1:1.
 6. **Untested on real data.** No real save was round-tripped, so the bit layouts in §2 come from the decompiled source and are not checked against data.
 
@@ -464,6 +470,8 @@ How each piece maps onto Echoes [I unless marked]:
 | `ReadWii` / `WriteWii` (`save.bin`) | Trilogy R3ME/R3MP: container ported as `port_save_trilogy.cpp` (plaintext NAND file, no AES; the AES one is the SD `data.bin`). Payload conversion: `port_save_trilogy_payload.cpp` (G2ME). | Partial: G2MP and signature-less (empty card) imports refused |
 
 The first slice was G2ME ↔ G2MP only (built; see the converter status below): both directions are a remap by ID (§4), and the offer, marker and backup flow carried over unchanged.
+
+Trilogy disc (2026-11-05, issue #76): `kReleases` also lists R3ME and R3MP, and a release is offered only when `CanConvertCard` covers it. `PortSave::Trilogy::ConvertGci` converts a whole card file G2ME ↔ R3ME (every slot and the system block through the same remap as the save.bin path, signature set to the target's §3 console value). G2MP reaches R3ME through G2ME. R3MP (2026-11-05, #76 follow-up: the reporter is on PAL) uses R3ME's tables and signature, measured equal on the PAL disc. `Files()` lists only the mounted code's files, because G2ME and R3ME share `USA/Card A` and an import replaces `Files().front()`.
 
 ## Converter status and test (2026-10-27)
 

@@ -24,6 +24,7 @@
 #include <aurora/main.h>
 
 #include <aurora/aurora.h>
+#include <aurora/gfx.h>
 #include <aurora/dvd.h>
 #include <dolphin/dvd.h>
 #include <dolphin/gx/GXAurora.h>
@@ -77,6 +78,7 @@ extern "C" void* OSGetArenaHi();
 extern void* gPortGameHeapLo;
 extern void* gPortGameHeapHi;
 #include "Kyoto/Basics/COsContext.hpp"
+#include "Kyoto/Graphics/CCubeModel.hpp"
 #include "Kyoto/Graphics/CGraphicsSys.hpp"
 #include "compiled_modules.h"
 #include "input/port_input_devices.h"
@@ -108,6 +110,7 @@ extern void* gPortGameHeapHi;
 #include "port_touch.h"
 #include "port_tweaks.h"
 #include "port_video.h"
+#include "port_imgui_fonts.h"
 
 // The decompilation's exported entry point; see src/MetroidPrime/main.cpp.
 namespace port {
@@ -195,10 +198,6 @@ std::string DesktopDiscFallback(const std::string& resolved) {
 // user path, so the port has to name the same folder or the two disagree about where
 // settings.cfg, controls.toml and the tools' backups live. Not SDL's call itself because SDL is
 // only on the entry's include path on Android, and because asking it creates the folder.
-std::filesystem::path Utf8Path(const std::string& text) {
-  return std::filesystem::path(std::u8string(text.begin(), text.end()));
-}
-
 std::string PerUserFolder() {
   std::string dir;
 #if defined(_WIN32)
@@ -258,7 +257,7 @@ std::string ExecutableFolder() {
 std::string InstallFolder() {
   std::string dir;
   if (InAppImage()) {
-    const std::u8string parent = Utf8Path(std::getenv("APPIMAGE")).parent_path().u8string();
+    const std::u8string parent = PortUtf8::FromUtf8(std::getenv("APPIMAGE")).parent_path().u8string();
     dir.assign(parent.begin(), parent.end());
   } else {
     dir = ExecutableFolder();
@@ -276,7 +275,7 @@ bool InAppBundle(const std::string& dir) {
 }
 
 bool FolderWritable(const std::string& dir) {
-  const std::filesystem::path probe = Utf8Path(dir) / ".port_write_test";
+  const std::filesystem::path probe = PortUtf8::FromUtf8(dir) / ".port_write_test";
   {
     std::ofstream file(probe, std::ios::binary);
     if (!file) {
@@ -307,9 +306,9 @@ std::string DesktopUserFolder(const char** why) {
     const std::string portable = InAppImage() ? install : install + "user/";
     std::error_code error;
     const bool hereHasSettings =
-        std::filesystem::exists(Utf8Path(portable + "settings.cfg"), error);
+        std::filesystem::exists(PortUtf8::FromUtf8(portable + "settings.cfg"), error);
     const bool legacyHasSettings =
-        !perUser.empty() && std::filesystem::exists(Utf8Path(perUser + "settings.cfg"), error);
+        !perUser.empty() && std::filesystem::exists(PortUtf8::FromUtf8(perUser + "settings.cfg"), error);
     if (hereHasSettings || !legacyHasSettings) {
       dir = portable;
       *why = "portable";
@@ -323,7 +322,7 @@ std::string DesktopUserFolder(const char** why) {
   }
   if (!dir.empty()) {
     std::error_code error;
-    std::filesystem::create_directories(Utf8Path(dir), error);
+    std::filesystem::create_directories(PortUtf8::FromUtf8(dir), error);
   }
   return dir;
 }
@@ -810,6 +809,45 @@ std::string EnsureDiscImage(const std::string& resolved, const std::string& defa
   }
 }
 
+// Android's DesktopDiscFallback: MP2_DISC, else the image F1 > System > Disc image > Replace
+// remembered (its copy in the user folder, settings.cfg `disc_path`) while it is still usable,
+// else the resolved `<files>/disc.iso`. A `disc=` in port_paths.txt is a debugging push and keeps
+// winning. Without this the replaced image was copied and remembered but never booted (#76).
+// The activity always writes `disc=` with getFilesDir()'s /data/user/0/... spelling while SDL's
+// pref path (paths.base) is the canonical /data/data/..., so the default is told by its folder's
+// identity, not its text; the folder exists even before a first disc.iso does.
+bool IsDefaultAndroidDisc(const PortPaths& paths) {
+  if (paths.disc == paths.base + "disc.iso") {
+    return true;
+  }
+  const std::filesystem::path disc = PortUtf8::FromUtf8(paths.disc);
+  std::error_code ec;
+  return !paths.base.empty() && disc.filename() == "disc.iso" &&
+         std::filesystem::equivalent(disc.parent_path(), PortUtf8::FromUtf8(paths.base), ec) && !ec;
+}
+
+std::string AndroidDiscFallback(const PortPaths& paths) {
+  if (const char* env = std::getenv("MP2_DISC"); env != nullptr && env[0] != '\0') {
+    return env;
+  }
+  const std::string saved = PortOverlaySettings::DiscPath();
+  if (saved.empty()) {
+    return paths.disc;
+  }
+  if (!IsDefaultAndroidDisc(paths)) {
+    std::fprintf(stderr, "metroid_prime2_port: port_paths.txt disc=%s wins over the remembered disc image %s\n",
+                 paths.disc.c_str(), saved.c_str());
+    return paths.disc;
+  }
+  if (DiscImageIsUsable(saved)) {
+    std::fprintf(stderr, "metroid_prime2_port: using the remembered disc image: %s\n", saved.c_str());
+    return saved;
+  }
+  std::fprintf(stderr, "metroid_prime2_port: the remembered disc image is gone or unusable: %s\n",
+               saved.c_str());
+  return paths.disc;
+}
+
 #else
 
 // The desktop keeps its console and its environment: fd 1 and fd 2 already arrive where the
@@ -1027,8 +1065,7 @@ std::string PickDiscUntilChosen() {
 
 // Crash reports are PortCrash's (platform/port_crash.cpp): signal, fault address, module offset,
 // build, stack and breadcrumbs, written into the log, and the signal then goes on to the handler
-// that was there before (the default one, so the exit status still says "died on signal 11",
-// which boot_probe.sh greps; on Android debuggerd's, which writes the tombstone).
+// that was there before (the default one, so the exit status still says "died on signal 11"; on Android debuggerd's, which writes the tombstone).
 #if defined(__ANDROID__)
 // Everything the report wrote went into the stderr pipe, and only the pump thread turns it into
 // logcat lines: give it up to half a second to empty the pipe, or the process dies with the stack
@@ -1123,24 +1160,6 @@ int main(int argc, char** argv) {
   }
 #endif
 
-  // The disc, resolved and - if the image is missing or is not this game - picked from the
-  // user's storage, all before Aurora comes up: `EnsureDiscImage` says why the trigger is the
-  // image not being usable rather than the disc check after the renderer starts. The desktop
-  // keeps the resolution it always had, below.
-#if defined(__ANDROID__)
-  const std::string androidDiscImage =
-      EnsureDiscImage(port::entry::ResolveDiscPath(argc, argv, EnvOrFallback("MP2_DISC", appPaths.disc),
-                                                   ExecutableDir(argc > 0 ? argv[0] : nullptr)),
-                      appPaths.disc);
-  if (androidDiscImage.empty()) {
-    // Nothing was picked, so there is nothing to boot: exiting here, before Aurora is up,
-    // rather than at the disc check below, which would bring the renderer up only to close it.
-    std::fprintf(stderr, "metroid_prime2_port: no disc image to boot\n");
-    PortLogDrain();
-    return 1;
-  }
-#endif
-
   // The touch overlay's own settings live in the user directory, next to the memory card:
   // the layout the player moved, and which of the two layouts is active. On the desktop this
   // is MP2_USER_PATH or nothing at all - there is no overlay there, and an empty directory
@@ -1160,6 +1179,25 @@ int main(int argc, char** argv) {
   PortSettings::Initialize(touchUser != nullptr ? touchUser : std::string());
   // Read now: an earlier request (the Android view's, on its own thread) found no path and left it.
   PortOverlaySettings::LoadSettings();
+
+  // The disc, resolved and - if the image is missing or is not this game - picked from the
+  // user's storage, all before Aurora comes up: `EnsureDiscImage` says why the trigger is the
+  // image not being usable rather than the disc check after the renderer starts. After the
+  // settings, for the image F1 > System > Disc image > Replace remembered (issue #76). The
+  // desktop keeps the resolution it always had, below.
+#if defined(__ANDROID__)
+  const std::string androidDiscImage =
+      EnsureDiscImage(port::entry::ResolveDiscPath(argc, argv, AndroidDiscFallback(appPaths).c_str(),
+                                                   ExecutableDir(argc > 0 ? argv[0] : nullptr)),
+                      appPaths.disc);
+  if (androidDiscImage.empty()) {
+    // Nothing was picked, so there is nothing to boot: exiting here, before Aurora is up,
+    // rather than at the disc check below, which would bring the renderer up only to close it.
+    std::fprintf(stderr, "metroid_prime2_port: no disc image to boot\n");
+    PortLogDrain();
+    return 1;
+  }
+#endif
 
   // The log file (platform/port_logfile.cpp) starts here, before aurora_initialize below, so
   // Aurora's own startup lines and anything that aborts during it land in the file too.
@@ -1225,6 +1263,8 @@ int main(int argc, char** argv) {
       .windowPosY = -1,
       .windowWidth = static_cast< uint32_t >(widescreen ? 1280 : 960),
       .windowHeight = 720u,
+      // A system font merged into the overlay's for the game text ProggyClean lacks (MP1 d0c5cce42).
+      .imGuiInitCallback = PortImGuiFonts::Init,
       .mem1Size = MEM1_DEFAULT_SIZE,
       .mem2Size = ARAM_DEFAULT_SIZE,
       // An embedded seed wins over a stale initial_pipeline_cache.db beside the executable.
@@ -1233,6 +1273,14 @@ int main(int argc, char** argv) {
       // MP2_PIPELINE_SEED=0: start from an empty cache (tools/pipeline_seed.py record runs with it).
       .pipelineCacheNoSeed = !port::EnvFlag("MP2_PIPELINE_SEED", true),
   };
+  // GPU room for models' vertex arrays, uploaded once when a model is made instead of copied into
+  // every frame's buffers (CCubeModel::PortSetResident). A model that finds it full is sent each
+  // frame as before. MP2_GX_RESIDENT_MB=<n> (0 = off; up to 2048); MP2_GX_RESIDENT_DL=1 keeps
+  // display lists there too (fewer bytes a frame, but 2-4x the draws: they no longer merge).
+  // Aurora gives two fifths of it to arrays: 6 MiB, where ten Temple Grounds areas peaked at 1.2.
+  const int kResidentMiB = 16;
+  config.residentGeometryMiB =
+      static_cast< uint32_t >(std::clamp(port::EnvInt("MP2_GX_RESIDENT_MB", kResidentMiB), 0, 2048));
 #if !defined(__ANDROID__)
   // The window icon, for a bare binary that no desktop entry describes. Android takes its icon
   // from the APK.
@@ -1279,11 +1327,18 @@ int main(int argc, char** argv) {
   // Lazy mode keeps built pipelines until memory runs short (MP1 issue #187), areas left long ago
   // included, so walking back is free. It trims on Android's memory warnings (port_memory_log.cpp)
   // and on the memory log's MemAvailable check every 5 s: under 1024 MiB available it releases
-  // what a minute of frames didn't draw, under 512 MiB all but what the last frames drew (GLOBAL
-  // pipelines stay). Overrides: MP2_PIPELINE_TRIM_MIB / MP2_PIPELINE_TRIM_SEVERE_MIB (0 turns a
+  // what a minute of frames didn't draw, under 512 MiB what 30 s didn't (GLOBAL
+  // pipelines stay: Samus, gun, HUD, visors). Android has no moderate level: a 3-4 GB phone sits
+  // under 1024 MiB available all the time, and rebuilding pipelines costs up to 2 s each on a Mali
+  // (issue #98). Overrides: MP2_PIPELINE_TRIM_MIB / MP2_PIPELINE_TRIM_SEVERE_MIB (0 turns a
   // level off), MP2_PIPELINE_EVICT=<frames> (a fixed idle sweep at every frame start, any mode).
   if (config.pipelineCacheLazy) {
-    const int trimMib = port::EnvInt("MP2_PIPELINE_TRIM_MIB", 1024);
+#ifdef __ANDROID__
+    constexpr int kDefaultTrimMib = 0;
+#else
+    constexpr int kDefaultTrimMib = 1024;
+#endif
+    const int trimMib = port::EnvInt("MP2_PIPELINE_TRIM_MIB", kDefaultTrimMib);
     const int severeMib = port::EnvInt("MP2_PIPELINE_TRIM_SEVERE_MIB", 512);
     PortMemoryLog::SetPipelinePressure(trimMib, severeMib);
     if (std::getenv("MP2_PIPELINE_TRIM_MIB") != nullptr ||
@@ -1292,6 +1347,22 @@ int main(int argc, char** argv) {
                    "port: pipeline trim under %d MiB available, all idle under %d MiB "
                    "(MP2_PIPELINE_TRIM_MIB/MP2_PIPELINE_TRIM_SEVERE_MIB)\n",
                    trimMib, severeMib);
+    }
+  }
+  // Texture replacements (MP1 issue #266: an 8 GB PC with an HD pack ran out entering a room):
+  // under 1024 MiB of headroom (RAM, commit or the GPU budget, whichever is least) Aurora frees
+  // idle replacements and loads new ones smaller, under 512 MiB more of both. Overrides:
+  // MP2_TEXTURE_PRESSURE_MIB and MP2_TEXTURE_PRESSURE_SEVERE_MIB (0 turns a level off).
+  {
+    const int textureMib = port::EnvInt("MP2_TEXTURE_PRESSURE_MIB", 1024);
+    const int textureSevereMib = port::EnvInt("MP2_TEXTURE_PRESSURE_SEVERE_MIB", 512);
+    PortMemoryLog::SetTexturePressure(textureMib, textureSevereMib);
+    if (std::getenv("MP2_TEXTURE_PRESSURE_MIB") != nullptr ||
+        std::getenv("MP2_TEXTURE_PRESSURE_SEVERE_MIB") != nullptr) {
+      std::fprintf(stderr,
+                   "port: texture pressure under %d MiB headroom, severe under %d MiB "
+                   "(MP2_TEXTURE_PRESSURE_MIB/MP2_TEXTURE_PRESSURE_SEVERE_MIB)\n",
+                   textureMib, textureSevereMib);
     }
   }
   if (const char* env = std::getenv("MP2_PIPELINE_EVICT"); env != nullptr && env[0] != '\0') {
@@ -1322,19 +1393,24 @@ int main(int argc, char** argv) {
     const char* x11 = std::getenv("DISPLAY");
     const auto present = [](const char* v) { return v != nullptr && v[0] != '\0'; };
     const bool unnamed = !present(requested);
-    const bool underSteam = present(std::getenv("SteamAppId")) || present(std::getenv("SteamGameId"));
-    const auto listsX11 = [](const char* list) {
+    // A headless run has no window for Steam Input to focus, so its "offscreen" is left alone.
+    const bool underSteam = !port::EnvFlag("MP2_HEADLESS") &&
+                            (present(std::getenv("SteamAppId")) || present(std::getenv("SteamGameId")));
+    // SDL matches driver names case-insensitively, so X11 counts too.
+    const auto isX11 = [](std::string_view name) {
+      return name.size() == 3 && SDL_strncasecmp(name.data(), "x11", 3) == 0;
+    };
+    const auto listsX11 = [&](const char* list) {
       std::string_view rest = list;
       while (!rest.empty()) {
         const size_t comma = rest.find(',');
-        if (rest.substr(0, comma) == "x11") return true;
+        if (isX11(rest.substr(0, comma))) return true;
         if (comma == std::string_view::npos) break;
         rest.remove_prefix(comma + 1);
       }
       return false;
     };
-    if (!unnamed && underSteam && present(x11) && std::string_view(requested) != "x11" &&
-        listsX11(requested)) {
+    if (!unnamed && underSteam && present(x11) && !isX11(requested) && listsX11(requested)) {
       // The environment variable outranks a normal-priority hint, hence OVERRIDE.
       SDL_SetHintWithPriority(SDL_HINT_VIDEO_DRIVER, "x11", SDL_HINT_OVERRIDE);
       std::fprintf(stderr,
@@ -1366,7 +1442,13 @@ int main(int argc, char** argv) {
   // F1 > Video > Compatibility (PortVideo, f1b): OpenGL ES, the storage clamp, the low-power
   // adapter and the driver workarounds' Dawn toggles, all read when the GPU device is made.
   PortVideo::BeginGpuStart(config.userPath != nullptr ? config.userPath : "", config);
+  // Before the pipeline cache loads in aurora_initialize: its rows take the running per-pixel
+  // lighting key, so the seed's lit pipelines build at boot instead of on each room's first draw
+  // (issue #44). PortVideo::Frame keeps it in step afterwards.
+  aurora_set_per_pixel_lighting(PortOverlay::PerPixelLighting());
   aurora_initialize(argc, argv, &config);
+  CCubeModel::PortSetResident(aurora_get_resident_geometry_mib() != 0,
+                              port::EnvFlag("MP2_GX_RESIDENT_DL"));
   // The settings file, JSON and the logs read and write numbers in the "C" format. A toolkit loaded
   // with the window (a GTK decoration plugin, an input method) may call setlocale(LC_ALL, ""), and
   // under a comma-decimal locale "1.5" would then read as 1 (MP1's main.cpp:1304).
@@ -1517,14 +1599,13 @@ int main(int argc, char** argv) {
 #else
     const bool kCanPick = !discFromArgs;
 #endif
-#if !defined(__ANDROID__)
     if (PortOverlaySettings::DiscPath() == discImage) {
-      // A refused remembered disc would be refused again on every launch (MP1's main.cpp:498).
+      // A refused remembered disc would be refused again on every launch (MP1's main.cpp:498);
+      // on Android the next start goes back to <files>/disc.iso.
       PortOverlaySettings::SetDiscPath({});
       PortOverlaySettings::SaveSettings();
       std::fprintf(stderr, "metroid_prime2_port: forgot the remembered disc image\n");
     }
-#endif
     if (!ShowDiscError(problem, discImage, kCanPick)) {
       aurora_shutdown();
       PortLogDrain();

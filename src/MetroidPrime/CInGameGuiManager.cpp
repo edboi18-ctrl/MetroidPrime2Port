@@ -46,7 +46,10 @@
 #ifdef TARGET_PC
 #include "port_entry.h"
 #include "port_freecam.h"
+#include "port_third_person.h"
 #include "port_overlay.h"
+#include "port_game_ui.h"
+#include "port_skip_prompt.h"
 #include "port_pointer.h"
 #include "GuiSys/CGuiModel.hpp"
 #include <algorithm>
@@ -308,7 +311,7 @@ void CInGameGuiManager::Draw(const CStateManager& mgr) const {
 #ifdef TARGET_PC
       // Port: MP2_NO_HELMET=1 / F1 > HUD draws the world without the helmet frame. The non-PC body is
       // repeated rather than wrapped, so the matching build's bytes for it do not change.
-      if (!PortOverlay::HideHelmet() && !PortFreeCam::Active()) {
+      if (!PortOverlay::HideHelmet() && !PortFreeCam::Active() && !PortThirdPerson::Active()) {
         CGraphics::SetDepthRange(1.f / 512.f, 1.f / 256.f);
         mSamusHud->DrawHelmet(mgr, 0.f);
       }
@@ -340,6 +343,10 @@ void CInGameGuiManager::Draw(const CStateManager& mgr) const {
       }
       mPlayerVisor->Draw(mgr, nullptr);
     }
+#ifdef TARGET_PC
+    // Port: no face on the visor glass behind her (third person).
+    if (!PortThirdPerson::Active())
+#endif
     if (!mSamusReflection.null()) {
       mSamusReflection->Draw(mgr);
     }
@@ -460,6 +467,11 @@ void CInGameGuiManager::Draw(const CStateManager& mgr) const {
   if (!mMessageScreen.null()) {
     mMessageScreen->Draw();
   }
+#ifdef TARGET_PC
+  // Port: the armed cinematic skip's "Skip cutscene?" box, over a playing cutscene (port_skip_prompt.h).
+  PortSkipPrompt::Draw();
+  PortGameUi::Dev::Draw(); // the console's `gameui` test box (port_game_ui.h)
+#endif
   if (!mPauseScreen.null()) {
     mPauseScreen->Draw();
   }

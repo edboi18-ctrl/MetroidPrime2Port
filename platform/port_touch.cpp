@@ -91,7 +91,6 @@ std::atomic< bool > sEditRequested{false};
 std::atomic< bool > sPhysicalInput{false};
 PortTouch::Activity sActivity;
 std::atomic< bool > sRealPad{false};
-std::atomic< bool > sDeviceXbox{false};
 
 // What the UI thread asks of the game; BeginFrame applies it on the game thread.
 std::atomic< int > sWheelState{0};
@@ -99,6 +98,9 @@ std::atomic< int > sWheelState{0};
 // through these too ([0] is Player 1's, the overlay's).
 constexpr int kPlayers = 4;
 std::atomic< bool > sMorphed[kPlayers]{};
+std::atomic< bool > sRezbitInfected[kPlayers]{};
+std::atomic< bool > sOrbitLocked[kPlayers]{};
+std::atomic< bool > sLockedOnObject[kPlayers]{};
 std::atomic< bool > sScanTextUp{false};
 std::atomic<bool> sRadialTouchForeground{true};
 std::atomic< int > sPendingVisor[kPlayers]{-1, -1, -1, -1};
@@ -674,6 +676,22 @@ int TakeDashRequest() {
   return until != 0 && SDL_GetTicksNS() < until && PortOverlay::DoubleTapDash() ? direction : -1;
 }
 
+std::atomic< uint64_t > sTargetCycleUntilNs[kPlayers]{};
+std::atomic< int > sTargetCycleDir[kPlayers]{};
+
+void RequestTargetCycle(int dir, int player) {
+  if (!ValidPlayer(player)) return;
+  sTargetCycleDir[player].store(dir > 0 ? 1 : -1);
+  sTargetCycleUntilNs[player].store(SDL_GetTicksNS() + 120'000'000);
+}
+
+int TakeTargetCycle(int player) {
+  if (!ValidPlayer(player)) return 0;
+  const uint64_t until = sTargetCycleUntilNs[player].exchange(0);
+  if (SDL_GetTicksNS() >= until || PortOverlay::OriginalExperience()) return 0;
+  return sTargetCycleDir[player].load();
+}
+
 bool AimEnabled() { return Read(&Settings::aim); }
 
 float AimSpeed() { return Read(&Settings::aimSpeed); }
@@ -762,6 +780,23 @@ void SetMorphed(bool morphed, int player) {
   if (ValidPlayer(player)) sMorphed[player].store(morphed, std::memory_order_release);
 }
 bool Morphed(int player) { return ValidPlayer(player) && sMorphed[player].load(std::memory_order_acquire); }
+void SetRezbitInfected(bool infected, int player) {
+  if (ValidPlayer(player)) sRezbitInfected[player].store(infected, std::memory_order_release);
+}
+bool RezbitInfected(int player) {
+  return ValidPlayer(player) && sRezbitInfected[player].load(std::memory_order_acquire);
+}
+void SetOrbitLocked(bool locked, bool onObject, int player) {
+  if (!ValidPlayer(player)) return;
+  sOrbitLocked[player].store(locked, std::memory_order_release);
+  sLockedOnObject[player].store(onObject, std::memory_order_release);
+}
+bool OrbitLocked(int player) {
+  return ValidPlayer(player) && sOrbitLocked[player].load(std::memory_order_acquire);
+}
+bool LockedOnObject(int player) {
+  return ValidPlayer(player) && sLockedOnObject[player].load(std::memory_order_acquire);
+}
 void SetScanTextUp(bool up) { sScanTextUp.store(up, std::memory_order_release); }
 bool ScanTextUp() { return sScanTextUp.load(std::memory_order_acquire); }
 
@@ -995,11 +1030,8 @@ bool OverlayVisible() { return PortOverlay::Visible() || PortPhoto::Active(); }
 void NoteDevice(bool xboxLayout) {
   sActivity.Touch();
   // The prompt icons follow the on-screen layout while touch is the active input.
-  sDeviceXbox.store(xboxLayout, std::memory_order_release);
   PortPrompts::NoteTouchInput(xboxLayout);
 }
-
-bool DeviceIsXbox() { return sDeviceXbox.load(std::memory_order_acquire); }
 
 bool Active() {
 #if defined(PORT_TOUCH_CONTROLS)

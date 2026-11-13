@@ -81,6 +81,11 @@ bool TakeDodgeRequest(int player = 0);
 // off).
 void RequestDash(int direction);
 int TakeDashRequest();
+// Next/Previous target while locked on (MP1 issue #243): +1 right, -1 left on screen. The request
+// lasts 120 ms; that player's CPlayer::UpdateOrbitSelection takes it once (0 when none is pending
+// or under Original Experience).
+void RequestTargetCycle(int dir, int player = 0);
+int TakeTargetCycle(int player = 0);
 
 // Drag on the free screen to aim (MP1's `touch_aim`, on by default; `MP2_TOUCH_AIM`).
 bool AimEnabled();
@@ -145,6 +150,17 @@ bool TakeEditRequested();
 // their pads' Morph Ball rows.
 void SetMorphed(bool morphed, int player = 0);
 bool Morphed(int player = 0);
+// CPlayer::Update publishes whether each player is locked on to an object or grappling (orbiting a
+// carcass or a point is not a lock); a Toggle-trigger L binding lets go when that lock ends.
+// LockedOnObject: only a plain object lock (kOS_OrbitObject), where Next/Previous target applies.
+void SetOrbitLocked(bool locked, bool onObject, int player = 0);
+bool OrbitLocked(int player = 0);
+bool LockedOnObject(int player = 0);
+// CPlayer::Update publishes whether each player's suit has the Rezbit virus (kRS_Infected): the
+// pad's R trigger presses R then whatever Twin Stick Aim or a preset does with it, so the reboot's
+// L + R + B can be held (#111).
+void SetRezbitInfected(bool infected, int player = 0);
+bool RezbitInfected(int player = 0);
 // CStateManager::Update publishes whether the game is soft paused: the scan text is up (CPlayer's
 // scan freeze, its only soft pause).
 void SetScanTextUp(bool up);
@@ -188,7 +204,6 @@ bool OverlayVisible();
 
 // The overlay has just been used, and in which layout (for the prompt icons, not built yet).
 void NoteDevice(bool xboxLayout);
-bool DeviceIsXbox();
 // True only while touch was last used, in a touch build and outside F1.
 bool Active();
 

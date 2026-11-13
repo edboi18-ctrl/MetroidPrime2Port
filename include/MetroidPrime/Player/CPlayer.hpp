@@ -288,6 +288,8 @@ public:
   float GetRadarXYRadiusOverride() const { return mRadarXYRadiusOverride; }
   float GetRadarZRadiusOverride() const { return mRadarZRadiusOverride; }
 #ifdef TARGET_PC
+  // Third person: a shot from the body's cannon heads for the locked target's assisted aim.
+  const CVector3f& PortAssistedTargetAim() const { return mAssistedTargetAim; }
   // Inlined in retail (SwampBossStage2 fn_79_9F4C writes the three fields directly).
   void SetRadarRadiusOverride(float xy, float z) {
     mOverrideRadarRadius = true;
@@ -317,6 +319,9 @@ public:
   float GetMorphBallTransitionFactor() const {
     return mMorphDuration == 0.f ? 0.f : CMath::Clamp(0.f, mMorphTime / mMorphDuration, 1.f);
   }
+#ifdef TARGET_PC
+  float GetMorphDuration() const { return mMorphDuration; }
+#endif
   bool CanEnterMorphBallState(CStateManager& mgr, float dt) const;
   bool CanLeaveMorphBallState(CStateManager& mgr, CVector3f& position) const;
   bool AttachActorToPlayer(TUniqueId actor, bool disableGun);
@@ -414,6 +419,9 @@ public:
   // as in Metroid Prime Hunters, so shots still go to the crosshair.
   void PortUpdateGunSway(float dt, CStateManager& mgr);
   CTransform4f PortGunLean(const CTransform4f& camXf) const;
+  // Next/Previous target (MP1 8c7d45fab): the visible lock-on target right (dir > 0) or left of
+  // the current one on screen, wrapping; kInvalidUniqueId when there is none.
+  TUniqueId PortCycleOrbitTarget(int dir, CStateManager& mgr) const;
 #endif
   void UpdateArmAndGunTransforms(float dt, CStateManager& mgr);
   void ForceGunOrientation(const CTransform4f& transform, CStateManager& mgr);

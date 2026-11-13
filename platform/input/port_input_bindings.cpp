@@ -57,7 +57,7 @@ constexpr std::string_view kTouchNames[] = {
 constexpr int kMouseAim = 0, kMouseState = 8, kMouseMenu = 16, kMouseHeld = 24;
 
 constexpr std::string_view kContextNames[16] = {
-    "gameplay", "morphball", "map", "menu", "scan", "", "", "",
+    "gameplay", "morphball", "map", "menu", "scan", "", "lockon", "",
     "layer1",   "layer2",    "layer3", "layer4", "", "", "", "",
 };
 
@@ -146,7 +146,7 @@ std::string MouseText(int code) {
     base = kMouseMenu;
   }
   int b = code - base;
-  if (b >= kMouseNameCount)
+  if (b < 0 || b >= kMouseNameCount)
     return std::to_string(code); // a raw code
   return std::string(prefix) + std::string(kMouseNames[b]);
 }
@@ -1076,6 +1076,20 @@ void ApplyMapRows(Profile& profile) {
   BlockRowInputs(
       profile, [](const Binding& b) { return FindMapRow(b.action) != nullptr && BindingFamily(b) != Family::Touch; },
       kCtxMap, false);
+}
+
+bool IsTargetRow(Action a) { return a == Action::TargetNext || a == Action::TargetPrev; }
+
+void ApplyTargetRows(Profile& profile) {
+  for (Binding& b : profile.bindings) {
+    if (!IsTargetRow(b.action))
+      continue;
+    b.contexts = kCtxLockOn;
+    b.blocked = 0;
+  }
+  BlockRowInputs(
+      profile, [](const Binding& b) { return IsTargetRow(b.action) && BindingFamily(b) != Family::Touch; },
+      kCtxLockOn, false);
 }
 
 const BallRow* BallRowForGame(Action game) {

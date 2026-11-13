@@ -15,6 +15,9 @@ struct ProcessResult {
 // Process GX FIFO commands until the next draw done event or end of buffer
 ProcessResult process(const uint8_t* data, uint32_t size) noexcept;
 void clear_draw_cache() noexcept;
+// The frame's vertex array copies (see command_processor.cpp's sFrameArrays); the recording
+// calls it when the frame's storage ends.
+void clear_frame_arrays() noexcept;
 
 } // namespace aurora::gx::fifo
 

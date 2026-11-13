@@ -6,6 +6,7 @@
 #include "port_embedded.h"
 #include "port_pbr_maps.h"
 #include "port_prompts.h"
+#include "port_steam_triton.h"
 
 #include <dolphin/gx.h>
 #include <dolphin/pad.h>
@@ -51,7 +52,8 @@ bool sUserOn = true;
 
 // Every name DeviceDirForType can return; used to tell a device-pack root from
 // a single device-agnostic pack.
-constexpr const char* kDeviceDirs[] = {"xbox", "playstation", "switch", "gamecube", "standard", "keyboard"};
+constexpr const char* kDeviceDirs[] = {"xbox", "playstation", "switch", "gamecube", "standard", "keyboard",
+                                       "steamdeck"};
 
 // SDL's gamepad types back PADControllerType, so this mirrors the pad in use.
 const char* DeviceDirForType(PADControllerType type) {
@@ -95,6 +97,10 @@ std::optional<std::filesystem::path> ResolveDirectory(const std::string& root) {
   const std::filesystem::path device = base / sDevice;
   if (std::filesystem::is_directory(device, ec)) {
     return device;
+  }
+  // A pack made before the Steam Deck set: the Deck's pads showed its Xbox folder until then.
+  if (sDevice == "steamdeck" && std::filesystem::is_directory(base / "xbox", ec)) {
+    return base / "xbox";
   }
   for (const char* name : kDeviceDirs) {
     if (std::filesystem::is_directory(base / name, ec)) {
@@ -343,6 +349,11 @@ void Initialize(const char* root, const char* userRoot) {
   sUserOn = sUserEnabled.load(std::memory_order_acquire);
   DeleteStaleUserPacks();
   ApplyPendingUserPack();
+  // Made up front, like mods/, so the user has a folder to drop a pack into.
+  if (!sUser.root.empty()) {
+    std::error_code ec;
+    std::filesystem::create_directories(sUser.root, ec);
+  }
   Load(sBuiltIn, true);
   LoadUser(true);
   SyncPbrMaps(true);
@@ -406,5 +417,17 @@ UserPackUsage UserPackMatches() {
 
 const char* DeviceName() { return sDevice.c_str(); }
 
-const char* PadDeviceName() { return DeviceDirForType(PADGetControllerType(PAD_CHAN0)); }
+// A Valve controller (the Steam Deck's own pad or a Steam Controller, also behind Steam Input's
+// virtual pad) gets the Steam Deck set: SDL types the virtual pad as an Xbox 360 one, and reports the
+// physical controller's ids behind it when Steam says which it is. Steam's own virtual pad id (no
+// slot info) can be any controller, so it keeps the type's set.
+const char* PadDeviceName() {
+  u32 vid = 0;
+  u32 pid = 0;
+  PADGetVidPid(PAD_CHAN0, &vid, &pid);
+  if (vid == PortSteamTriton::kVendor && pid != PortSteamTriton::kProductSteamVirtualGamepad) {
+    return "steamdeck";
+  }
+  return DeviceDirForType(PADGetControllerType(PAD_CHAN0));
+}
 } // namespace PortTextures

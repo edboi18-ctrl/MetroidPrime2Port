@@ -15,14 +15,13 @@ plan, not a promise of order - the list is reordered as the port's own walls mov
 | F1 pages, in the Prime 1 port's set where the feature exists here: Game (state, the area/world cycle buttons, Speedrun, Cutscenes), Controls, Video, Cheats (items then Teleport), **Save states**, **Randomizer** (status and Generate from the dump log), System, **Debug** (free camera and photo, the live state, the console) | `platform/debug_ui/` (MP1's debug_ui files; page list in `debug_ui/search.cpp`); the Randomizer page reads `platform/port_randomizer.cpp` |
 | Aspect ratio, widescreen HUD, render scale, vsync, 60 fps cap, frame interpolation | F1 > Video/Render (`platform/port_overlay.cpp`: `aspect`, `hud_wide`, `render_scale`, `vsync`, `frame_limit`, `smooth_frames`), both in `settings.cfg` and as `MP2_*` for one run; `platform/main.cpp` still sets the viewport policy (`AURORA_VIEWPORT_FIT`) |
 | Skip / fast-forward cutscenes, cutscene speed, `MP2_SKIP_CINEMATICS`, `MP2_SKIP_INTRO` (level-load text + cinematic scene) | `platform/port_harness.cpp`, `CMFGame`, `CMFGameLoader` |
-| Seamless item pickups (issue #66; `seamless_pickups`, `MP2_SEAMLESS_PICKUPS`, console `seamlesspickups`): no control lock, the message box's headline as a HUD memo, the item's cinematic skipped | `platform/port_pickup_presentation.cpp`, `CScriptPickup`, `CScriptHUDMemo`, `CScriptControlHint`, `CMFGame`; `tools/pickup_presentation.py` checks it against the disc |
+| Seamless item pickups (issue #66; `seamless_pickups`, `MP2_SEAMLESS_PICKUPS`, console `seamlesspickups`; All or Repeats only, items already had): no control lock, the message box's headline as a HUD memo, the item's cinematic skipped | `platform/port_pickup_presentation.cpp`, `CScriptPickup`, `CScriptHUDMemo`, `CScriptControlHint`, `CMFGame`; `tools/pickup_presentation.py` checks it against the disc |
 | Boot logos (`MP2_BOOT_LOGOS=show\|skip\|off`; no setting, Original experience shows them): Skip (default) ends the health warning or a Nintendo/Retro/Dolby logo with its 0.5 s fade on A or Start, no 2 s wait on the warning; Off goes from the progressive check straight to the front end. The log prints `[splash] <n> ended at <s>` per screen | `src/MetroidPrime/CSplashScreen.cpp` (`TARGET_PC`), `platform/port_overlay.cpp` |
 | World name on load (`MP2_WORLD_NAME=show\|skip\|off`; no setting, Original experience shows it): the world-name card a save load types out (e.g. "Torvus Bog"). Skip (default) types it out at once on A or Start, so it fades as soon as the load is done; Off loads behind the plain transition (its retail 2 s minimum stays). The new game's intro text follows Skippable cutscenes instead (A or Start, seen or not; `CWorldTransManager::PortSkipIntroText`). A Torvus save on desktop: first update 4.5 s shown, 3.3 s skipped, 2.9 s off | `src/MetroidPrime/CMFGameLoader.cpp`, `CWorldTransManager::PortSkipText` (`TARGET_PC`) |
-| Mouse aim, twin-stick aim, gyro aim, full keyboard bindings | `platform/port_mouse.cpp`, `port_events.cpp`, `debug_ui.cpp` |
+| Mouse aim, twin-stick aim, gyro aim, full keyboard bindings | `platform/port_mouse.cpp`, `port_events.cpp`, `input/` |
 | Idle cursor: an uncaptured desktop cursor (a controller player in full screen) hides after 2 s without mouse input and shows again on the next motion, click or wheel; it stays while the overlay or photo mode's panel wants it. Not a setting | `PortMouse::UpdateIdleCursor`, `platform/port_mouse.cpp`; [SETTINGS.md](SETTINGS.md), Controls > Mouse settings; #32 |
 | God mode, heal/kill, teleport to doorway/door/save station/elevator, area and world warps, layer activation | `platform/port_warp.cpp`, `port_overlay.cpp` |
 | `MP2_INPUT` scripted input with warp tokens (the sweep's driver) | `platform/port_events.cpp` |
-| Widescreen-aware HUD (`MP_HUD_WIDE`), camera bob used by the game itself | `platform/debug_ui.cpp` |
 | Touch overlay (Android) with a layout editor | `platform/port_touch.cpp`, `touch_pad.cpp` |
 | HD texture set hook (`PortTextures::DeviceName`) | `platform/port_textures.cpp` |
 | **Debug command console over TCP** (`MP2_CONSOLE=<port>`, `tools/mp2con.py`) | `platform/port_console.cpp` - new here |
@@ -86,7 +85,6 @@ plan, not a promise of order - the list is reordered as the port's own walls mov
 - A new setting is one field in `platform/port_overlay.cpp` (with its `MP2_*` env var, which is what a
   headless run uses), a key in `platform/debug_ui/settings.cpp` (documented in `docs/SETTINGS.md`), its
   row on a page in `platform/debug_ui/` plus `platform/port_settings_index.inc` (ctest
-  `port_settings_index`), and a getter in `platform/include/port_overlay.h`. `platform/debug_ui.cpp`
-  (the old single file) is in no CMake target - a setting added there compiles nowhere.
+  `port_settings_index`), and a getter in `platform/include/port_overlay.h`.
 - Anything a test must drive also needs an `MP2_INPUT` token or a console command, because the sweep
   and the harness cannot press keys.

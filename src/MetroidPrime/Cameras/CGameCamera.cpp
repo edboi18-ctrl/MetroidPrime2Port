@@ -14,7 +14,9 @@
 #include "Kyoto/Math/CUnitVector3f.hpp"
 #include "Kyoto/Math/CloseEnough.hpp"
 #ifdef TARGET_PC
+#include "MetroidPrime/Cameras/CFirstPersonCamera.hpp"
 #include "port_overlay.h"
+#include "port_third_person.h"
 #endif
 
 CGameCamera::SFovInterpolation::SFovInterpolation(float delay, float remaining, float duration,
@@ -70,7 +72,16 @@ const CMatrix4f& CGameCamera::GetPerspectiveMatrix() const {
 }
 
 CVector3f CGameCamera::ConvertToScreenSpace(const CVector3f& position) const {
+#ifdef TARGET_PC
+  // Port: the first-person camera projects from where third person draws it (orbit targets,
+  // scan and lock-on boxes).
+  const CVector3f local = (TCastToConstPtr< CFirstPersonCamera >(*this)
+                               ? PortThirdPerson::TickView(GetTransform())
+                               : GetTransform())
+                              .TransposeMultiply(position);
+#else
   const CVector3f local = GetTransform().TransposeMultiply(position);
+#endif
   if (local.IsNonZero()) {
     return GetPerspectiveMatrix().MultiplyOneOverW(local);
   }
@@ -252,6 +263,12 @@ float CGameCamera::GetUnwidenedFov() const {
   }
   return PortOverlay::UnwidenFov(fov, static_cast< float >(viewport.mWidth) /
                                           static_cast< float >(viewport.mHeight));
+}
+
+void CGameCamera::PortRescaleFov(float fromSetting, float toSetting) {
+  mFovInterpolation.mCurrent = CCameraManager::PortRescaleFov(mFovInterpolation.mCurrent, fromSetting, toSetting);
+  mFovInterpolation.mTarget = CCameraManager::PortRescaleFov(mFovInterpolation.mTarget, fromSetting, toSetting);
+  mPerspDirty = true;
 }
 
 #endif

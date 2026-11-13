@@ -68,6 +68,7 @@
 #include "rstl/math.hpp"
 #ifdef TARGET_PC
 #include "port_overlay.h"
+#include "port_prime1_tweaks.h"
 #include "port_touch.h"
 #include <cstdio>
 #include <cstdlib>
@@ -75,6 +76,22 @@
 static bool PortBallDebug() {
   static const bool enabled = std::getenv("MP2_DEBUG_BALL") != nullptr;
   return enabled;
+}
+
+// Prime 1 boost ball (PortOverlay::Prime1BoostBall): single player only, and only with Prime 1's
+// values read from the player's disc (`prime1_disc`): without them the recharge and falloff
+// changes would run on Echoes' flat boost speeds, a combination neither game has. For the same
+// reason it is off wherever CTweakBall hands out Echoes' values (EchoesValuesScope: Spider Ball
+// tracks and half-pipes).
+static bool PortPrime1BoostBall(const CStateManager& mgr) {
+  PortPrime1Tweaks::BoostBall values;
+  return PortPrime1Tweaks::EchoesValuesDepth() == 0 && PortOverlay::Prime1BoostBall() &&
+         !mgr.IsMultiplayer() && PortPrime1Tweaks::Values(values);
+}
+
+// The Boost Ball duration cheat (PortOverlay::BoostDurationScale) stretches the boosted window.
+static inline float PortBoostDrainTime() {
+  return gpTweakBall->GetBoostBallDrainTime() * PortOverlay::BoostDurationScale();
 }
 #endif
 
@@ -901,6 +918,12 @@ float CMorphBall::CalculateSurfaceFriction() const {
     friction *= 1.5f * drainSourceCount;
   }
 
+#ifdef TARGET_PC
+  // The duration cheat: a boosted ball keeps its speed that much longer.
+  if (IsBoosting()) {
+    friction /= PortOverlay::BoostDurationScale();
+  }
+#endif
   return friction;
 }
 
@@ -2012,6 +2035,12 @@ void CMorphBall::EnterBoosting(CStateManager& mgr, bool skipImpulse) {
     mBallState = kBS_Boost;
     mBoostDamageScale = 1.f;
   }
+#ifdef TARGET_PC
+  // A Spider Ball or half-pipe boost takes Echoes' Boost Ball values under Prime 1 boost ball
+  // (port_prime1_tweaks.h).
+  const PortPrime1Tweaks::EchoesValuesScope spiderEchoes(mBallState == kBS_SpiderBoost ||
+                                                         GetIsInHalfPipeMode());
+#endif
 
   if (mPlayer.DampsBoostEntryVelocity()) {
     mPlayer.SetVelocityWR(mPlayer.GetVelocityWR() * 0.4f);
@@ -2035,7 +2064,15 @@ void CMorphBall::EnterBoosting(CStateManager& mgr, bool skipImpulse) {
       }
       incSpeed = rstl::max_val(0.f, incSpeed);
     } else {
+#ifdef TARGET_PC
+      // Prime 1 boost ball: Prime 1 adds the full impulse whatever the ball's speed; the slider
+      // brings back part of Echoes' falloff (100% is Echoes).
+      const float falloff =
+          PortPrime1BoostBall(mgr) ? PortOverlay::Prime1BoostFalloff() / 100.f : 1.f;
+      incSpeed *= 1.f - falloff * mPlayer.GetVelocityWR().Magnitude() / 50.f;
+#else
       incSpeed *= 1.f - mPlayer.GetVelocityWR().Magnitude() / 50.f;
+#endif
     }
 
     CVector3f lookDir;
@@ -2077,6 +2114,9 @@ void CMorphBall::EnterBoosting(CStateManager& mgr, bool skipImpulse) {
       speedMul *= 0.5f;
     }
 
+#ifdef TARGET_PC
+    incSpeed *= PortOverlay::BoostSpeedScale();
+#endif
     mPlayer.ApplyImpulseWR(lookDir * (speedMul * incSpeed * mPlayer.GetMass()),
                            CAxisAngle::Identity());
   }
@@ -2102,6 +2142,12 @@ void CMorphBall::ComputeBoostBallMovement(const CFinalInput& input, CStateManage
   if (!IsMovementAllowed()) {
     return;
   }
+#ifdef TARGET_PC
+  // Charging on a Spider Ball track and the boost off it, and boosts in a half-pipe, take Echoes'
+  // Boost Ball values under Prime 1 boost ball (port_prime1_tweaks.h).
+  const PortPrime1Tweaks::EchoesValuesScope spiderEchoes(
+      mBallState == kBS_Spider || mBallState == kBS_SpiderBoost || GetIsInHalfPipeMode());
+#endif
 
   mTimeNotInBoost += dt;
   CPlayerState* playerState = mPlayer.GetPlayerState();
@@ -2137,7 +2183,13 @@ void CMorphBall::ComputeBoostBallMovement(const CFinalInput& input, CStateManage
 
   if (!IsBoosting() || activateBoost) {
     if (mPlayer.BoostHeld(input) && !activateBoost) {
-      const bool canCharge = mTimeNotInBoost > gpTweakBall->GetBoostBallDrainTime();
+      bool canCharge = mTimeNotInBoost > gpTweakBall->GetBoostBallDrainTime();
+#ifdef TARGET_PC
+      // Prime 1 boost ball: Prime 1 has no recharge wait, a charge starts once the boost ends.
+      if (PortPrime1BoostBall(mgr)) {
+        canCharge = true;
+      }
+#endif
       if (canCharge) {
         if (mBallAnimationIndex == 0) {
           mBallAnimationIndex = 1;
@@ -2176,7 +2228,12 @@ void CMorphBall::ComputeBoostBallMovement(const CFinalInput& input, CStateManage
         }
 
         if (GetBallBoostState() == kBBS_BoostAvailable) {
+#ifdef TARGET_PC
+          if (GetIsInHalfPipeMode() || mBallCloseToCollision || mBallState == kBS_SpiderBoost ||
+              PortOverlay::BoostAnywhere()) {
+#else
           if (GetIsInHalfPipeMode() || mBallCloseToCollision || mBallState == kBS_SpiderBoost) {
+#endif
             EnterBoosting(mgr, false);
           } else {
             const CVector3f surfaceY = mSurfaceToWorld.GetColumn(kDY);
@@ -2199,6 +2256,21 @@ void CMorphBall::ComputeBoostBallMovement(const CFinalInput& input, CStateManage
     }
   } else {
     mBoostDrainTime += dt;
+#ifdef TARGET_PC
+    if (mBoostDrainTime > PortBoostDrainTime()) {
+      LeaveBoosting();
+    }
+
+    // The boost-anywhere cheat lets a boost run its course off the ground, undamped.
+    if (!GetIsInHalfPipeMode() && mBallState != kBS_SpiderBoost && !mBallCloseToCollision &&
+        !PortOverlay::BoostAnywhere()) {
+      if (mBoostDrainTime / PortBoostDrainTime() < 0.3f) {
+        DampLinearAndAngularVelocities(0.5f, 0.01f, dt);
+      }
+
+      LeaveBoosting();
+    }
+#else
     if (mBoostDrainTime > gpTweakBall->GetBoostBallDrainTime()) {
       LeaveBoosting();
     }
@@ -2210,6 +2282,7 @@ void CMorphBall::ComputeBoostBallMovement(const CFinalInput& input, CStateManage
 
       LeaveBoosting();
     }
+#endif
   }
 
   if (!IsBoosting() && !hasCannonBall) {
@@ -2676,6 +2749,11 @@ void CMorphBall::UpdateBallLight(float dt, CStateManager& mgr) {
 }
 
 void CMorphBall::UpdateEffects(float dt, CStateManager& mgr) {
+#ifdef TARGET_PC
+  // The charge and drain glow follow the values the boost uses (ComputeBoostBallMovement).
+  const PortPrime1Tweaks::EchoesValuesScope spiderEchoes(
+      mBallState == kBS_Spider || mBallState == kBS_SpiderBoost || GetIsInHalfPipeMode());
+#endif
   const CTransform4f swooshToWorld = GetSwooshToWorld();
   const CPlayerState* playerState = mPlayer.GetPlayerState();
   const bool dead = mPlayer.GetDeathTime() > 0.f;
@@ -2777,7 +2855,11 @@ void CMorphBall::UpdateEffects(float dt, CStateManager& mgr) {
 
       const float t = mBoostDrainTime == 0.f
                           ? mBoostChargeTime / gpTweakBall->GetBoostBallMaxChargeTime()
+#ifdef TARGET_PC
+                          : 1.f - mBoostDrainTime / PortBoostDrainTime();
+#else
                           : 1.f - mBoostDrainTime / gpTweakBall->GetBoostBallDrainTime();
+#endif
 
       CElementGen* boostBallGlowGen = mBoostBallGlowGen.get();
       boostBallGlowGen->SetModulationColor(
@@ -3315,6 +3397,32 @@ void CMorphBall::ComputeMarioMovement(const CFinalInput& input, CStateManager& m
     CVector3f controlForce = turnForce + forwardForce;
     mControlForce = controlForce;
 
+#ifdef TARGET_PC
+    // The boost steering cheat: the stick turns the boosted ball's course at up to kSteerRate,
+    // keeping its speed, where the game only lets it push sideways. Half-pipes keep theirs.
+    if (IsBoosting() && !GetIsInHalfPipeMode() && PortOverlay::BoostSteer()) {
+      static const float kSteerRate = 4.7f; // radians per second at full tilt (~270 degrees)
+      const float tilt = CMath::Clamp(0.f, CVector2f(turn, forward).Magnitude(), 1.f);
+      const CVector3f vel = mPlayer.GetVelocityWR();
+      const CVector3f want = controlXf.Rotate(CVector3f(turn, forward, 0.f));
+      const float speed2d = CVector2f(vel.GetX(), vel.GetY()).Magnitude();
+      if (tilt > 0.1f && speed2d > 1.f) {
+        const float delta = atan2(vel.GetX() * want.GetY() - vel.GetY() * want.GetX(),
+                                  vel.GetX() * want.GetX() + vel.GetY() * want.GetY());
+        const float step = CMath::Clamp(-kSteerRate * tilt * dt, delta, kSteerRate * tilt * dt);
+        const float c = cos(step);
+        const float s = sin(step);
+        const auto turnZ = [c, s](const CVector3f& v) {
+          return CVector3f(v.GetX() * c - v.GetY() * s, v.GetX() * s + v.GetY() * c, v.GetZ());
+        };
+        // The spin turns with the course, or the ball's grip on the ground fights the new course.
+        mPlayer.SetVelocityWR(turnZ(vel));
+        mPlayer.SetAngularVelocityWR(
+            CAxisAngle::FromVector(turnZ(mPlayer.GetAngularVelocityWR().GetVector())));
+      }
+      controlForce = CVector3f::Zero();
+    } else
+#endif
     if (IsBoosting() && !GetIsInHalfPipeMode()) {
       const CVector3f controlLocalForce = mSurfaceToWorld.TransposeRotate(controlForce);
       CVector3f boostControlForce;

@@ -831,6 +831,7 @@ bool aurora_is_suspended() {
   return aurora::window::is_backgrounded() || !aurora::window::is_surface_ready() ||
          aurora::window::is_surface_changing();
 }
+uint64_t aurora_joystick_update_ns() { return aurora::window::joystick_update_ns(); }
 void aurora_end_frame() { aurora::end_frame(); }
 void aurora_set_background_pipelines_paused(bool paused) { aurora::gfx::set_background_pipelines_paused(paused); }
 void aurora_disable_config_persistence() { aurora::io::disable_config_persistence(); }

@@ -534,7 +534,8 @@ void populate_pipeline_config(PipelineConfig& config, GXPrimitive primitive, GXV
   // From the pass being recorded (the replayed FIFO's), so an offscreen pass or the next frame's
   // LDR scene never takes an HDR pipeline.
   config.shaderConfig.sceneHdr = gfx::scene_hdr_pass_active();
-  config.shaderConfig.fogType = pipeline_fog_type(g_gxState.fog.type);
+  // Keyed by pipeline_fog below, once drawId and actorDecal are known.
+  config.shaderConfig.fogType = static_cast<u8>(g_gxState.fog.type);
   config.shaderConfig.fogRangeEnabled = g_gxState.fog.rangeEnabled;
   config.shaderConfig.pbr = g_gxState.pbr;
   if (g_gxState.pbr != 0) {
@@ -692,6 +693,11 @@ void populate_pipeline_config(PipelineConfig& config, GXPrimitive primitive, GXV
   } else if (g_gxState.actorDecal) {
     config.shaderConfig.shadow = false;
   }
+  pipeline_fog(config.shaderConfig);
+  // After the channels are pruned: a lit channel no stage reads asks for no per-pixel lighting.
+  pipeline_unused_inputs(config.shaderConfig);
+  config.shaderConfig.perPixelLight =
+      config.shaderConfig.actorDecal == 0 && wants_per_pixel_light(config.shaderConfig) ? 1 : 0;
   // Field by field: an aggregate assignment would copy the 2.7 KB shader config twice more on
   // every pipeline switch. Every field outside shaderConfig is written here.
   config.version = GXPipelineConfigVersion;
@@ -713,7 +719,7 @@ void populate_pipeline_config(PipelineConfig& config, GXPrimitive primitive, GXV
   config.blendFacSrc = blendFactor(g_gxState.blendFacSrc);
   config.blendFacDst = blendFactor(g_gxState.blendFacDst);
   config.blendOp = g_gxState.blendOp;
-  config.dstAlpha = hasAlpha && g_gxState.alphaUpdate ? g_gxState.dstAlpha : UINT32_MAX;
+  config.dstAlpha = hasAlpha && g_gxState.alphaUpdate ? pipeline_dst_alpha(g_gxState.dstAlpha) : UINT32_MAX;
   config.polygonOffsetBits = std::bit_cast<uint32_t>(polygonOffset);
   config.polygonOffsetScaleBits = std::bit_cast<uint32_t>(polygonOffsetScale);
   config.polygonOffsetClampBits = std::bit_cast<uint32_t>(g_gxState.clamp);
@@ -1052,6 +1058,15 @@ void initialize() noexcept {
 
 void shutdown() noexcept {
   // TODO we should probably store this all in g_state.gx instead
+  // Port: every GPU object kept here holds the device. One left set (the empty texture bind group
+  // was) keeps the device and the Vulkan instance alive until static destruction at exit, when
+  // vkDestroyInstance runs through layers already torn down (Steam's overlay layer: SIGSEGV on
+  // every quit launched from Steam).
+  g_emptyTextureBindGroup = {};
+  sEmptyTextureView = {};
+  sEmptyTexture = {};
+  sEmptySampler = {};
+  sPipelineLayout = {};
   sSamplerBindGroupLayout = {};
   sTextureBindGroupLayout = {};
   sShadowTextureBindGroupLayout = {};

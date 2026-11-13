@@ -5,6 +5,7 @@
 
 #include "../input/port_input_devices.h"
 #include "port_controls.h"
+#include "port_steam_triton.h"
 #include "port_gyro_motion.h"
 #include "port_input_remap_ui.h"
 #include "port_mouse.h"
@@ -55,14 +56,19 @@ void DrawControlsOptions() {
   int glyphs = sPromptGlyphs;
   if (ImGui::Combo("Button glyphs", &glyphs,
                    "Follow the input in use\0" "Xbox\0" "PlayStation\0" "Nintendo Switch\0" "GameCube\0"
-                   "Keyboard & mouse\0")) {
+                   "Keyboard & mouse\0" "Steam Deck\0")) {
     sPromptGlyphs = std::clamp(glyphs, static_cast< int >(PortOverlay::kPromptGlyphs_Auto),
-                               static_cast< int >(PortOverlay::kPromptGlyphs_Keyboard));
+                               static_cast< int >(PortOverlay::kPromptGlyphs_SteamDeck));
     Changed(true);
   }
   ItemHelp("Which buttons the game's prompts and tutorials show. Follow: the keyboard, controller or "
            "touch layout you last used. GameCube shows the game's own art; Original experience "
            "forces it.");
+  Changed(ImGui::Checkbox("Render button prompt rings", &sPromptRing));
+  ItemHelp("Draws the ring around the scan, message and logbook boxes' button as geometry, sharp at "
+           "any resolution, instead of leaving a gap in the box for a small texture. Off: the "
+           "game's own button (with GameCube glyphs) or the ring drawn into its texture. Original "
+           "experience turns it off.");
 
   ImGui::SeparatorText("Buttons");
   // Original experience (Game > Cutscenes) reads the tweaks below as retail.
@@ -77,6 +83,9 @@ void DrawControlsOptions() {
   Changed(ImGui::Checkbox("Aim Lock-On", &sAimLockOn));
   ItemHelp("Lock onto the target nearest the crosshair. The original prefers a nearer target even "
            "when it is off to the side. Scanning works as usual.");
+  Changed(ImGui::Checkbox("Shoot in Scan Visor", &sScanShoot));
+  ItemHelp("The arm cannon stays out in the Scan Visor and fires and charges as in the others. Off: "
+           "the cannon is put away and firing switches to the Combat Visor, as in the original game.");
   Changed(ImGui::Checkbox("Sticky Charge", &sStickyCharge));
   ItemHelp("Tap to fire as usual. Hold fire, let go, and the beam keeps charging; press fire again "
            "to shoot. Needs the Charge Beam.");
@@ -176,6 +185,10 @@ void DrawControlsOptions() {
   ItemHelp("Touch only: one finger pans the map and two rotate it, instead of two panning and "
            "one rotating.");
   ImGui::EndDisabled();
+  Changed(ImGui::Checkbox("Exit Game on the main menu", &sMenuExit));
+  ItemHelp("The main menu shows Exit Game in its bottom-left corner: hold the button shown "
+           "beside it (the game's Z), or a finger or the mouse on it, to quit, for "
+           "setups without a keyboard.");
 
   // The game's own option, so it is the same switch as the pause menu's and is
   // saved with the other game options.
@@ -365,7 +378,30 @@ void DrawControlsController() {
                        "real controllers only.");
   } else {
     PortControls::DrawDeadZones();
+    Changed(ImGui::Checkbox("Precise stick deadzones", &sPreciseStickDeadZones));
+    ItemHelp("Makes the Stick and C-stick deadzone sliders the only deadzone: the game also ignores "
+             "about the first 12% of each stick's tilt, which this offsets, and movement past a slider "
+             "starts from zero instead of jumping. Lower the sliders with it for tighter controls; "
+             "under 2% of tilt is still ignored, so at 0% only a stick that drifts past that moves "
+             "Samus.");
   }
+#if defined(__linux__) && !defined(__ANDROID__)
+  // Under Steam Input: the back buttons of the physical controller behind Player 1's virtual pad
+  // (read from its own reports, port_steam_triton.h; Steam's virtual pad has none).
+  ImGui::SeparatorText("Back buttons");
+  Changed(ImGui::Checkbox("Steam Input back buttons", &sSteamInputBackButtons));
+  ItemHelp("Under Steam Input, reads Player 1's controller's back buttons (Steam Controller and Steam "
+           "Deck L4, R4, L5, R5; DualSense Edge back and Fn buttons; SL and SR of a Joy-Con pair), "
+           "which Steam Input doesn't pass to the game, as Paddle 1-4 on the Remap page (bind Gyro aim "
+           "to one there, say). If the game's Steam layout also maps them, bind each button in one "
+           "place, not both.");
+  if (sSteamInputBackButtons) {
+    const PortSteamTriton::Stats sc = PortSteamTriton::GetStats();
+    ImGui::Text("Behind Steam Input: %s", sc.receiving      ? sc.device
+                                          : sc.notPlayerOne ? "not Player 1's controller"
+                                                            : "none");
+  }
+#endif
 }
 
 // MP1 draws the touch rows on Android only; this port's touch overlay also runs on a desktop (a
